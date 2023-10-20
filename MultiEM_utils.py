@@ -71,6 +71,33 @@ def get_coordinates_mm(mm_vec):
     
     return np.array(V)
 
+def get_coordinates_cif(file):
+    '''
+    It returns the corrdinate matrix V (N,3) of a .pdb file.
+    The main problem of this function is that coordiantes are not always in 
+    the same column position of a .pdb file. Do changes appropriatelly,
+    in case that the data aren't stored correctly. 
+    
+    Input:
+    file (str): the path of the .cif file.
+    
+    Output:
+    V (np.array): the matrix of coordinates
+    '''
+    V = list()
+    
+    with open(file, 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            if line.startswith("ATOM"):
+                columns = line.split()
+                x = eval(columns[10])
+                y = eval(columns[11])
+                z = eval(columns[12])
+                V.append([x, y, z])
+    
+    return np.array(V)
+
 def get_heatmap(mm_vec,viz=False,save=False,path=''):
     '''
     It returns the corrdinate matrix V (N,3) of a .pdb file.
@@ -159,47 +186,6 @@ def get_hic(primary,chrom,resolution,th1=10,th2=40,normalization="NONE",name=Non
         plt.show()
 
     return matrix
-
-def get_stats(v):
-    res = stats.describe(v)
-    return np.concatenate([
-        [
-            res.minmax[0],
-            res.minmax[1],
-            res.mean,
-            res.variance,
-            res.skewness,
-            res.kurtosis
-        ],
-        np.percentile(v, q=[10, 25, 50, 75, 90, 95])
-    ])
-
-def get_coordinates_mm(mm_vec):
-    '''
-    It returns the corrdinate matrix V (N,3) of a .pdb file.
-    The main problem of this function is that coordiantes are not always in 
-    the same column position of a .pdb file. Do changes appropriatelly,
-    in case that the data aren't stored correctly. 
-    
-    Input:
-    file (Openmm Qunatity): an OpenMM vector of the form 
-    Quantity(value=[Vec3(x=0.16963918507099152, y=0.9815883636474609, z=-1.4776774644851685), 
-    Vec3(x=0.1548253297805786, y=0.9109517931938171, z=-1.4084612131118774), 
-    Vec3(x=0.14006929099559784, y=0.8403329849243164, z=-1.3392155170440674), 
-    Vec3(x=0.12535107135772705, y=0.7697405219078064, z=-1.269935131072998),
-    ...,
-    unit=nanometer)
-    
-    Output:
-    V (np.array): the matrix of coordinates
-    '''
-    V = list()
-
-    for i in range(len(mm_vec)):
-        x, y ,z = mm_vec[i][0]._value, mm_vec[i][1]._value, mm_vec[i][2]._value
-        V.append([x, y, z])
-    
-    return np.array(V)
 
 def import_bw(bw_path,N_beads,n_chroms,viz=False,binary=False,path=''):
     genomewide_signal = list()
@@ -326,7 +312,7 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=20,viz=False,mod
     if mode=='k':
         zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
         zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
-        ds, ks = None, 50+2950*min_max_trans(zs)
+        ds, ks = None, 50+29950*min_max_trans(zs)
     elif mode=='d':
         ks=None
         ds = 1/cs**(1/3)
@@ -335,7 +321,7 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=20,viz=False,mod
         zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
         zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
         ds = 1/cs**(1/3)
-        ds, ks = 0.1+0.3*min_max_trans(ds), 50+2950*min_max_trans(zs)
+        ds, ks = 0.1+0.3*min_max_trans(ds), 50+29950*min_max_trans(zs)
     else:
         raise InterruptedError("The mode of loop generator should be either 'k' so as to generate Hook constats, or 'd' for equillibrium distances, or 'kd' for both.")
     
