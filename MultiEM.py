@@ -15,32 +15,59 @@ import time
 import os
 
 class MultiEM:
-    def __init__(self,chrom_ends,Cs=None,ms=None,ns=None,ks=None,ds=None,comp_gw=False,path='results/'):
+    def __init__(self,N_beads=None,loop_path=None,comp_path=None,n_chrom=24,comp_gw=False,out_path='results'):
         '''
         Cs (np arrays): Cs array with colors over time.
         N_beads (int): The number of beads of initial structure.
         step (int): sampling rate.
         '''
-        if np.all(Cs!=None):
-            self.N_beads = len(Cs)
-        elif np.all(ms!=None) and np.all(ns!=None):
-            self.N_beads = np.max(ns)+1
+        # Create output folder only if needed
+        self.save_path = out_path+'/'
+        try:
+            os.mkdir(self.save_path)
+            os.mkdir(self.save_path+'chromosomes')
+            os.mkdir(self.save_path+'chromosomes_info')
+        except OSError as error:
+            print("Folder 'chromosomes' already exists!")  
+        
+        # Load from files
+        if np.all(comp_path!=None):
+            if comp_path.endswith('.bw') or comp_path.endswith('.bigwig') or comp_path.endswith('.BigWig'):
+                self.Cs, self.chr_ends = import_bw(bw_path=comp_path,N_beads=N_beads,\
+                                                   viz=False,binary=True,\
+                                                   n_chroms=n_chrom,path=self.save_path)
+            elif comp_path.endswith('.bed'):
+                self.Cs, self.chr_ends = import_compartments_from_bed(bed_file=comp_path,N_beads=N_beads,
+                                                                      n_chroms=n_chrom,path=self.save_path)
+        if np.all(loop_path!=None):
+            if loop_path.endswith('.bedpe'):
+                self.ms, self.ns, self.ds, self.ks, self.cs, self.chr_ends = import_mns_from_bedpe(bedpe_file=loop_path,N_beads=N_beads,\
+                                                                                n_chroms=n_chrom,threshold=10,viz=False,\
+                                                                                path=self.save_path)
+            elif(loop_path.endswith('.txt')):
+                self.ms, self.ns = import_mns_from_txt(txt_file=loop_path,N_beads=N_beads,n_chroms=n_chrom,path=self.save_path)
+                self.ds,self.ds,self.cs=None,None,None
+            self.N_beads = N_beads
         else:
-            raise InterruptedError('Wrong data provided in simulation.')
-        self.Cs = Cs
-        self.ms, self.ns, self.ks, self.ds = ms, ns, ks, ds
-        self.chr_ends = chrom_ends
+            # Import from file
+            self.Cs = np.load(self.save_path+'genomewide_signal.npy')
+            self.ms, self.ns = np.load(self.save_path+'ms.npy'), np.load(self.save_path+'ns.npy')
+            self.ks, self.ds = np.load(self.save_path+'ks.npy'), np.load(self.save_path+'ds.npy')
+            self.chr_ends = np.load(self.save_path+'chrom_lengths.npy')
+
+            # Estimate number of beads only if needed
+            if np.all(self.Cs!=None):
+                self.N_beads = len(self.Cs)
+            elif np.all(self.ms!=None) and np.all(self.ns!=None):
+                self.N_beads = np.max(self.ns)+1
+        write_chrom_colors(self.chr_ends,name=self.save_path+'MultiEM_chromosome_colors.cmd')
+
+        # Define a chromsome metric
         self.chroms = np.zeros(self.N_beads)
         chr_count = 1
         for i in range(len(self.chr_ends)-1):
-            if comp_gw: self.chroms[self.chr_ends[i]:self.chr_ends[i+1]] = chr_count
+            if not comp_gw: self.chroms[self.chr_ends[i]:self.chr_ends[i+1]] = chr_count
             chr_count += 1
-        self.path = path
-        try: 
-            os.mkdir(self.path)
-            os.mkdir(self.path+'chromosomes')
-        except OSError as error:
-            print("Folder 'chromosomes' already exists!")
 
     def add_forcefield(self):
         # Leonard-Jones potential for excluded volume
@@ -53,26 +80,26 @@ class MultiEM:
         
         # Gaussian compartmentalization potential
         if np.all(self.Cs!=None) and len(np.unique(self.Cs)==2):
-            self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea*delta(s1+s2-2)+Eb*delta(s1+s2+2))*delta(chrom1-chrom2)')
-            self.comp_force.addGlobalParameter('sigma',defaultValue=0.5)
+            self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea*delta(s1+1)*delta(s2+1)+Eb*delta(s1-1)*delta(s2-1))*delta(chrom1-chrom2)')
+            self.comp_force.addGlobalParameter('sigma',defaultValue=0.4)
             self.comp_force.addGlobalParameter('r0',defaultValue=0.2)
             self.comp_force.addGlobalParameter('E0',defaultValue=0.0)
-            self.comp_force.addGlobalParameter('Ea',defaultValue=-2.0)
-            self.comp_force.addGlobalParameter('Eb',defaultValue=-0.5)
+            self.comp_force.addGlobalParameter('Ea',defaultValue=-1.0)
+            self.comp_force.addGlobalParameter('Eb',defaultValue=-2.0)
             self.comp_force.addPerParticleParameter('s')
             self.comp_force.addPerParticleParameter('chrom')
             for i in range(self.system.getNumParticles()):
                 self.comp_force.addParticle([self.Cs[i],self.chroms[i]])
             self.system.addForce(self.comp_force)
-        elif np.all(self.Cs!=None) and len(np.unique(self.Cs)==4):
-            self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea1*delta(s1+s2-2)+Ea2*delta(s1+s2-4)+Eb1*delta(s1+s2+2)+Eb2*delta(s1+s2+4))*delta(chrom1-chrom2)')
-            self.comp_force.addGlobalParameter('sigma',defaultValue=0.5)
+        elif np.all(self.Cs!=None) and len(np.unique(self.Cs)>=4):
+            self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea1*delta(s1-2)*delta(s2-2)+Ea2*delta(s1-1)*delta(s2-1)+1/2*(Ea1+Ea2)*(delta(s1-2)*delta(s2-1)+delta(s1-1)*delta(s2-2))+Eb1*delta(s1+1)*delta(s2+1)+Eb2*delta(s1+2)*delta(s2+2)+1/2*(Eb1+Eb2)*(delta(s1+2)*delta(s2+1)+delta(s1+1)*delta(s2+2)))*delta(chrom1-chrom2)')
+            self.comp_force.addGlobalParameter('sigma',defaultValue=0.4)
             self.comp_force.addGlobalParameter('r0',defaultValue=0.2)
             self.comp_force.addGlobalParameter('E0',defaultValue=0.0)
-            self.comp_force.addGlobalParameter('Ea1',defaultValue=-6.0)
-            self.comp_force.addGlobalParameter('Ea2',defaultValue=-5.0)
-            self.comp_force.addGlobalParameter('Eb1',defaultValue=-4.0)
-            self.comp_force.addGlobalParameter('Eb2',defaultValue=-3.0)
+            self.comp_force.addGlobalParameter('Ea1',defaultValue=-0.5)
+            self.comp_force.addGlobalParameter('Ea2',defaultValue=-1.0)
+            self.comp_force.addGlobalParameter('Eb1',defaultValue=-1.5)
+            self.comp_force.addGlobalParameter('Eb2',defaultValue=-2.0)
             self.comp_force.addPerParticleParameter('s')
             self.comp_force.addPerParticleParameter('chrom')
             for i in range(self.system.getNumParticles()):
@@ -80,7 +107,7 @@ class MultiEM:
             self.system.addForce(self.comp_force)
         
         # Spherical container
-        radius = np.sqrt(self.N_beads/50000)*6
+        radius = np.sqrt(self.N_beads/50000)*5
         self.container_force = mm.CustomExternalForce(
                 '{}*max(0, r-{})^2; r=sqrt((x-{})^2+(y-{})^2+(z-{})^2)'.format(1000,radius,self.mass_center[0],self.mass_center[1],self.mass_center[2]))
         for i in range(self.system.getNumParticles()):
@@ -111,17 +138,18 @@ class MultiEM:
         # Bending potential for stiffness
         self.angle_force = mm.HarmonicAngleForce()
         for i in range(self.system.getNumParticles()-2):
-            self.angle_force.addAngle(i, i+1, i+2, np.pi, 100)
+            self.angle_force.addAngle(i, i+1, i+2, np.pi, 40)
         self.system.addForce(self.angle_force)
 
     def run_pipeline(self,MD_steps=10000,run_MD=True,write_files=False,plots=False,build_init_struct=True,Temperature=300*mm.unit.kelvin,init_struct_path=None):
         # Initialize simulation
         if build_init_struct:
             print('\nCreating initial structure...')
-            if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.path+'MultiEM_compartment_colors.cmd')
-            pdb_content = build_init_mmcif(n_dna=self.N_beads,path=self.path)
+            comp_mode = 'compartments' if np.all(self.Cs!=None) and len(np.unique(self.Cs))<=3 else 'subcompartments'
+            if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'MultiEM_compartment_colors.cmd',mode=comp_mode)
+            pdb_content = build_init_mmcif(n_dna=self.N_beads,path=self.save_path)
             print('---Done!---')
-        pdb = PDBxFile(self.path+'MultiEM_init.cif') if init_struct_path==None or build_init_mmcif else PDBxFile(init_struct_path)
+        pdb = PDBxFile(self.save_path+'MultiEM_init.cif') if init_struct_path==None or build_init_mmcif else PDBxFile(init_struct_path)
         self.mass_center = np.average(get_coordinates_mm(pdb.positions),axis=0)
         forcefield = ForceField('ff.xml')
         self.system = forcefield.createSystem(pdb.topology)
@@ -140,14 +168,14 @@ class MultiEM:
         start_time = time.time()
         simulation.minimizeEnergy()
         state = simulation.context.getState(getPositions=True)
-        PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.path+'MultiEM_minimized.cif', 'w'))
+        PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_minimized.cif', 'w'))
         print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)/60:.2f} minutes. :D ---")
 
         # Run molecular Dynamics
         if run_MD:
             print('\nRunning MD simulation...')
             start = time.time()
-            simulation.reporters.append(DCDReporter(self.path+'/MultiEM_traj.dcd', 5))
+            simulation.reporters.append(DCDReporter(self.save_path+'/MultiEM_traj.dcd', 5))
             simulation.reporters.append(StateDataReporter(stdout, MD_steps//10, step=True, totalEnergy=True, potentialEnergy=True, temperature=True))
             simulation.context.setVelocitiesToTemperature(Temperature, 0)
             simulation.step(MD_steps)
@@ -157,51 +185,33 @@ class MultiEM:
             print(f"\n---MD finished in {elapsed/60:.2f} minutes ({speed:0.1f} steps/s)---")
             
             state = simulation.context.getState(getPositions=True)
-            PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.path+'MultiEM_afterMD.cif', 'w'))
+            PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_afterMD.cif', 'w'))
 
         start = time.time()
         V = get_coordinates_mm(state.getPositions())
-        save_metrics(V,path_name=self.path+'GW_')
+        save_metrics(V,path_name=self.save_path+'GW_')
         for i in range(len(self.chr_ends)-1):
             write_mmcif(coords=10*V[self.chr_ends[i]:self.chr_ends[i+1]],
-                        path=self.path+f'chromosomes/MultiEM_minimized_{chrs[i]}.cif')
-            save_metrics(10*V[self.chr_ends[i]:self.chr_ends[i+1]],path_name=self.path+f'chromosomes/{chrs[i]}_')
+                        path=self.save_path+f'chromosomes/MultiEM_minimized_{chrs[i]}.cif')
+            save_metrics(V[self.chr_ends[i]:self.chr_ends[i+1]],path_name=self.save_path+f'chromosomes_info/{chrs[i]}_')
         
         if plots:
             print('\nComputing heatmap...')
-            heat = get_heatmap(mm_vec=state.getPositions(),viz=plots,path=self.path)
+            heat = get_heatmap(mm_vec=state.getPositions(),viz=plots,path=self.save_path)
             end = time.time()
             elapsed = end - start
             print(f'---Heatmap computed in {elapsed/60:0.2f} minutes.---')
 
 def main():
-    N_beads, n_chrom = 200000, 24
-    path = 'k562_S_combined_all_kd_big_structure/'
-    try:
-        os.mkdir(path)
-        os.mkdir(path+'chromosomes')
-    except OSError as error:
-        print("Folder 'chromosomes' already exists!")
-
-    # # Load from files
-    # eigenvec, chr_ends = import_bw(bw_path="/mnt/raid/data/single_cell/coverage/k562.ATAC.merge.G2M.RPKM.bw",
-    #                                N_beads=N_beads,viz=False,binary=True,n_chroms=n_chrom,path=path)
-    # ms, ns, ds, ks, cs = import_mns_from_bedpe(bedpe_file='/mnt/raid/data/single_cell/PET_cluster_with_interchr/k562.G2M.all.bedpe',
-    #                                    N_beads=N_beads,n_chroms=n_chrom,threshold=10,viz=False,path=path)
-
-    # Load from numpy arrays
-    ms = np.load(path+'ms.npy')#[::10]
-    ns = np.load(path+'ns.npy')#[::10]
-    ks = np.load(path+'ks.npy')
-    ds = np.load(path+'ds.npy')
-    print('Number of loops:',len(ms))
-    chr_ends = np.load(path+'chrom_lengths.npy')
-    eigenvec = np.load(path+'genomewide_signal.npy')
-
+    # Input data
+    bw_path = '/mnt/raid/data/single_cell/coverage/k562.ATAC.merge.S.RPKM.bw'
+    loop_path = '/mnt/raid/data/single_cell/PET_cluster_with_interchr/k562.S.all.bedpe'
+    out_path_name = 'S_k_small_structure-weak_interactions'
+    
     # Run simulation
-    md = MultiEM(Cs=eigenvec,chrom_ends=chr_ends,ms=ms,ns=ns,ks=ks,ds=None,path=path)
+    md = MultiEM(N_beads=50000,loop_path=loop_path,comp_path=bw_path,out_path=out_path_name,n_chrom=24)
     md.run_pipeline(run_MD=False,build_init_struct=True,
-                    init_struct_path=None,plots=False)#'/mnt/raid/codes/mine/MultiEM-main/init_structures/N_beads_50000/MultiEM_init_n50000.cif')
+                    init_struct_path=None,plots=False)
 
 if __name__=='__main__':
     main()

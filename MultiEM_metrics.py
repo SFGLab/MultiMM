@@ -1,6 +1,5 @@
 from MultiEM_utils import *
 from scipy.spatial import ConvexHull
-from mayavi import mlab
 import numpy as np
 from sklearn.metrics import silhouette_score, davies_bouldin_score
 from sklearn.cluster import KMeans

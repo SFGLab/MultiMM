@@ -5,21 +5,20 @@ from points_io.hybrid36 import hy36encode
 from mpl_toolkits import mplot3d
 from scipy import interpolate
 import matplotlib.pyplot as plt
-# from hilbert import decode
 import plotly.express as px
 from hilbertcurve.hilbertcurve import HilbertCurve
 
-def write_cmm(comps,name='MultiEM_compartment_colors.cmd'):
+def write_cmm(comps,name='MultiEM_compartment_colors.cmd',mode='compartments'):
     comp_old = 2
     counter, start = 0, 0
-    comp_dict = {-1:'blue', 1:'red'}
+    comp_dict = {-1:'blue', 1:'red', 0:'#fafcfc'} if mode=='compartments' else {-2:'#f05146', -1:'#f09d46', 1:'#46edf0',2:'#468af0',0:'#fafcfc'}
     content = ''
-
+    
     for i, comp in enumerate(comps):
         if comp_old==comp:
             counter+=1
         elif i!=0:
-            content+=f'color {comp_dict[comp_old]} :{start}-{start+counter+1}\n'
+            content+=f'color {comp_dict[int(comp_old)]} :{start}-{start+counter+1}\n'
             counter, start = 0, i
         comp_old=comp
 
@@ -264,26 +263,6 @@ def plot_structure(path,with_nucleosomes=False):
         height=900,
         margin=dict(r=0, l=0, b=0, t=0))
     fig.show()
-
-# def hilbert_curve(num_pts,num_bits=2,scale=50):
-#     # The maximum Hilbert integer.
-#     num_dims=3
-#     max_h = 2**(num_bits*num_dims)
-    
-#     # Generate a sequence of Hilbert integers.
-#     hilberts = np.arange(max_h)
-
-#     # Compute the 2-dimensional locations.
-#     locs = scale*decode(hilberts, num_dims, num_bits)
-    
-#     # Spline interpolation
-#     x_sample, y_sample, z_sample = locs[:,0], locs[:,1], locs[:,2]
-#     tck, u = interpolate.splprep([x_sample,y_sample,z_sample], s=2)
-#     x_knots, y_knots, z_knots = interpolate.splev(tck[0], tck)
-#     u_fine = np.linspace(0,1,num_pts)
-#     x_fine, y_fine, z_fine = interpolate.splev(u_fine, tck)
-#     points = np.vstack((x_fine, y_fine, z_fine)).T
-#     return points
 
 def load_from_file(path,num_pts):
     V = get_coordinates_cif(path)

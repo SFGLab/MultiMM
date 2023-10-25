@@ -10,7 +10,6 @@ import pandas as pd
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.spatial import distance
-# from LoCR import *
 from tqdm import tqdm
 import pyBigWig
 from scipy import stats
@@ -23,6 +22,13 @@ chrs = {0:'chr1',1:'chr2',2:'chr3',3:'chr4',4:'chr5',5:'chr6',6:'chr7',7:'chr8',
           15:'chr16',16:'chr17',17:'chr18',18:'chr19',19:'chr20',20:'chr21',21:'chr22',
           22:'chrX',23:'chrY'}
 
+chrom_lengths_array = [0,248387328,242696752,201105948,193574945,
+                 182045439,172126628,160567428,146259331,
+                 150617247,134758134,135127769,133324548,
+                 113566686,101161492,99753195,96330374,
+                 84276897,80542538,61707364,66210255,
+                 45090682,51324926,154259566,62460029]
+
 chrom_sizes = {'chr1':248387328,'chr2':242696752,'chr3':201105948,'chr4':193574945,
                'chr5':182045439,'chr6':172126628,'chr7':160567428,'chr8':146259331,
                'chr9':150617247,'chr10':134758134,'chr11':135127769,'chr12':133324548,
@@ -30,7 +36,10 @@ chrom_sizes = {'chr1':248387328,'chr2':242696752,'chr3':201105948,'chr4':1935749
                'chr17':84276897,'chr18':80542538,'chr19':61707364,'chr20':66210255,
                'chr21':45090682,'chr22':51324926,'chrX':154259566,'chrY':62460029}
 
-
+chrom_colors = ['#ab0215','#f50a0a','#f5540a','#f5b20a','#e9f50a','#b6f50a','#3df50a',
+              '#0af59b','#0af5f1','#0abef5','#0a70f5','#0a2df5','#770af5',
+              '#a60af5','#ce0af5','#f50ae1','#e37dcd','#d494c6','#d9abcf',
+              '#d9bdd3','#e6dce4','#f7f7f7','#1c4e4f','#4e4f1c']
 
 def make_folder(N_beads,chrom,region):
     folder_name = f'stochastic_model_Nbeads_{N_beads}_chr_{chrom}_region_{region[0]}_{region[1]}'
@@ -222,7 +231,6 @@ def import_bw(bw_path,N_beads,n_chroms,viz=False,binary=False,path=''):
     print('Length of signal:',len(genomewide_signal))
 
     # Write chromosomes file
-    write_chrom_colors(polymer_lengths,name=path+'MultiEM_chromosome_colors.cmd')
     np.save(path+'chrom_lengths.npy',polymer_lengths)
     
     # Transform signal to binary or adjuct it to have zero mean
@@ -255,15 +263,51 @@ def import_bw(bw_path,N_beads,n_chroms,viz=False,binary=False,path=''):
     
     return genomewide_signal[:N_beads], polymer_lengths
 
-def write_chrom_colors(chrom_ends,name='MultiEM_chromosome_colors.cmd'):
-    colors = ['#ab0215','#f50a0a','#f5540a','#f5b20a','#e9f50a','#b6f50a','#3df50a',
-              '#0af59b','#0af5f1','#0abef5','#0a70f5','#0a2df5','#770af5',
-              '#a60af5','#ce0af5','#f50ae1','#e37dcd','#d494c6','#d9abcf',
-              '#d9bdd3','#e6dce4','#f7f7f7','#1c4e4f','#4e4f1c']
+def import_compartments_from_bed(bed_file,N_beads,n_chroms,path):
+    comps_df = pd.read_csv(bed_file,header=None,sep='\t')
+
+    # Find maximum coordinate of each chromosome
+    print('Cleaning and transforming subcompartments dataframe...')
+    s, chrom_ends = 0, [0]
+    for i in tqdm(range(n_chroms)):
+        max_chr = np.max(comps_df[2][comps_df[0]==chrs[i]])
+        s+=max_chr
+        chrom_ends.append(s)
+    chrom_ends=np.array(chrom_ends)
     
+    # Sum bigger chromosomes with the maximum values of previous chromosomes
+    for i in tqdm(range(n_chroms)):
+        comps_df[1][comps_df[0]==chrs[i]]=comps_df[1][comps_df[0]==chrs[i]]+chrom_ends[i]
+        comps_df[2][comps_df[0]==chrs[i]]=comps_df[2][comps_df[0]==chrs[i]]+chrom_ends[i]
+
+    # Convert genomic coordinates to simulation beads
+    resolution = int(np.max(comps_df[2].values))//N_beads
+    chrom_ends = np.array(chrom_ends)//resolution
+    chrom_ends[-1] = N_beads
+    np.save(path+'chrom_lengths.npy',chrom_ends)
+    comps_df[1], comps_df[2] = comps_df[1]//resolution, comps_df[2]//resolution
+
+    # Convert compartemnts to vector
+    print('Building subcompartments_array...')
+    comps_array = np.zeros(N_beads)
+    for i in tqdm(range(len(comps_df))):
+        if comps_df[3][i].startswith('A.1'):
+            val = 2
+        elif comps_df[3][i].startswith('A.2'):
+            val = 1
+        elif comps_df[3][i].startswith('B.1'):
+            val = -1
+        elif comps_df[3][i].startswith('B.2'):
+            val = -2
+        comps_array[comps_df[1][i]:comps_df[2][i]] = val
+    np.save(path+'genomewide_signal.npy',comps_array)
+    print('Done')
+    return comps_array, chrom_ends
+
+def write_chrom_colors(chrom_ends,name='MultiEM_chromosome_colors.cmd'):    
     content = ''
     for i in range(len(chrom_ends)-1):
-        content+=f'color {colors[i]} :{chrom_ends[i]}-{chrom_ends[i+1]}\n'
+        content+=f'color {chrom_colors[i]} :{chrom_ends[i]}-{chrom_ends[i+1]}\n'
 
     with open(name, 'w') as f:
         f.write(content)
@@ -271,7 +315,7 @@ def write_chrom_colors(chrom_ends,name='MultiEM_chromosome_colors.cmd'):
 def min_max_trans(x):
     return (x-x.min())/(x.max()-x.min())
 
-def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=20,viz=False,mode='kd',min_loop_dist=5,path=''):
+def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=10,viz=False,mode='kd',min_loop_dist=5,path=''):
     # Import loops
     chroms = list(chrs[i] for i in range(n_chroms))
     loops = pd.read_csv(bedpe_file,header=None,sep='\t')
@@ -295,6 +339,9 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=20,viz=False,mod
     
     # Convert genomic coordinates to simulation beads
     resolution = int(np.max(loops[5].values))//N_beads
+    chrom_ends = np.array(chrom_ends)//resolution
+    chrom_ends[-1] = N_beads
+    np.save(path+'chrom_lengths.npy',chrom_ends)
     loops[1], loops[2], loops[4], loops[5] = loops[1]//resolution, loops[2]//resolution, loops[4]//resolution, loops[5]//resolution
     loops['ms'] = (loops[1].values+loops[2].values)//2
     loops['ns'] = (loops[4].values+loops[5].values)//2
@@ -312,7 +359,7 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=20,viz=False,mod
     if mode=='k':
         zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
         zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
-        ds, ks = None, 50+29950*min_max_trans(zs)
+        ds, ks = None, 50+2950*min_max_trans(zs)
     elif mode=='d':
         ks=None
         ds = 1/cs**(1/3)
@@ -321,7 +368,7 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=20,viz=False,mod
         zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
         zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
         ds = 1/cs**(1/3)
-        ds, ks = 0.1+0.3*min_max_trans(ds), 50+29950*min_max_trans(zs)
+        ds, ks = 0.1+0.3*min_max_trans(ds), 50+2950*min_max_trans(zs)
     else:
         raise InterruptedError("The mode of loop generator should be either 'k' so as to generate Hook constats, or 'd' for equillibrium distances, or 'kd' for both.")
     
@@ -348,9 +395,9 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=20,viz=False,mod
     np.save(path+'ks.npy',ks)
     np.save(path+'ds.npy',ds)
     print('Done! Number of loops is ',N_loops)
-    return ms, ns, ds, ks, cs
+    return ms, ns, ds, ks, cs, chrom_ends
 
-def import_mns_from_txt(txt_file,N_beads,n_chroms,min_loop_dist=20,path='results/'):
+def import_mns_from_txt(txt_file,N_beads,n_chroms,min_loop_dist=5,path='results/'):
     # Import loops
     chroms = list(chrs[i] for i in range(n_chroms))
     loops = pd.read_csv(txt_file,header=None,sep='\t')
@@ -375,6 +422,9 @@ def import_mns_from_txt(txt_file,N_beads,n_chroms,min_loop_dist=20,path='results
     
     # Convert genomic coordinates to simulation beads
     resolution = int(np.max(loops[5].values))//N_beads
+    chrom_ends = np.array(chrom_ends)//resolution
+    chrom_ends[-1] = N_beads
+    np.save(path+'chrom_lengths.npy',chrom_ends)
     loops[1], loops[2], loops[4], loops[5] = loops[1]//resolution, loops[2]//resolution, loops[4]//resolution, loops[5]//resolution
     loops['ms'] = (loops[1].values+loops[2].values)//2
     loops['ns'] = (loops[4].values+loops[5].values)//2
@@ -395,12 +445,4 @@ def import_mns_from_txt(txt_file,N_beads,n_chroms,min_loop_dist=20,path='results
     np.save(path+'ms.npy',ms)
     np.save(path+'ns.npy',ns)
     print('Done! Number of loops is ',N_loops)
-    return np.array(ms), np.array(ns)
-
-def main():
-    M = get_hic(primary='/mnt/raid/data/Rao/GSE63525_GM12878_insitu_primary+replicate_combined.hic',\
-                chrom='1',\
-                resolution=250000,\
-                th=2000,\
-                normalization="NONE",\
-                viz=True)
+    return np.array(ms), np.array(ns), chrom_ends
