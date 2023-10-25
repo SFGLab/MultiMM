@@ -28,7 +28,7 @@ class MultiEM:
             os.mkdir(self.save_path+'chromosomes')
             os.mkdir(self.save_path+'chromosomes_info')
         except OSError as error:
-            print("Folder 'chromosomes' already exists!")  
+            print("Folder 'chromosomes' already exists!")
         
         # Load from files
         if np.all(comp_path!=None):
@@ -81,7 +81,7 @@ class MultiEM:
         # Gaussian compartmentalization potential
         if np.all(self.Cs!=None) and len(np.unique(self.Cs)==2):
             self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea*delta(s1+1)*delta(s2+1)+Eb*delta(s1-1)*delta(s2-1))*delta(chrom1-chrom2)')
-            self.comp_force.addGlobalParameter('sigma',defaultValue=0.4)
+            self.comp_force.addGlobalParameter('sigma',defaultValue=0.6)
             self.comp_force.addGlobalParameter('r0',defaultValue=0.2)
             self.comp_force.addGlobalParameter('E0',defaultValue=0.0)
             self.comp_force.addGlobalParameter('Ea',defaultValue=-1.0)
@@ -93,7 +93,7 @@ class MultiEM:
             self.system.addForce(self.comp_force)
         elif np.all(self.Cs!=None) and len(np.unique(self.Cs)>=4):
             self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea1*delta(s1-2)*delta(s2-2)+Ea2*delta(s1-1)*delta(s2-1)+1/2*(Ea1+Ea2)*(delta(s1-2)*delta(s2-1)+delta(s1-1)*delta(s2-2))+Eb1*delta(s1+1)*delta(s2+1)+Eb2*delta(s1+2)*delta(s2+2)+1/2*(Eb1+Eb2)*(delta(s1+2)*delta(s2+1)+delta(s1+1)*delta(s2+2)))*delta(chrom1-chrom2)')
-            self.comp_force.addGlobalParameter('sigma',defaultValue=0.4)
+            self.comp_force.addGlobalParameter('sigma',defaultValue=0.6)
             self.comp_force.addGlobalParameter('r0',defaultValue=0.2)
             self.comp_force.addGlobalParameter('E0',defaultValue=0.0)
             self.comp_force.addGlobalParameter('Ea1',defaultValue=-0.5)
@@ -107,7 +107,7 @@ class MultiEM:
             self.system.addForce(self.comp_force)
         
         # Spherical container
-        radius = np.sqrt(self.N_beads/50000)*5
+        radius = self.N_beads/50000**(1/3)*6
         self.container_force = mm.CustomExternalForce(
                 '{}*max(0, r-{})^2; r=sqrt((x-{})^2+(y-{})^2+(z-{})^2)'.format(1000,radius,self.mass_center[0],self.mass_center[1],self.mass_center[2]))
         for i in range(self.system.getNumParticles()):
@@ -204,9 +204,9 @@ class MultiEM:
 
 def main():
     # Input data
-    bw_path = '/mnt/raid/data/single_cell/coverage/k562.ATAC.merge.S.RPKM.bw'
-    loop_path = '/mnt/raid/data/single_cell/PET_cluster_with_interchr/k562.S.all.bedpe'
-    out_path_name = 'S_k_small_structure-weak_interactions'
+    bw_path = '/mnt/raid/data/single_cell/coverage/k562.ATAC.merge.G1.RPGC.bw'
+    loop_path = '/mnt/raid/data/single_cell/PET_cluster_with_interchr/k562.G1.all.bedpe'
+    out_path_name = 'G1_k_small_structure-weak_interactions'
     
     # Run simulation
     md = MultiEM(N_beads=50000,loop_path=loop_path,comp_path=bw_path,out_path=out_path_name,n_chrom=24)

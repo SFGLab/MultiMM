@@ -10,7 +10,7 @@ def gyration_radius(V):
     '''
     Import the structure coordinates V and export radius of gyration.
     We assume the same mass for all atoms.
-
+    
     V (numpy array): Dimension MXN, where M number of V and N
                      is the always 3 as the dimension of our space.
     Rg (float): Radius of gyration. 
