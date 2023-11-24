@@ -2,7 +2,7 @@
 ########### CREATOR: SEBASTIAN KORSAK, WARSAW 2022 ######################
 #########################################################################
 
-import straw # Install it with:  python3 -m pip install hic-straw
+import hicstraw as straw # Install it with:  python3 -m pip install hic-straw
 from matplotlib.pyplot import figure
 import matplotlib.pyplot as plt
 import os
@@ -14,6 +14,7 @@ from tqdm import tqdm
 import pyBigWig
 from scipy import stats
 import random as rd
+import networkx as nx
 
 pd.options.mode.chained_assignment = None 
 
@@ -268,12 +269,13 @@ def import_compartments_from_bed(bed_file,N_beads,n_chroms,path):
 
     # Find maximum coordinate of each chromosome
     print('Cleaning and transforming subcompartments dataframe...')
-    s, chrom_ends = 0, [0]
-    for i in tqdm(range(n_chroms)):
-        max_chr = np.max(comps_df[2][comps_df[0]==chrs[i]])
-        s+=max_chr
-        chrom_ends.append(s)
-    chrom_ends=np.array(chrom_ends)
+    chrom_ends = np.cumsum(chrom_lengths_array)
+    # s, chrom_ends = 0, [0]
+    # for i in tqdm(range(n_chroms)):
+    #     max_chr = np.max(comps_df[2][comps_df[0]==chrs[i]])
+    #     s+=max_chr
+    #     chrom_ends.append(s)
+    # chrom_ends=np.array(chrom_ends)
     
     # Sum bigger chromosomes with the maximum values of previous chromosomes
     for i in tqdm(range(n_chroms)):
@@ -315,7 +317,8 @@ def write_chrom_colors(chrom_ends,name='MultiEM_chromosome_colors.cmd'):
 def min_max_trans(x):
     return (x-x.min())/(x.max()-x.min())
 
-def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=10,viz=False,mode='kd',min_loop_dist=5,path=''):
+def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=3,viz=False,mode='kd',min_loop_dist=3,path=''):
+    ds, ks, cs  = None, None, None
     # Import loops
     chroms = list(chrs[i] for i in range(n_chroms))
     loops = pd.read_csv(bedpe_file,header=None,sep='\t')
@@ -328,7 +331,7 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=10,viz=False,mod
         max1 = np.max(loops[2][loops[0]==chrs[i]])
         max2 = np.max(loops[5][loops[3]==chrs[i]])
         s+=np.max([max1,max2])
-        chrom_ends.append(s)
+        chrom_ends.append(int(s))
     
     # Sum bigger chromosomes with the maximum values of previous chromosomes
     for i in tqdm(range(n_chroms)):
@@ -386,8 +389,8 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=10,viz=False,mod
     mask = (ns-ms)!=0
     ms = ms[mask]
     ns = ns[mask]
-    ks= ks[mask]
-    ds = ds[mask]
+    if mode=='kd' or mode=='k': ks= ks[mask]
+    if mode=='kd' or mode=='d':ds = ds[mask]
     cs = cs[mask]
     N_loops = len(ms)
     np.save(path+'ms.npy',ms)
@@ -397,12 +400,15 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=10,viz=False,mod
     print('Done! Number of loops is ',N_loops)
     return ms, ns, ds, ks, cs, chrom_ends
 
-def import_mns_from_txt(txt_file,N_beads,n_chroms,min_loop_dist=5,path='results/'):
+def import_mns_from_txt(txt_file,N_beads,n_chroms,threshold=1,min_loop_dist=5,path='',mode='kd',viz=False,graph_mode=True):
+    '''
+    This function is importer of (signle-cell).
+    '''
+    ds, ks, cs  = None, None, None
     # Import loops
     chroms = list(chrs[i] for i in range(n_chroms))
     loops = pd.read_csv(txt_file,header=None,sep='\t')
     loops = loops[loops[0].isin(chroms) & loops[3].isin(chroms)].reset_index(drop=True)
-    chrom_maxs = list()
     
     print('Cleaning and transforming loops dataframe...')
     # Find maximum coordinate of each chromosome
@@ -421,28 +427,89 @@ def import_mns_from_txt(txt_file,N_beads,n_chroms,min_loop_dist=5,path='results/
         loops[5][loops[3]==chrs[i]]=loops[5][loops[3]==chrs[i]]+chrom_ends[i]
     
     # Convert genomic coordinates to simulation beads
-    resolution = int(np.max(loops[5].values))//N_beads
+    resolution = np.max(loops[5].values)//N_beads
     chrom_ends = np.array(chrom_ends)//resolution
     chrom_ends[-1] = N_beads
     np.save(path+'chrom_lengths.npy',chrom_ends)
     loops[1], loops[2], loops[4], loops[5] = loops[1]//resolution, loops[2]//resolution, loops[4]//resolution, loops[5]//resolution
     loops['ms'] = (loops[1].values+loops[2].values)//2
     loops['ns'] = (loops[4].values+loops[5].values)//2
+    loops['count'] = 1
+    loops['Total Count'] = loops.groupby(['ms', 'ns'])['count'].transform('sum')
+    counts = loops['Total Count'].values
     
     # Filter the ones above the threshold
     print('Importing loops...')
-    mns = np.vstack((loops['ms'].values, loops['ns'].values))
+    mns, cs = np.vstack((loops['ms'].values[counts>threshold], loops['ns'].values[counts>threshold])), counts[counts>threshold]
     mns, idxs = np.unique(mns,axis=1,return_index=True)
+    cs = cs[idxs]
     ms, ns = mns[0,:], mns[1,:]
     ms[ms>=N_beads],ns[ns>=N_beads]=N_beads-1, N_beads-1
-    ms,ns = ms[ns>ms+min_loop_dist], ns[ns>ms+min_loop_dist]
+    ms,ns,cs = ms[ns>ms+min_loop_dist], ns[ns>ms+min_loop_dist], cs[ns>ms+min_loop_dist]
+    if mode=='k':
+        zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
+        zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
+        ds, ks = None, 50+2950*min_max_trans(zs)
+    elif mode=='d':
+        ks=None
+        ds = 1/cs**(1/3)
+        ds, ks = 0.1+0.3*min_max_trans(ds), None
+    elif mode=='kd':
+        zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
+        zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
+        ds = 1/cs**(1/3)
+        ds, ks = 0.1+0.3*min_max_trans(ds), 50+2950*min_max_trans(zs)
+    else:
+        raise InterruptedError("The mode of loop generator should be either 'k' so as to generate Hook constats, or 'd' for equillibrium distances, or 'kd' for both.")
     
+    if viz:
+        print('min k:',np.min(ks))
+        print('max k:',np.max(ks))
+        plt.hist(cs,bins=30)
+        plt.xlabel('counts')
+        plt.show()
+        plt.hist(ks,bins=30)
+        plt.xlabel('strengths')
+        plt.show()
+
     # Perform some data cleaning
     mask = (ns-ms)!=0
     ms = ms[mask]
     ns = ns[mask]
+    if mode=='kd' or mode=='k': ks= ks[mask]
+    if mode=='kd' or mode=='d':ds = ds[mask]
+    cs = cs[mask]
     N_loops = len(ms)
     np.save(path+'ms.npy',ms)
     np.save(path+'ns.npy',ns)
+    np.save(path+'ks.npy',ks)
+    np.save(path+'ds.npy',ds)
     print('Done! Number of loops is ',N_loops)
-    return np.array(ms), np.array(ns), chrom_ends
+
+    if graph_mode:
+        # Build the graph
+        H = nx.Graph()
+        H.add_nodes_from(np.arange(N_beads)) # Add nodes
+
+        # Avoid the ones in diagonal
+        mask = (ns-ms)!=0
+        ms, ns = ms[mask], ns[mask]
+
+        # Connect adjacent nodes
+        adj_w = np.full(N_beads,0.2)
+        x, y = np.arange(N_beads-1), np.arange(1,N_beads)
+
+        # Add loops with weight proportional to 1/c
+        H.add_weighted_edges_from(zip(x,y,adj_w))
+        H.add_weighted_edges_from(zip(ms,ns,0.1/cs+0.1))
+        
+        # Define the matrix with shortest paths
+        L = np.zeros((N_beads,N_beads))
+        ds = list()
+        for m, n in zip(ms,ns):
+            d = nx.shortest_path_length(H,source=m,target=n,weight='weight')
+            L[m,n], L[n,m] = d, d
+            ds.append(d)
+        ds = np.array(ds)
+    return ms, ns, ds, ks, cs, chrom_ends
+

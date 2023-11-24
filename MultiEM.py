@@ -15,7 +15,7 @@ import time
 import os
 
 class MultiEM:
-    def __init__(self,N_beads=None,loop_path=None,comp_path=None,n_chrom=24,comp_gw=False,out_path='results'):
+    def __init__(self,N_beads=None,loop_path=None,comp_path=None,n_chrom=24,comp_gw=True,out_path='results',loops_mode='k'):
         '''
         Cs (np arrays): Cs array with colors over time.
         N_beads (int): The number of beads of initial structure.
@@ -23,6 +23,7 @@ class MultiEM:
         '''
         # Create output folder only if needed
         self.save_path = out_path+'/'
+        self.ms, self.ns, self.ds, self.ks, self.cs, self.chr_ends, self.Cs = None,None,None,None,None,None,None
         try:
             os.mkdir(self.save_path)
             os.mkdir(self.save_path+'chromosomes')
@@ -37,29 +38,33 @@ class MultiEM:
                                                    viz=False,binary=True,\
                                                    n_chroms=n_chrom,path=self.save_path)
             elif comp_path.endswith('.bed'):
-                self.Cs, self.chr_ends = import_compartments_from_bed(bed_file=comp_path,N_beads=N_beads,
+                self.Cs, self.chr_ends = import_compartments_from_bed(bed_file=comp_path,N_beads=N_beads,\
                                                                       n_chroms=n_chrom,path=self.save_path)
+        elif os.path.isfile(self.save_path+'genomewide_signal.npy'):
+            self.Cs = np.load(self.save_path+'genomewide_signal.npy')
+            if np.all(self.Cs!=None): self.N_beads = len(self.Cs)
+        
         if np.all(loop_path!=None):
             if loop_path.endswith('.bedpe'):
                 self.ms, self.ns, self.ds, self.ks, self.cs, self.chr_ends = import_mns_from_bedpe(bedpe_file=loop_path,N_beads=N_beads,\
-                                                                                n_chroms=n_chrom,threshold=10,viz=False,\
-                                                                                path=self.save_path)
+                                                                                n_chroms=n_chrom,viz=False,\
+                                                                                path=self.save_path,mode=loops_mode)
             elif(loop_path.endswith('.txt')):
-                self.ms, self.ns = import_mns_from_txt(txt_file=loop_path,N_beads=N_beads,n_chroms=n_chrom,path=self.save_path)
-                self.ds,self.ds,self.cs=None,None,None
+                self.ms, self.ns, self.ds, self.ks, self.cs, self.chr_ends = import_mns_from_txt(txt_file=loop_path,N_beads=N_beads,\
+                                                                                                 n_chroms=n_chrom,path=self.save_path,mode=loops_mode)
+
             self.N_beads = N_beads
-        else:
+        elif os.path.isfile(self.save_path+'ms.npy'):
             # Import from file
-            self.Cs = np.load(self.save_path+'genomewide_signal.npy')
             self.ms, self.ns = np.load(self.save_path+'ms.npy'), np.load(self.save_path+'ns.npy')
-            self.ks, self.ds = np.load(self.save_path+'ks.npy'), np.load(self.save_path+'ds.npy')
+            if os.path.isfile(self.save_path+'ks.npy'): self.ks = np.load(self.save_path+'ks.npy')
+            if os.path.isfile(self.save_path+'ds.npy'): self.ds = np.load(self.save_path+'ds.npy')
             self.chr_ends = np.load(self.save_path+'chrom_lengths.npy')
 
             # Estimate number of beads only if needed
-            if np.all(self.Cs!=None):
-                self.N_beads = len(self.Cs)
-            elif np.all(self.ms!=None) and np.all(self.ns!=None):
-                self.N_beads = np.max(self.ns)+1
+            if np.all(self.ms!=None) and np.all(self.ns!=None): self.N_beads = np.max(self.ns)+1
+        else:
+            raise InterruptedError('You did not provide data for loops. Check if the provided file is correct, or if your outpout path is already containing some data.')
         write_chrom_colors(self.chr_ends,name=self.save_path+'MultiEM_chromosome_colors.cmd')
 
         # Define a chromsome metric
@@ -71,8 +76,11 @@ class MultiEM:
 
     def add_forcefield(self):
         # Leonard-Jones potential for excluded volume
-        self.ev_force = mm.CustomNonbondedForce('epsilon*((sigma1+sigma2)/r)^12')
-        self.ev_force.addGlobalParameter('epsilon', defaultValue=100)
+        self.ev_force = mm.CustomNonbondedForce('epsilon*((sigma1+sigma2)/r)^6')
+        if not self.run_MD:
+            self.ev_force.addGlobalParameter('epsilon', defaultValue=100)
+        else:
+            self.ev_force.addGlobalParameter('epsilon', defaultValue=1)
         self.ev_force.addPerParticleParameter('sigma')
         for i in range(self.system.getNumParticles()):
             self.ev_force.addParticle([0.1])
@@ -81,7 +89,7 @@ class MultiEM:
         # Gaussian compartmentalization potential
         if np.all(self.Cs!=None) and len(np.unique(self.Cs)==2):
             self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea*delta(s1+1)*delta(s2+1)+Eb*delta(s1-1)*delta(s2-1))*delta(chrom1-chrom2)')
-            self.comp_force.addGlobalParameter('sigma',defaultValue=0.6)
+            self.comp_force.addGlobalParameter('sigma',defaultValue=1)
             self.comp_force.addGlobalParameter('r0',defaultValue=0.2)
             self.comp_force.addGlobalParameter('E0',defaultValue=0.0)
             self.comp_force.addGlobalParameter('Ea',defaultValue=-1.0)
@@ -92,8 +100,8 @@ class MultiEM:
                 self.comp_force.addParticle([self.Cs[i],self.chroms[i]])
             self.system.addForce(self.comp_force)
         elif np.all(self.Cs!=None) and len(np.unique(self.Cs)>=4):
-            self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea1*delta(s1-2)*delta(s2-2)+Ea2*delta(s1-1)*delta(s2-1)+1/2*(Ea1+Ea2)*(delta(s1-2)*delta(s2-1)+delta(s1-1)*delta(s2-2))+Eb1*delta(s1+1)*delta(s2+1)+Eb2*delta(s1+2)*delta(s2+2)+1/2*(Eb1+Eb2)*(delta(s1+2)*delta(s2+1)+delta(s1+1)*delta(s2+2)))*delta(chrom1-chrom2)')
-            self.comp_force.addGlobalParameter('sigma',defaultValue=0.6)
+            self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea1*delta(s1-2)*delta(s2-2)+Ea2*delta(s1-1)*delta(s2-1)+Eb1*delta(s1+1)*delta(s2+1)+Eb2*delta(s1+2)*delta(s2+2)')
+            self.comp_force.addGlobalParameter('sigma',defaultValue=1)
             self.comp_force.addGlobalParameter('r0',defaultValue=0.2)
             self.comp_force.addGlobalParameter('E0',defaultValue=0.0)
             self.comp_force.addGlobalParameter('Ea1',defaultValue=-0.5)
@@ -107,7 +115,7 @@ class MultiEM:
             self.system.addForce(self.comp_force)
         
         # Spherical container
-        radius = self.N_beads/50000**(1/3)*6
+        radius = (self.N_beads/50000)**(1/3)*7
         self.container_force = mm.CustomExternalForce(
                 '{}*max(0, r-{})^2; r=sqrt((x-{})^2+(y-{})^2+(z-{})^2)'.format(1000,radius,self.mass_center[0],self.mass_center[1],self.mass_center[2]))
         for i in range(self.system.getNumParticles()):
@@ -143,6 +151,7 @@ class MultiEM:
 
     def run_pipeline(self,MD_steps=10000,run_MD=True,write_files=False,plots=False,build_init_struct=True,Temperature=300*mm.unit.kelvin,init_struct_path=None):
         # Initialize simulation
+        self.run_MD=run_MD
         if build_init_struct:
             print('\nCreating initial structure...')
             comp_mode = 'compartments' if np.all(self.Cs!=None) and len(np.unique(self.Cs))<=3 else 'subcompartments'
@@ -172,13 +181,15 @@ class MultiEM:
         print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)/60:.2f} minutes. :D ---")
 
         # Run molecular Dynamics
-        if run_MD:
+        if self.run_MD:
             print('\nRunning MD simulation...')
             start = time.time()
             simulation.reporters.append(DCDReporter(self.save_path+'/MultiEM_traj.dcd', 5))
             simulation.reporters.append(StateDataReporter(stdout, MD_steps//10, step=True, totalEnergy=True, potentialEnergy=True, temperature=True))
             simulation.context.setVelocitiesToTemperature(Temperature, 0)
-            simulation.step(MD_steps)
+            for i in range(0,MD_steps,10):
+                self.ev_force.setGlobalParameterDefaultValue(0,1+99*i/MD_steps)
+                simulation.step(10)
             end = time.time()
             elapsed = end - start
             speed = MD_steps / elapsed
@@ -204,12 +215,12 @@ class MultiEM:
 
 def main():
     # Input data
-    bw_path = '/mnt/raid/data/single_cell/coverage/k562.ATAC.merge.G1.RPGC.bw'
-    loop_path = '/mnt/raid/data/single_cell/PET_cluster_with_interchr/k562.G1.all.bedpe'
-    out_path_name = 'G1_k_small_structure-weak_interactions'
+    bw_path = '/mnt/raid/data/Trios/calder_HiChIP_subcomp/PUR_p.bed'
+    loop_path = '/mnt/raid/data/Trios/ChiA-PiPE_Loops/loops_pet3+/Pulled_PUR_CTCF_1mb_pet3.bedpe'
+    out_path_name = 'PR_p'
     
     # Run simulation
-    md = MultiEM(N_beads=50000,loop_path=loop_path,comp_path=bw_path,out_path=out_path_name,n_chrom=24)
+    md = MultiEM(N_beads=200000,out_path=out_path_name,n_chrom=23,loop_path=loop_path,comp_path=bw_path)
     md.run_pipeline(run_MD=False,build_init_struct=True,
                     init_struct_path=None,plots=False)
 
