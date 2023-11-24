@@ -1,4 +1,3 @@
-from structuregenerator.generator import self_avoiding_random_walk, line, polymer_circle, baseball
 import numpy as np
 import pandas as pd
 from points_io.hybrid36 import hy36encode
