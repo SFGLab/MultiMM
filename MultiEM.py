@@ -88,8 +88,8 @@ class MultiEM:
         
         # Gaussian compartmentalization potential
         if np.all(self.Cs!=None) and len(np.unique(self.Cs)==2):
-            self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea*delta(s1+1)*delta(s2+1)+Eb*delta(s1-1)*delta(s2-1))*delta(chrom1-chrom2)')
-            self.comp_force.addGlobalParameter('sigma',defaultValue=1)
+            self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea*delta(s1-1)*delta(s2-1)+Eb*delta(s1+1)*delta(s2+1))*delta(chrom1-chrom2)')
+            self.comp_force.addGlobalParameter('sigma',defaultValue=0.5)
             self.comp_force.addGlobalParameter('r0',defaultValue=0.2)
             self.comp_force.addGlobalParameter('E0',defaultValue=0.0)
             self.comp_force.addGlobalParameter('Ea',defaultValue=-1.0)
@@ -101,7 +101,7 @@ class MultiEM:
             self.system.addForce(self.comp_force)
         elif np.all(self.Cs!=None) and len(np.unique(self.Cs)>=4):
             self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea1*delta(s1-2)*delta(s2-2)+Ea2*delta(s1-1)*delta(s2-1)+Eb1*delta(s1+1)*delta(s2+1)+Eb2*delta(s1+2)*delta(s2+2)')
-            self.comp_force.addGlobalParameter('sigma',defaultValue=1)
+            self.comp_force.addGlobalParameter('sigma',defaultValue=0.5)
             self.comp_force.addGlobalParameter('r0',defaultValue=0.2)
             self.comp_force.addGlobalParameter('E0',defaultValue=0.0)
             self.comp_force.addGlobalParameter('Ea1',defaultValue=-0.5)
@@ -115,12 +115,28 @@ class MultiEM:
             self.system.addForce(self.comp_force)
         
         # Spherical container
-        radius = (self.N_beads/50000)**(1/3)*7
-        self.container_force = mm.CustomExternalForce(
-                '{}*max(0, r-{})^2; r=sqrt((x-{})^2+(y-{})^2+(z-{})^2)'.format(1000,radius,self.mass_center[0],self.mass_center[1],self.mass_center[2]))
+        radius = (self.N_beads/50000)**(1/3)*5
+        self.container_force = mm.CustomExternalForce('C*max(0, r-R)^2; r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+        self.container_force.addGlobalParameter('C',defaultValue=500)
+        self.container_force.addGlobalParameter('R',defaultValue=radius)
+        self.container_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
+        self.container_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
+        self.container_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
         for i in range(self.system.getNumParticles()):
             self.container_force.addParticle(i, [])
         self.system.addForce(self.container_force)
+
+        # Interaction of B compartment with lamina
+        self.Blamina_force = mm.CustomExternalForce('B*min(max(0, R-r)^2-(0.5*R)^2,0)*(delta(s+1)+delta(s+2))/10; r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+        self.Blamina_force.addGlobalParameter('B',defaultValue=500)
+        self.Blamina_force.addGlobalParameter('R',defaultValue=radius)
+        self.Blamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
+        self.Blamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
+        self.Blamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
+        self.Blamina_force.addPerParticleParameter('s')
+        for i in range(self.system.getNumParticles()):
+            self.Blamina_force.addParticle(i, [self.Cs[i]])
+        self.system.addForce(self.Blamina_force)
 
         # Bond force
         self.bond_force = mm.HarmonicBondForce()
@@ -220,7 +236,7 @@ def main():
     out_path_name = 'PR_p'
     
     # Run simulation
-    md = MultiEM(N_beads=200000,out_path=out_path_name,n_chrom=23,loop_path=loop_path,comp_path=bw_path)
+    md = MultiEM(N_beads=50000,out_path=out_path_name,n_chrom=23,loop_path=loop_path,comp_path=bw_path)
     md.run_pipeline(run_MD=False,build_init_struct=True,
                     init_struct_path=None,plots=False)
 
