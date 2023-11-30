@@ -115,9 +115,9 @@ class MultiEM:
             self.system.addForce(self.comp_force)
         
         # Spherical container
-        radius = (self.N_beads/50000)**(1/3)*5
+        radius = (self.N_beads/50000)**(1/3)*6
         self.container_force = mm.CustomExternalForce('C*max(0, r-R)^2; r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-        self.container_force.addGlobalParameter('C',defaultValue=500)
+        self.container_force.addGlobalParameter('C',defaultValue=1000)
         self.container_force.addGlobalParameter('R',defaultValue=radius)
         self.container_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
         self.container_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
@@ -126,17 +126,32 @@ class MultiEM:
             self.container_force.addParticle(i, [])
         self.system.addForce(self.container_force)
 
-        # Interaction of B compartment with lamina
-        self.Blamina_force = mm.CustomExternalForce('B*min(max(0, R-r)^2-(0.5*R)^2,0)*(delta(s+1)+delta(s+2))/10; r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-        self.Blamina_force.addGlobalParameter('B',defaultValue=500)
-        self.Blamina_force.addGlobalParameter('R',defaultValue=radius)
-        self.Blamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
-        self.Blamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
-        self.Blamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
-        self.Blamina_force.addPerParticleParameter('s')
-        for i in range(self.system.getNumParticles()):
-            self.Blamina_force.addParticle(i, [self.Cs[i]])
-        self.system.addForce(self.Blamina_force)
+        # if np.all(self.Cs!=None):
+        #     # Interaction of A compartment with lamina
+        #     self.Alamina_force = mm.CustomExternalForce('-A*abs(sin(pi*r/R))^(1/4)*(delta(s-1)+delta(s-2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+        #     self.Alamina_force.addGlobalParameter('A',defaultValue=500)
+        #     self.Alamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
+        #     self.Alamina_force.addGlobalParameter('R',defaultValue=radius)
+        #     self.Alamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
+        #     self.Alamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
+        #     self.Alamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
+        #     self.Alamina_force.addPerParticleParameter('s')
+        #     for i in range(self.system.getNumParticles()):
+        #         self.Alamina_force.addParticle(i, [self.Cs[i]])
+        #     self.system.addForce(self.Alamina_force)
+
+        #     # Interaction of B compartment with lamina
+        #     self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*r/R)^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+        #     self.Blamina_force.addGlobalParameter('B',defaultValue=500)
+        #     self.Blamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
+        #     self.Blamina_force.addGlobalParameter('R',defaultValue=radius)
+        #     self.Blamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
+        #     self.Blamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
+        #     self.Blamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
+        #     self.Blamina_force.addPerParticleParameter('s')
+        #     for i in range(self.system.getNumParticles()):
+        #         self.Blamina_force.addParticle(i, [self.Cs[i]])
+        #     self.system.addForce(self.Blamina_force)
 
         # Bond force
         self.bond_force = mm.HarmonicBondForce()
