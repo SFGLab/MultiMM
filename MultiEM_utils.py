@@ -2,7 +2,6 @@
 ########### CREATOR: SEBASTIAN KORSAK, WARSAW 2022 ######################
 #########################################################################
 
-import hicstraw as straw # Install it with:  python3 -m pip install hic-straw
 from matplotlib.pyplot import figure
 import matplotlib.pyplot as plt
 import os
@@ -141,62 +140,6 @@ def get_heatmap(mm_vec,viz=False,save=False,path=''):
         plt.close()
     return mat
 
-def get_hic(primary,chrom,resolution,th1=10,th2=40,normalization="NONE",name=None,viz=False,N_beads=None,colormap='bright_red',binary=False):
-    try:
-        os.mkdir('heatmaps')
-        os.mkdir('heatmaps/heat_plots')
-        os.mkdir('heatmaps/arrays')
-    except OSError as error:
-        print(f'Directories already exist.')
-
-    # assumes KR normalization and BP resolutions
-    result = straw.straw(normalization, primary, chrom, chrom, "BP", resolution)
-    binX = result[0]
-    binY = result[1]
-    counts = result[2]
-    N = len(binX)
-    row_indices, col_indices, data = list(), list(), list()
-    for i in tqdm(range(N)):
-        row_indices.append(binX[i])
-        col_indices.append(binY[i])
-        if binary:
-            data.append(1) if counts[i]>th1 and counts[i]<th2 else data.append(0)
-        else:
-            data.append(counts[i])
-        if binX[i] != binY[i]:
-            row_indices.append(binY[i])
-            col_indices.append(binX[i])
-            if binary:
-                data.append(1) if counts[i]>th1 and counts[i]<th2 else data.append(0)
-            else:
-                data.append(counts[i])
-    row_indices = np.asarray(row_indices) / resolution
-    col_indices = np.asarray(col_indices) / resolution
-    max_size = int(max(np.max(row_indices), np.max(col_indices))) + 1
-    matrix = coo_matrix((data, (row_indices.astype(int), col_indices.astype(int))),
-                         shape=(max_size, max_size)).toarray()
-    
-    matrix = matrix.T + matrix  # make matrix symmetric
-    matrix = (matrix-matrix.min())/(matrix.max()-matrix.min())
-    print('full matrix shape:',matrix.shape)
-    matrix[np.isnan(matrix)] = 0
-    matrix[np.isinf(matrix)] = 0
-    np.fill_diagonal(matrix, 0)
-
-    if viz:
-        counts = np.array(counts)
-        plt.hist(counts[counts<50],bins=20)
-        plt.grid()
-        plt.show()
-        
-        figure(figsize=(15, 15))
-        plt.imshow(matrix,cmap='gnuplot2_r')
-        plt.title('Vizualized Experimental Heatmap',fontsize=20)
-        plt.colorbar()
-        plt.show()
-
-    return matrix
-
 def import_bw(bw_path,N_beads,n_chroms,viz=False,binary=False,path=''):
     genomewide_signal = list()
     bw = pyBigWig.open(bw_path)
@@ -305,6 +248,16 @@ def import_compartments_from_bed(bed_file,N_beads,n_chroms,path):
     np.save(path+'genomewide_signal.npy',comps_array)
     print('Done')
     return comps_array, chrom_ends
+
+def align_comps(comps,ms,chrom_ends):
+    for i in range(len(chrom_ends)-1):
+        start, end = chrom_ends[i], chrom_ends[i+1]
+        mms = ms[(start<ms)&(ms<end)]
+        comps_with_loops = comps[mms]
+        Aloops = np.count_nonzero(comps_with_loops>0)
+        Bloops = np.count_nonzero(comps_with_loops<0)
+        if Aloops>Bloops: comps[start:end] = -comps[start:end]
+    return comps
 
 def write_chrom_colors(chrom_ends,name='MultiEM_chromosome_colors.cmd'):    
     content = ''

@@ -40,6 +40,7 @@ class MultiEM:
             elif comp_path.endswith('.bed'):
                 self.Cs, self.chr_ends = import_compartments_from_bed(bed_file=comp_path,N_beads=N_beads,\
                                                                       n_chroms=n_chrom,path=self.save_path)
+            
         elif os.path.isfile(self.save_path+'genomewide_signal.npy'):
             self.Cs = np.load(self.save_path+'genomewide_signal.npy')
             if np.all(self.Cs!=None): self.N_beads = len(self.Cs)
@@ -66,6 +67,7 @@ class MultiEM:
         else:
             raise InterruptedError('You did not provide data for loops. Check if the provided file is correct, or if your outpout path is already containing some data.')
         write_chrom_colors(self.chr_ends,name=self.save_path+'MultiEM_chromosome_colors.cmd')
+        if np.all(comp_path!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
 
         # Define a chromsome metric
         self.chroms = np.zeros(self.N_beads)
@@ -126,32 +128,32 @@ class MultiEM:
             self.container_force.addParticle(i, [])
         self.system.addForce(self.container_force)
 
-        # if np.all(self.Cs!=None):
-        #     # Interaction of A compartment with lamina
-        #     self.Alamina_force = mm.CustomExternalForce('-A*abs(sin(pi*r/R))^(1/4)*(delta(s-1)+delta(s-2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-        #     self.Alamina_force.addGlobalParameter('A',defaultValue=500)
-        #     self.Alamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
-        #     self.Alamina_force.addGlobalParameter('R',defaultValue=radius)
-        #     self.Alamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
-        #     self.Alamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
-        #     self.Alamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
-        #     self.Alamina_force.addPerParticleParameter('s')
-        #     for i in range(self.system.getNumParticles()):
-        #         self.Alamina_force.addParticle(i, [self.Cs[i]])
-        #     self.system.addForce(self.Alamina_force)
+        if np.all(self.Cs!=None):
+            # Interaction of A compartment with lamina
+            self.Alamina_force = mm.CustomExternalForce('-A*abs(sin(pi*r/R))^(1/4)*(delta(s-1)+delta(s-2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+            self.Alamina_force.addGlobalParameter('A',defaultValue=500)
+            self.Alamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
+            self.Alamina_force.addGlobalParameter('R',defaultValue=radius)
+            self.Alamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
+            self.Alamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
+            self.Alamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
+            self.Alamina_force.addPerParticleParameter('s')
+            for i in range(self.system.getNumParticles()):
+                self.Alamina_force.addParticle(i, [self.Cs[i]])
+            self.system.addForce(self.Alamina_force)
 
-        #     # Interaction of B compartment with lamina
-        #     self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*r/R)^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-        #     self.Blamina_force.addGlobalParameter('B',defaultValue=500)
-        #     self.Blamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
-        #     self.Blamina_force.addGlobalParameter('R',defaultValue=radius)
-        #     self.Blamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
-        #     self.Blamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
-        #     self.Blamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
-        #     self.Blamina_force.addPerParticleParameter('s')
-        #     for i in range(self.system.getNumParticles()):
-        #         self.Blamina_force.addParticle(i, [self.Cs[i]])
-        #     self.system.addForce(self.Blamina_force)
+            # Interaction of B compartment with lamina
+            self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*r/R)^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+            self.Blamina_force.addGlobalParameter('B',defaultValue=500)
+            self.Blamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
+            self.Blamina_force.addGlobalParameter('R',defaultValue=radius)
+            self.Blamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
+            self.Blamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
+            self.Blamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
+            self.Blamina_force.addPerParticleParameter('s')
+            for i in range(self.system.getNumParticles()):
+                self.Blamina_force.addParticle(i, [self.Cs[i]])
+            self.system.addForce(self.Blamina_force)
 
         # Bond force
         self.bond_force = mm.HarmonicBondForce()
@@ -180,7 +182,7 @@ class MultiEM:
             self.angle_force.addAngle(i, i+1, i+2, np.pi, 40)
         self.system.addForce(self.angle_force)
 
-    def run_pipeline(self,MD_steps=10000,run_MD=True,write_files=False,plots=False,build_init_struct=True,Temperature=300*mm.unit.kelvin,init_struct_path=None):
+    def run_pipeline(self,MD_steps=10000,run_MD=True,write_files=False,plots=False,build_init_struct=True,Temperature=300*mm.unit.kelvin,init_struct_path=None,pltf='CUDA'):
         # Initialize simulation
         self.run_MD=run_MD
         if build_init_struct:
@@ -202,14 +204,17 @@ class MultiEM:
 
         # Run simulation / Energy minimization
         print('\nEnergy minimization...')
-        platform = mm.Platform.getPlatformByName('CUDA')
+        platform = mm.Platform.getPlatformByName(pltf)
         simulation = Simulation(pdb.topology, self.system, integrator, platform)
         simulation.context.setPositions(pdb.positions)
+        current_platform = simulation.context.getPlatform()
+        print(f"Simulation will run on platform: {current_platform.getName()}")
         start_time = time.time()
         simulation.minimizeEnergy()
         state = simulation.context.getState(getPositions=True)
         PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_minimized.cif', 'w'))
         print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)/60:.2f} minutes. :D ---")
+
 
         # Run molecular Dynamics
         if self.run_MD:
@@ -246,14 +251,14 @@ class MultiEM:
 
 def main():
     # Input data
-    bw_path = '/mnt/raid/data/Trios/calder_HiChIP_subcomp/PUR_p.bed'
-    loop_path = '/mnt/raid/data/Trios/ChiA-PiPE_Loops/loops_pet3+/Pulled_PUR_CTCF_1mb_pet3.bedpe'
-    out_path_name = 'PR_p'
+    bw_path = '/home/skorsak/Documents/data/Trios/calder_HiChIP_subcomp/CHS_d.bed'
+    loop_path = '/home/skorsak/Documents/data/Trios/ChiA-PiPE_Loops/loops_pet3+/HG00514_CHS_C_CTCF_1mb_pet3.bedpe'
+    out_path_name = 'CHS_d'
     
     # Run simulation
     md = MultiEM(N_beads=50000,out_path=out_path_name,n_chrom=23,loop_path=loop_path,comp_path=bw_path)
     md.run_pipeline(run_MD=False,build_init_struct=True,
-                    init_struct_path=None,plots=False)
+                    init_struct_path=None,plots=False,pltf='OpenCL')
 
 if __name__=='__main__':
     main()

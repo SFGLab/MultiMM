@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.spatial import ConvexHull, convex_hull_plot_2d
 from numpy.linalg import eig, inv
-from points_io import save_points_as_pdb, point_reader
 
 def ls_ellipsoid(xx,yy,zz):                                  
     #finds best fit ellipsoid. Found at http://www.juddzone.com/ALGORITHMS/least_squares_3D_ellipsoid.html
