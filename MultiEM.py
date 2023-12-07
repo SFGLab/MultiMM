@@ -250,7 +250,7 @@ def main():
     bw_path = '/home/skorsak/Documents/data/Trios/calder_HiChIP_subcomp/CHS_m.bed'
     # loop_path = '/home/skorsak/Documents/data/Trios/ChiA-PiPE_Loops/loops_pet3+/HG00512_CHS_F_CTCF_1mb_pet3.bedpe'
     loop_path = None
-    out_path_name = 'CHS_m'
+    out_path_name = 'random'
     
     # Run simulation
     md = MultiEM(N_beads=50000,out_path=out_path_name,n_chrom=23,loop_path='random',comp_path=bw_path)
