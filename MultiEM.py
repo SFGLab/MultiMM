@@ -40,7 +40,9 @@ class MultiEM:
             elif comp_path.endswith('.bed'):
                 self.Cs, self.chr_ends = import_compartments_from_bed(bed_file=comp_path,N_beads=N_beads,\
                                                                       n_chroms=n_chrom,path=self.save_path)
-            
+            elif loop_path=='random':
+                self.Cs = shuffle_blocks(self.Cs)
+
         elif os.path.isfile(self.save_path+'genomewide_signal.npy'):
             self.Cs = np.load(self.save_path+'genomewide_signal.npy')
             if np.all(self.Cs!=None): self.N_beads = len(self.Cs)
@@ -53,17 +55,12 @@ class MultiEM:
             elif(loop_path.endswith('.txt')):
                 self.ms, self.ns, self.ds, self.ks, self.cs, self.chr_ends = import_mns_from_txt(txt_file=loop_path,N_beads=N_beads,\
                                                                                                  n_chroms=n_chrom,path=self.save_path,mode=loops_mode)
+            elif loop_path=='random':
+                self.ms, self.ns, self.ks = generate_arrays(N_loops=N_beads//8, N=N_beads)
+            else:
+                raise InterruptedError('You did not provide appropriate loop file.')
 
             self.N_beads = N_beads
-        elif os.path.isfile(self.save_path+'ms.npy'):
-            # Import from file
-            self.ms, self.ns = np.load(self.save_path+'ms.npy'), np.load(self.save_path+'ns.npy')
-            if os.path.isfile(self.save_path+'ks.npy'): self.ks = np.load(self.save_path+'ks.npy')
-            if os.path.isfile(self.save_path+'ds.npy'): self.ds = np.load(self.save_path+'ds.npy')
-            self.chr_ends = np.load(self.save_path+'chrom_lengths.npy')
-
-            # Estimate number of beads only if needed
-            if np.all(self.ms!=None) and np.all(self.ns!=None): self.N_beads = np.max(self.ns)+1
         else:
             raise InterruptedError('You did not provide data for loops. Check if the provided file is correct, or if your outpout path is already containing some data.')
         write_chrom_colors(self.chr_ends,name=self.save_path+'MultiEM_chromosome_colors.cmd')
@@ -215,7 +212,6 @@ class MultiEM:
         PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_minimized.cif', 'w'))
         print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)/60:.2f} minutes. :D ---")
 
-
         # Run molecular Dynamics
         if self.run_MD:
             print('\nRunning MD simulation...')
@@ -251,12 +247,13 @@ class MultiEM:
 
 def main():
     # Input data
-    bw_path = '/home/skorsak/Documents/data/Trios/calder_HiChIP_subcomp/CHS_d.bed'
-    loop_path = '/home/skorsak/Documents/data/Trios/ChiA-PiPE_Loops/loops_pet3+/HG00514_CHS_C_CTCF_1mb_pet3.bedpe'
-    out_path_name = 'CHS_d'
+    bw_path = '/home/skorsak/Documents/data/Trios/calder_HiChIP_subcomp/CHS_m.bed'
+    # loop_path = '/home/skorsak/Documents/data/Trios/ChiA-PiPE_Loops/loops_pet3+/HG00512_CHS_F_CTCF_1mb_pet3.bedpe'
+    loop_path = None
+    out_path_name = 'CHS_m'
     
     # Run simulation
-    md = MultiEM(N_beads=50000,out_path=out_path_name,n_chrom=23,loop_path=loop_path,comp_path=bw_path)
+    md = MultiEM(N_beads=50000,out_path=out_path_name,n_chrom=23,loop_path='random',comp_path=bw_path)
     md.run_pipeline(run_MD=False,build_init_struct=True,
                     init_struct_path=None,plots=False,pltf='OpenCL')
 

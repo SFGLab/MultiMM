@@ -14,6 +14,7 @@ import pyBigWig
 from scipy import stats
 import random as rd
 import networkx as nx
+from itertools import groupby
 
 pd.options.mode.chained_assignment = None 
 
@@ -342,6 +343,11 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=3,viz=False,mode
     mask = (ns-ms)!=0
     ms = ms[mask]
     ns = ns[mask]
+    avg_ls = np.average(ns-ms)
+    plt.hist(ns-ms,bins=20)
+    plt.grid()
+    plt.show()
+    print('Average loop size:',avg_ls)
     if mode=='kd' or mode=='k': ks= ks[mask]
     if mode=='kd' or mode=='d':ds = ds[mask]
     cs = cs[mask]
@@ -466,3 +472,28 @@ def import_mns_from_txt(txt_file,N_beads,n_chroms,threshold=1,min_loop_dist=5,pa
         ds = np.array(ds)
     return ms, ns, ds, ks, cs, chrom_ends
 
+def generate_arrays(N_loops, N, l=6):
+    # Generate array ms with random integers between 0 and N (exclusive)
+    ms = np.random.randint(0, N, size=N_loops)
+
+    # Generate array ns by adding a random integer from an exponential distribution with average l
+    ns = ms + np.round(np.random.exponential(l, size=N_loops)).astype(int)
+    ns = np.maximum(ns, 3)
+    ns = np.minimum(ns, N)
+
+    # Define array ks with weights randomly distributed in the scale of 50 to 3000
+    ks = np.random.uniform(50, 3000, N_loops)
+
+    return ms, ns, ks
+
+def shuffle_blocks(array):
+    # Identify the unique blocks of repeating elements
+    unique_blocks = [list(g) for k, g in groupby(array)]
+    
+    # Shuffle the unique blocks
+    np.random.shuffle(unique_blocks)
+    
+    # Concatenate the shuffled blocks to create the final shuffled array
+    shuffled_array = [elem for block in unique_blocks for elem in block]
+
+    return shuffled_array
