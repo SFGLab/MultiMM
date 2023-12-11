@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from points_io.hybrid36 import hy36encode
 from mpl_toolkits import mplot3d
 from scipy import interpolate
 import matplotlib.pyplot as plt

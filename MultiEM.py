@@ -14,6 +14,7 @@ from MultiEM_metrics import save_metrics
 import time
 import os
 
+
 class MultiEM:
     def __init__(self,N_beads=None,loop_path=None,comp_path=None,n_chrom=24,comp_gw=True,out_path='results',loops_mode='k'):
         '''
@@ -114,10 +115,12 @@ class MultiEM:
             self.system.addForce(self.comp_force)
         
         # Spherical container
-        radius = (self.N_beads/50000)**(1/3)*6
-        self.container_force = mm.CustomExternalForce('C*max(0, r-R)^2; r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+        radius1 = (self.N_beads/50000)**(1/3)*2
+        radius2 = (self.N_beads/50000)**(1/3)*6
+        self.container_force = mm.CustomExternalForce('C*(max(0, r-R2)^2+max(0, R1-r)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
         self.container_force.addGlobalParameter('C',defaultValue=1000)
-        self.container_force.addGlobalParameter('R',defaultValue=radius)
+        self.container_force.addGlobalParameter('R1',defaultValue=radius1)
+        self.container_force.addGlobalParameter('R2',defaultValue=radius2)
         self.container_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
         self.container_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
         self.container_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
@@ -127,10 +130,11 @@ class MultiEM:
 
         if np.all(self.Cs!=None):
             # Interaction of A compartment with lamina
-            self.Alamina_force = mm.CustomExternalForce('-A*abs(sin(pi*r/R))^(1/4)*(delta(s-1)+delta(s-2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-            self.Alamina_force.addGlobalParameter('A',defaultValue=500)
+            self.Alamina_force = mm.CustomExternalForce('-A*sin(pi*(r-R1)/(R2-R1))^2*(delta(s-1)+delta(s-2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+            self.Alamina_force.addGlobalParameter('A',defaultValue=1000)
             self.Alamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
-            self.Alamina_force.addGlobalParameter('R',defaultValue=radius)
+            self.Alamina_force.addGlobalParameter('R1',defaultValue=radius1)
+            self.Alamina_force.addGlobalParameter('R2',defaultValue=radius2)
             self.Alamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
             self.Alamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
             self.Alamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
@@ -138,12 +142,13 @@ class MultiEM:
             for i in range(self.system.getNumParticles()):
                 self.Alamina_force.addParticle(i, [self.Cs[i]])
             self.system.addForce(self.Alamina_force)
-
+            
             # Interaction of B compartment with lamina
-            self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*r/R)^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-            self.Blamina_force.addGlobalParameter('B',defaultValue=500)
+            self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+            self.Blamina_force.addGlobalParameter('B',defaultValue=1000)
             self.Blamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
-            self.Blamina_force.addGlobalParameter('R',defaultValue=radius)
+            self.Blamina_force.addGlobalParameter('R1',defaultValue=radius1)
+            self.Blamina_force.addGlobalParameter('R2',defaultValue=radius2)
             self.Blamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
             self.Blamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
             self.Blamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
@@ -247,15 +252,14 @@ class MultiEM:
 
 def main():
     # Input data
-    bw_path = '/home/skorsak/Documents/data/Trios/calder_HiChIP_subcomp/CHS_m.bed'
-    # loop_path = '/home/skorsak/Documents/data/Trios/ChiA-PiPE_Loops/loops_pet3+/HG00512_CHS_F_CTCF_1mb_pet3.bedpe'
-    loop_path = None
-    out_path_name = 'random'
+    bw_path = '/mnt/raid/data/Trios/calder_HiChIP_subcomp/YRB_d.bed'
+    loop_path = '/mnt/raid/data/Trios/ChiA-PiPE_Loops/loops_pet3+/GM19240_YRI_C_CTCF_1mb_pet3.bedpe'
+    out_path_name = 'YR_d'
     
     # Run simulation
-    md = MultiEM(N_beads=50000,out_path=out_path_name,n_chrom=23,loop_path='random',comp_path=bw_path)
+    md = MultiEM(N_beads=50000,out_path=out_path_name,n_chrom=23,loop_path=loop_path,comp_path=bw_path)
     md.run_pipeline(run_MD=False,build_init_struct=True,
-                    init_struct_path=None,plots=False,pltf='OpenCL')
+                    init_struct_path=None,plots=False,pltf='CUDA')
 
 if __name__=='__main__':
     main()

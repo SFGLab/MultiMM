@@ -344,9 +344,6 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=3,viz=False,mode
     ms = ms[mask]
     ns = ns[mask]
     avg_ls = np.average(ns-ms)
-    plt.hist(ns-ms,bins=20)
-    plt.grid()
-    plt.show()
     print('Average loop size:',avg_ls)
     if mode=='kd' or mode=='k': ks= ks[mask]
     if mode=='kd' or mode=='d':ds = ds[mask]
@@ -479,7 +476,7 @@ def generate_arrays(N_loops, N, l=6):
     # Generate array ns by adding a random integer from an exponential distribution with average l
     ns = ms + np.round(np.random.exponential(l, size=N_loops)).astype(int)
     ns = np.maximum(ns, 3)
-    ns = np.minimum(ns, N)
+    ns = np.minimum(ns, N-1)
 
     # Define array ks with weights randomly distributed in the scale of 50 to 3000
     ks = np.random.uniform(50, 3000, N_loops)

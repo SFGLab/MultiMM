@@ -6,7 +6,7 @@ from sklearn.cluster import KMeans
 from scipy.stats import entropy
 from ellipsoid_measure import calc_ellipsoid_ratio2
 
-def gyration_radius(V):
+def gyration_radius(V,n_iter=21):
     '''
     Import the structure coordinates V and export radius of gyration.
     We assume the same mass for all atoms.
@@ -15,10 +15,14 @@ def gyration_radius(V):
                      is the always 3 as the dimension of our space.
     Rg (float): Radius of gyration. 
     '''
-    r_mean, N = np.average(V,axis=0), len(V)
-    Rg_sq = 1/N*np.sum(np.linalg.norm(V-r_mean,axis=0)**2)
-    Rg = np.sqrt(Rg_sq)
-    return Rg
+    Rgs = list()
+    for i in range(n_iter-1):
+        start, end = i*len(V)//n_iter, (i+1)*len(V)//n_iter
+        r_mean, N = np.average(V[start:end],axis=0), len(V)
+        Rg_sq = 1/N*np.sum(np.linalg.norm(V[start:end]-r_mean,axis=0)**2)
+        Rg = np.sqrt(Rg_sq)
+        Rgs.append(Rg)
+    return np.average(Rgs)
 
 def get_stats(V):
     '''
@@ -242,6 +246,6 @@ def save_metrics(V,path_name=''):
     f.write(f'Sphericity: {sph}.\n')
     f.write(f'Anisotropy: {ani}.\n')
     f.write(f'Entropy: {entr}.\n')
-    f.write(f'Ellipsoid ratio: {ell}.\n')
+    f.write(f'Ellipsoid volume: {ell}.\n')
     f.close()
 
