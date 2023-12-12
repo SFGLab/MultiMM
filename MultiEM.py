@@ -65,13 +65,14 @@ class MultiEM:
         else:
             raise InterruptedError('You did not provide data for loops. Check if the provided file is correct, or if your outpout path is already containing some data.')
         write_chrom_colors(self.chr_ends,name=self.save_path+'MultiEM_chromosome_colors.cmd')
-        if np.all(comp_path!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
+        # if np.all(comp_path!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
 
         # Define a chromsome metric
-        self.chroms = np.zeros(self.N_beads)
+        self.chroms, self.chroms_AB = np.zeros(self.N_beads), np.zeros(self.N_beads)
         chr_count = 1
         for i in range(len(self.chr_ends)-1):
-            if not comp_gw: self.chroms[self.chr_ends[i]:self.chr_ends[i+1]] = chr_count
+            if not comp_gw: self.chroms_AB[self.chr_ends[i]:self.chr_ends[i+1]] = chr_count
+            self.chroms[self.chr_ends[i]:self.chr_ends[i+1]] = chr_count
             chr_count += 1
 
     def add_forcefield(self):
@@ -97,7 +98,7 @@ class MultiEM:
             self.comp_force.addPerParticleParameter('s')
             self.comp_force.addPerParticleParameter('chrom')
             for i in range(self.system.getNumParticles()):
-                self.comp_force.addParticle([self.Cs[i],self.chroms[i]])
+                self.comp_force.addParticle([self.Cs[i],self.chroms_AB[i]])
             self.system.addForce(self.comp_force)
         elif np.all(self.Cs!=None) and len(np.unique(self.Cs)>=4):
             self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea1*delta(s1-2)*delta(s2-2)+Ea2*delta(s1-1)*delta(s2-1)+Eb1*delta(s1+1)*delta(s2+1)+Eb2*delta(s1+2)*delta(s2+2)')
@@ -111,11 +112,11 @@ class MultiEM:
             self.comp_force.addPerParticleParameter('s')
             self.comp_force.addPerParticleParameter('chrom')
             for i in range(self.system.getNumParticles()):
-                self.comp_force.addParticle([self.Cs[i],self.chroms[i]])
+                self.comp_force.addParticle([self.Cs[i],self.chroms_AB[i]])
             self.system.addForce(self.comp_force)
         
         # Spherical container
-        radius1 = (self.N_beads/50000)**(1/3)*2
+        radius1 = (self.N_beads/50000)**(1/3)*1.5
         radius2 = (self.N_beads/50000)**(1/3)*6
         self.container_force = mm.CustomExternalForce('C*(max(0, r-R2)^2+max(0, R1-r)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
         self.container_force.addGlobalParameter('C',defaultValue=1000)
@@ -156,6 +157,18 @@ class MultiEM:
             for i in range(self.system.getNumParticles()):
                 self.Blamina_force.addParticle(i, [self.Cs[i]])
             self.system.addForce(self.Blamina_force)
+        
+        # Force that sets smaller chromosomes closer to the center
+        self.central_force = mm.CustomExternalForce('G*(chrom-1)/23*(-1/(r-R1+1.5)+1/(r-R1+1.5)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+        self.central_force.addGlobalParameter('G',defaultValue=1000)
+        self.central_force.addGlobalParameter('R1',defaultValue=radius1)
+        self.central_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
+        self.central_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
+        self.central_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
+        self.central_force.addPerParticleParameter('chrom')
+        for i in range(self.system.getNumParticles()):
+            self.central_force.addParticle(i, [self.chroms[i]])
+        self.system.addForce(self.central_force)
 
         # Bond force
         self.bond_force = mm.HarmonicBondForce()
@@ -169,9 +182,9 @@ class MultiEM:
             counter=0
             for m,n in tqdm(zip(self.ms,self.ns),total=len(self.ms)):
                 if np.any(self.ks==None) and np.any(self.ds==None):
-                    self.loop_force.addBond(m,n,0.1,3000)
+                    self.loop_force.addBond(m,n,0.1,30000)
                 elif np.any(self.ks==None) and np.any(self.ds!=None):
-                    self.loop_force.addBond(m,n,self.ds[counter],3000)
+                    self.loop_force.addBond(m,n,self.ds[counter],30000)
                 elif np.any(self.ks!=None) and np.any(self.ds==None):
                     self.loop_force.addBond(m,n,0.1,self.ks[counter])
                 else:

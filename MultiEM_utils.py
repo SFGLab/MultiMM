@@ -238,13 +238,13 @@ def import_compartments_from_bed(bed_file,N_beads,n_chroms,path):
     comps_array = np.zeros(N_beads)
     for i in tqdm(range(len(comps_df))):
         if comps_df[3][i].startswith('A.1'):
-            val = 2
-        elif comps_df[3][i].startswith('A.2'):
-            val = 1
-        elif comps_df[3][i].startswith('B.1'):
-            val = -1
-        elif comps_df[3][i].startswith('B.2'):
             val = -2
+        elif comps_df[3][i].startswith('A.2'):
+            val = -1
+        elif comps_df[3][i].startswith('B.1'):
+            val = 1
+        elif comps_df[3][i].startswith('B.2'):
+            val = 2
         comps_array[comps_df[1][i]:comps_df[2][i]] = val
     np.save(path+'genomewide_signal.npy',comps_array)
     print('Done')
@@ -325,7 +325,7 @@ def import_mns_from_bedpe(bedpe_file,N_beads,n_chroms,threshold=3,viz=False,mode
         zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
         zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
         ds = 1/cs**(1/3)
-        ds, ks = 0.1+0.3*min_max_trans(ds), 50+2950*min_max_trans(zs)
+        ds, ks = 0.1+0.3*min_max_trans(ds), 1000+29000*min_max_trans(zs)
     else:
         raise InterruptedError("The mode of loop generator should be either 'k' so as to generate Hook constats, or 'd' for equillibrium distances, or 'kd' for both.")
     
@@ -414,7 +414,7 @@ def import_mns_from_txt(txt_file,N_beads,n_chroms,threshold=1,min_loop_dist=5,pa
         zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
         zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
         ds = 1/cs**(1/3)
-        ds, ks = 0.1+0.3*min_max_trans(ds), 50+2950*min_max_trans(zs)
+        ds, ks = 0.1+0.3*min_max_trans(ds), 1000+29000*min_max_trans(zs)
     else:
         raise InterruptedError("The mode of loop generator should be either 'k' so as to generate Hook constats, or 'd' for equillibrium distances, or 'kd' for both.")
     
