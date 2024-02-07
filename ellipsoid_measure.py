@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.spatial import ConvexHull, convex_hull_plot_2d
 from numpy.linalg import eig, inv
+from points_io import save_points_as_pdb, point_reader
 
 def ls_ellipsoid(xx,yy,zz):                                  
     #finds best fit ellipsoid. Found at http://www.juddzone.com/ALGORITHMS/least_squares_3D_ellipsoid.html
@@ -104,7 +105,7 @@ def polyToParams3D(vec,printMe):
     return (center,axes,inve)
 
 
-def calc_ellipsoid_ratio(V, result="ratio"):
+def calc_ellipsoid_ratio(V, result="volume"):
     """
     V: np.array
     result: either "ratio" or "volume"
@@ -134,7 +135,7 @@ def calc_ellipsoid_ratio(V, result="ratio"):
         raise(Exception("Wrong result provided: {}. Expected: ratio or volume.".format(result)))
     
     
-def calc_ellipsoid_ratio2(V, n_e = 20, o_e = 0.2, result="ratio"):
+def calc_ellipsoid_ratio2(V, n_e = 20, o_e = 0.2, result="volume"):
     """
     V: np.array
     result: either "ratio" or "volume"

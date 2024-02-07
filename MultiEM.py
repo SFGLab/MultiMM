@@ -1,3 +1,7 @@
+#########################################################################
+########### CREATOR: SEBASTIAN KORSAK, WARSAW 2024 ######################
+#########################################################################
+
 import random as rd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,20 +15,27 @@ from openmm.app import PDBFile, PDBxFile, ForceField, Simulation, PDBReporter, P
 from MultiEM_init_tools import *
 from MultiEM_utils import *
 from MultiEM_metrics import save_metrics
+from nucs_init_struct_tools import *
+from nucs_preprocessing import *
 import time
 import os
 
-
 class MultiEM:
-    def __init__(self,N_beads=None,loop_path=None,comp_path=None,n_chrom=24,comp_gw=True,out_path='results',loops_mode='k'):
+    def __init__(self,N_beads,loop_path,comp_path=None,nucs_path=None,region=None,comp_gw=True,out_path='results'):
         '''
-        Cs (np arrays): Cs array with colors over time.
-        N_beads (int): The number of beads of initial structure.
-        step (int): sampling rate.
+        Input data:
+        ------------
+        N_beads (int): Number of simulation beads.
+        loop_path (str): path of the .bedpe file for the looping data (required).
+        comp_path (str): path of the .bw or .bed file for the compartmentalization data (optional).
+        nucs_path (str): path of the PuFFIN file for the nucleosome positions (optional - it works only for small fragments of chromosome).
+        out_path (str): path of saving data
         '''
-        # Create output folder only if needed
+        ################################################################
+        ################ CREATE OUTPUT FOLDER ##########################
+        ################################################################
         self.save_path = out_path+'/'
-        self.ms, self.ns, self.ds, self.ks, self.cs, self.chr_ends, self.Cs = None,None,None,None,None,None,None
+        self.ms, self.ns, self.ks, self.chr_ends, self.Cs = None,None,None,None,None
         try:
             os.mkdir(self.save_path)
             os.mkdir(self.save_path+'chromosomes')
@@ -32,42 +43,57 @@ class MultiEM:
         except OSError as error:
             print("Folder 'chromosomes' already exists!")
         
-        # Load from files
-        if np.all(comp_path!=None):
-            if comp_path.endswith('.bw') or comp_path.endswith('.bigwig') or comp_path.endswith('.BigWig'):
-                self.Cs, self.chr_ends = import_bw(bw_path=comp_path,N_beads=N_beads,\
-                                                   viz=False,binary=True,\
-                                                   n_chroms=n_chrom,path=self.save_path)
-            elif comp_path.endswith('.bed'):
-                self.Cs, self.chr_ends = import_compartments_from_bed(bed_file=comp_path,N_beads=N_beads,\
-                                                                      n_chroms=n_chrom,path=self.save_path)
-            elif loop_path=='random':
-                self.Cs = shuffle_blocks(self.Cs)
-
-        elif os.path.isfile(self.save_path+'genomewide_signal.npy'):
-            self.Cs = np.load(self.save_path+'genomewide_signal.npy')
-            if np.all(self.Cs!=None): self.N_beads = len(self.Cs)
+        chrom, coords = None, None
+        if not np.any(np.isnan(region)):
+            chrom, coords = region[0], region[1]
         
-        if np.all(loop_path!=None):
-            if loop_path.endswith('.bedpe'):
-                self.ms, self.ns, self.ds, self.ks, self.cs, self.chr_ends = import_mns_from_bedpe(bedpe_file=loop_path,N_beads=N_beads,\
-                                                                                n_chroms=n_chrom,viz=False,\
-                                                                                path=self.save_path,mode=loops_mode)
-            elif(loop_path.endswith('.txt')):
-                self.ms, self.ns, self.ds, self.ks, self.cs, self.chr_ends = import_mns_from_txt(txt_file=loop_path,N_beads=N_beads,\
-                                                                                                 n_chroms=n_chrom,path=self.save_path,mode=loops_mode)
-            elif loop_path=='random':
-                self.ms, self.ns, self.ks = generate_arrays(N_loops=N_beads//8, N=N_beads)
-            else:
-                raise InterruptedError('You did not provide appropriate loop file.')
-
-            self.N_beads = N_beads
+        ################################################################
+        ################ LOAD COMPARTMENTS #############################
+        ################################################################
+        if comp_path.endswith('.bw') or comp_path.endswith('.bigwig') or comp_path.endswith('.BigWig'):
+            self.Cs, self.chr_ends = import_bw(bw_path=comp_path,N_beads=N_beads,\
+                                               viz=False,binary=True,\
+                                               path=self.save_path)
+        elif comp_path.endswith('.bed'):
+            self.Cs, self.chr_ends = import_compartments_from_bed(bed_file=comp_path,N_beads=N_beads,\
+                                                                  path=self.save_path)
+        elif comp_path=='random':
+            self.Cs = random_blocks()
         else:
-            raise InterruptedError('You did not provide data for loops. Check if the provided file is correct, or if your outpout path is already containing some data.')
-        write_chrom_colors(self.chr_ends,name=self.save_path+'MultiEM_chromosome_colors.cmd')
-        # if np.all(comp_path!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
+            self.Cs = None
+        
+        ################################################################
+        ################ LOAD LOOPS ####################################
+        ################################################################
+        if loop_path.endswith('.bedpe'):
+            self.ms, self.ns, self.ks, self.chr_ends = import_mns_from_bedpe(bedpe_file=loop_path,N_beads=N_beads,\
+                                                                             coords = coords, chrom=chrom, viz=False, path=self.save_path)
+        elif loop_path=='random':
+            self.ms, self.ns, self.ks = generate_arrays(N_loops=N_beads//8, N=N_beads)
+        else:
+            raise InterruptedError('You did not provide appropriate loop file. Loop .bedpe file is obligatory.')
 
-        # Define a chromsome metric
+        self.N_beads = N_beads
+        
+        write_chrom_colors(self.chr_ends,name=self.save_path+'MultiEM_chromosome_colors.cmd')
+
+        ################################################################
+        ################ LOAD NUCLEOSOMES ##############################
+        ################################################################
+        if nucs_path!=None:
+            self.entry_points, self.exit_points = puffin_to_array(nucs_path)
+            self.nuc_sim_len, self.num_nucs = int(self.exit_points[-1]+1), len(self.entry_points)
+            if self.nuc_sim_len>1e6: raise InterruptedError('Too large region or structure to model nucleosomes. Please choose smaller region or simulation beads. ;)')
+            print('Nucleosome simulation length:',self.nuc_sim_len)
+            print('Number of nucleosomes',self.num_nucs)
+        else:
+            self.entry_points, self.exit_points, self.nuc_sim_len, self.num_nucs = None, None, 0, 0
+        
+        if np.all(comp_path!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
+        
+        ################################################################
+        ################ LOAD CHROMOSOMES ##############################
+        ################################################################
         self.chroms, self.chroms_AB = np.zeros(self.N_beads), np.zeros(self.N_beads)
         chr_count = 1
         for i in range(len(self.chr_ends)-1):
@@ -76,6 +102,9 @@ class MultiEM:
             chr_count += 1
 
     def add_forcefield(self):
+        '''
+        Here we define the forcefield of MultiEM.
+        '''
         # Leonard-Jones potential for excluded volume
         self.ev_force = mm.CustomNonbondedForce('epsilon*((sigma1+sigma2)/r)^6')
         if not self.run_MD:
@@ -157,10 +186,10 @@ class MultiEM:
             for i in range(self.system.getNumParticles()):
                 self.Blamina_force.addParticle(i, [self.Cs[i]])
             self.system.addForce(self.Blamina_force)
-        
+
         # Force that sets smaller chromosomes closer to the center
-        self.central_force = mm.CustomExternalForce('G*(chrom-1)/23*(-1/(r-R1+1.5)+1/(r-R1+1.5)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-        self.central_force.addGlobalParameter('G',defaultValue=1000)
+        self.central_force = mm.CustomExternalForce('G*(chrom-1)/23*(-1/(r-R1+1)+1/(r-R1+1)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+        self.central_force.addGlobalParameter('G',defaultValue=2000)
         self.central_force.addGlobalParameter('R1',defaultValue=radius1)
         self.central_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
         self.central_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
@@ -181,14 +210,10 @@ class MultiEM:
             self.loop_force = mm.HarmonicBondForce()
             counter=0
             for m,n in tqdm(zip(self.ms,self.ns),total=len(self.ms)):
-                if np.any(self.ks==None) and np.any(self.ds==None):
+                if np.any(self.ks==None):
                     self.loop_force.addBond(m,n,0.1,30000)
-                elif np.any(self.ks==None) and np.any(self.ds!=None):
-                    self.loop_force.addBond(m,n,self.ds[counter],30000)
-                elif np.any(self.ks!=None) and np.any(self.ds==None):
-                    self.loop_force.addBond(m,n,0.1,self.ks[counter])
                 else:
-                    self.loop_force.addBond(m,n,self.ds[counter],self.ks[counter])
+                    self.loop_force.addBond(m,n,0.1,self.ks[counter])
             self.system.addForce(self.loop_force)
 
         # Bending potential for stiffness
@@ -197,7 +222,54 @@ class MultiEM:
             self.angle_force.addAngle(i, i+1, i+2, np.pi, 40)
         self.system.addForce(self.angle_force)
 
-    def run_pipeline(self,MD_steps=10000,run_MD=True,write_files=False,plots=False,build_init_struct=True,Temperature=300*mm.unit.kelvin,init_struct_path=None,pltf='CUDA'):
+    def add_nuc_forcefield(self,n_wraps=2):
+        '''
+        Here we define the forcefield of the nucleosome model.
+        '''
+        # Bending potential for stiffness
+        angle_force = mm.HarmonicAngleForce()
+        for i in range(4*self.num_nucs,self.system_n.getNumParticles()-2):
+            if self.is_nuc[i-4*self.num_nucs]:
+                angle_force.addAngle(i, i+1, i+2, np.pi, 5000)
+            else:
+                angle_force.addAngle(i, i+1, i+2, np.pi, 100)
+        angle_force.setForceGroup(2)
+        self.system_n.addForce(angle_force)
+        print('Angle force imported.')
+
+        # Add DNA-DNA interactions
+        print('Importing DNA-DNA interactions...')
+        dnadna_force = mm.HarmonicBondForce()
+        r = int(np.average(self.exit_points-self.entry_points))//n_wraps
+        res = []
+        for k in tqdm(range(self.num_nucs)):
+            for j in range(self.entry_points[k], self.exit_points[k]-r):
+                dnadna_force.addBond(4*self.num_nucs+j, 4*self.num_nucs+j+r, 0.11, 3000.0)
+                res.append(f':{self.num_nucs+j+1}\t:{self.num_nucs+j+r+1}\tred\n')
+        dnadna_force.setForceGroup(3)
+        self.system_n.addForce(dnadna_force)
+        print('DNA-DNA force imported.')
+
+        # Interaction between histone and DNA
+        print('Import DNA-histone forcefield...')
+        histone_dna_force = mm.HarmonicBondForce()
+        atoms = ['HIA','HIB','HIC','HID']
+        for k in tqdm(range(self.num_nucs)):
+            for i in range(4*k,4*k+4):
+                for w in range(n_wraps):
+                    helix_factor = (self.exit_points[k]-self.entry_points[k])//n_wraps
+                    wrap_factor = (self.exit_points[k]-self.entry_points[k])//n_wraps//4
+                    for j in range(self.entry_points[k]+w*helix_factor+(i%4)*wrap_factor, self.entry_points[k]+w*helix_factor+(i%4+1)*wrap_factor):
+                        histone_dna_force.addBond(i, 4*self.num_nucs+j, 0.175, 500)
+                        res.append(f':{k+1}@{atoms[i%4]}\t:{self.num_nucs+j+1}\tgreen\n')
+        histone_dna_force.setForceGroup(4)
+        self.system_n.addForce(histone_dna_force)
+        print('DNA-histone force imported.')
+
+    def run_pipeline(self,MD_steps=10000,run_MD=True,write_files=False,build_init_struct=True,Temperature=300*mm.unit.kelvin,init_struct_path=None,pltf='CUDA'):
+        '''
+        Energy minimization for GW model.
+        '''
         # Initialize simulation
         self.run_MD=run_MD
         if build_init_struct:
@@ -210,7 +282,7 @@ class MultiEM:
         self.mass_center = np.average(get_coordinates_mm(pdb.positions),axis=0)
         forcefield = ForceField('ff.xml')
         self.system = forcefield.createSystem(pdb.topology)
-        integrator = mm.LangevinIntegrator(Temperature, 2, 100 * mm.unit.femtosecond)
+        integrator = mm.LangevinIntegrator(Temperature, 0.5, 1 * mm.unit.femtosecond)
         
         # Import forcefield
         print('\nImporting forcefield...')
@@ -223,7 +295,7 @@ class MultiEM:
         simulation = Simulation(pdb.topology, self.system, integrator, platform)
         simulation.context.setPositions(pdb.positions)
         current_platform = simulation.context.getPlatform()
-        print(f"Simulation will run on platform: {current_platform.getName()}")
+        print(f"Simulation will run on platform: {current_platform.getName()}.")
         start_time = time.time()
         simulation.minimizeEnergy()
         state = simulation.context.getState(getPositions=True)
@@ -255,24 +327,55 @@ class MultiEM:
             write_mmcif(coords=10*V[self.chr_ends[i]:self.chr_ends[i+1]],
                         path=self.save_path+f'chromosomes/MultiEM_minimized_{chrs[i]}.cif')
             save_metrics(V[self.chr_ends[i]:self.chr_ends[i+1]],path_name=self.save_path+f'chromosomes_info/{chrs[i]}_')
+
         
-        if plots:
-            print('\nComputing heatmap...')
-            heat = get_heatmap(mm_vec=state.getPositions(),viz=plots,path=self.save_path)
-            end = time.time()
-            elapsed = end - start
-            print(f'---Heatmap computed in {elapsed/60:0.2f} minutes.---')
+        if self.num_nucs>0: self.run_nuc_pipeline()
+
+    def run_nuc_pipeline(self):
+        '''
+        Energy minimization for nucleosome simulation.
+        '''
+        # Define system
+        print('\n\nBuilding initial structure of nucleosome simulation...')
+        pdb_content = build_init_mmcif_nucs(entry=self.entry_points,exit=self.exit_points,n_nucs=self.num_nucs,n_dna=self.nuc_sim_len,
+                               mode='path',psf=True,path=self.save_path+'MultiEM_minimized.cif')
+
+        print('Creating system...')
+        pdb = PDBxFile('dna_histones.cif')
+        forcefield = ForceField('forcefields/dna_histones_ff.xml')
+        self.system_n = forcefield.createSystem(pdb.topology, nonbondedCutoff=1*mm.unit.nanometer)
+        integrator = mm.LangevinIntegrator(310, 5, 10 * mm.unit.femtosecond)
+        print('Done\n')
+
+        # Add nucleosome forcefield
+        print('Adding forcefield for nucleosomes...')
+        self.add_nuc_forcefield()
+        print('Done\n')
+        
+        # Energy minimization
+        print('Energy minimizing of nucleosome potential (this may take several minutes or hours)...')
+        platform = mm.Platform.getPlatformByName('CUDA')
+        simulation = Simulation(pdb.topology, self.system_n, integrator, platform)
+        current_platform = simulation.context.getPlatform()
+        print(f"Simulation will run on platform: {current_platform.getName()}")
+        simulation.reporters.append(StateDataReporter(stdout, 1000, step=True, totalEnergy=True, potentialEnergy=True, temperature=True))
+        simulation.context.setPositions(pdb.positions)
+        simulation.minimizeEnergy()
+        state = simulation.context.getState(getPositions=True)
+        PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+f'/other/minimized_nucres_model.cif', 'w'))
+        print('Energy minimization of nucleosome model done :D\n')
 
 def main():
     # Input data
     bw_path = '/mnt/raid/data/Trios/calder_HiChIP_subcomp/YRB_d.bed'
     loop_path = '/mnt/raid/data/Trios/ChiA-PiPE_Loops/loops_pet3+/GM19240_YRI_C_CTCF_1mb_pet3.bedpe'
-    out_path_name = 'YR_d'
+    nuc_path = None#'/mnt/raid/codes/other/PuFFIN/input/ENCFF415FEC_rep1_chr1.bed.nucs'
+    out_path_name = 'nucleosome_test'
     
     # Run simulation
-    md = MultiEM(N_beads=50000,out_path=out_path_name,n_chrom=23,loop_path=loop_path,comp_path=bw_path)
+    md = MultiEM(N_beads=50000,out_path=out_path_name,n_chrom=23,loop_path=loop_path,comp_path=bw_path,nucs_path=nuc_path)
     md.run_pipeline(run_MD=False,build_init_struct=True,
-                    init_struct_path=None,plots=False,pltf='CUDA')
+                    init_struct_path=None,pltf='CUDA')
 
 if __name__=='__main__':
     main()
