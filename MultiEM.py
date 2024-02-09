@@ -21,7 +21,7 @@ import time
 import os
 
 class MultiEM:
-    def __init__(self,N_beads,loop_path,comp_path=None,nucs_path=None,region=None,comp_gw=True,out_path='results'):
+    def __init__(self,N_beads,loop_path,comp_path=None,nucs_path=None,chrom=None,coords=None,comp_gw=True,out_path='results'):
         '''
         Input data:
         ------------
@@ -29,13 +29,13 @@ class MultiEM:
         loop_path (str): path of the .bedpe file for the looping data (required).
         comp_path (str): path of the .bw or .bed file for the compartmentalization data (optional).
         nucs_path (str): path of the PuFFIN file for the nucleosome positions (optional - it works only for small fragments of chromosome).
-        out_path (str): path of saving data
+        out_path (str): path of saving data.
         '''
         ################################################################
         ################ CREATE OUTPUT FOLDER ##########################
         ################################################################
         self.save_path = out_path+'/'
-        self.ms, self.ns, self.ks, self.chr_ends, self.Cs = None,None,None,None,None
+        self.ms, self.ns, self.ks, self.chr_ends, self.Cs = None, None, None, None, None
         try:
             os.mkdir(self.save_path)
             os.mkdir(self.save_path+'chromosomes')
@@ -43,9 +43,7 @@ class MultiEM:
         except OSError as error:
             print("Folder 'chromosomes' already exists!")
         
-        chrom, coords = None, None
-        if not np.any(np.isnan(region)):
-            chrom, coords = region[0], region[1]
+        self.chrom, self.coords = chrom, coords
         
         ################################################################
         ################ LOAD COMPARTMENTS #############################
@@ -55,8 +53,9 @@ class MultiEM:
                                                viz=False,binary=True,\
                                                path=self.save_path)
         elif comp_path.endswith('.bed'):
-            self.Cs, self.chr_ends = import_compartments_from_bed(bed_file=comp_path,N_beads=N_beads,\
-                                                                  path=self.save_path)
+            self.Cs, self.chr_ends = import_compartments_from_Calder(bed_file=comp_path,N_beads=N_beads,\
+                                                                     chrom=self.chrom,coords=self.coords,\
+                                                                     save_path=self.save_path)
         elif comp_path=='random':
             self.Cs = random_blocks()
         else:
@@ -67,7 +66,8 @@ class MultiEM:
         ################################################################
         if loop_path.endswith('.bedpe'):
             self.ms, self.ns, self.ks, self.chr_ends = import_mns_from_bedpe(bedpe_file=loop_path,N_beads=N_beads,\
-                                                                             coords = coords, chrom=chrom, viz=False, path=self.save_path)
+                                                                             coords = self.coords, chrom=self.chrom,\
+                                                                             viz=False, path=self.save_path)
         elif loop_path=='random':
             self.ms, self.ns, self.ks = generate_arrays(N_loops=N_beads//8, N=N_beads)
         else:
@@ -83,23 +83,25 @@ class MultiEM:
         if nucs_path!=None:
             self.entry_points, self.exit_points = puffin_to_array(nucs_path)
             self.nuc_sim_len, self.num_nucs = int(self.exit_points[-1]+1), len(self.entry_points)
-            if self.nuc_sim_len>1e6: raise InterruptedError('Too large region or structure to model nucleosomes. Please choose smaller region or simulation beads. ;)')
+            if self.nuc_sim_len>1e7: raise InterruptedError('Too large region or structure to model nucleosomes. Please choose smaller region or simulation beads. ;)')
             print('Nucleosome simulation length:',self.nuc_sim_len)
             print('Number of nucleosomes',self.num_nucs)
         else:
             self.entry_points, self.exit_points, self.nuc_sim_len, self.num_nucs = None, None, 0, 0
         
-        if np.all(comp_path!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
+        # if np.all(comp_path!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
         
         ################################################################
         ################ LOAD CHROMOSOMES ##############################
         ################################################################
         self.chroms, self.chroms_AB = np.zeros(self.N_beads), np.zeros(self.N_beads)
-        chr_count = 1
-        for i in range(len(self.chr_ends)-1):
-            if not comp_gw: self.chroms_AB[self.chr_ends[i]:self.chr_ends[i+1]] = chr_count
-            self.chroms[self.chr_ends[i]:self.chr_ends[i+1]] = chr_count
-            chr_count += 1
+        if chrom==None:
+            chr_count = 1
+            for i in range(len(self.chr_ends)-1):
+                if not comp_gw: self.chroms_AB[self.chr_ends[i]:self.chr_ends[i+1]] = chr_count
+                self.chroms[self.chr_ends[i]:self.chr_ends[i+1]] = chr_count
+                chr_count += 1
+
 
     def add_forcefield(self):
         '''
@@ -107,23 +109,20 @@ class MultiEM:
         '''
         # Leonard-Jones potential for excluded volume
         self.ev_force = mm.CustomNonbondedForce('epsilon*((sigma1+sigma2)/r)^6')
-        if not self.run_MD:
-            self.ev_force.addGlobalParameter('epsilon', defaultValue=100)
-        else:
-            self.ev_force.addGlobalParameter('epsilon', defaultValue=1)
+        self.ev_force.addGlobalParameter('epsilon', defaultValue=100)
         self.ev_force.addPerParticleParameter('sigma')
         for i in range(self.system.getNumParticles()):
-            self.ev_force.addParticle([0.1])
+            self.ev_force.addParticle([0.05])
         self.system.addForce(self.ev_force)
         
         # Gaussian compartmentalization potential
         if np.all(self.Cs!=None) and len(np.unique(self.Cs)==2):
             self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea*delta(s1-1)*delta(s2-1)+Eb*delta(s1+1)*delta(s2+1))*delta(chrom1-chrom2)')
             self.comp_force.addGlobalParameter('sigma',defaultValue=0.5)
-            self.comp_force.addGlobalParameter('r0',defaultValue=0.2)
+            self.comp_force.addGlobalParameter('r0',defaultValue=0.1)
             self.comp_force.addGlobalParameter('E0',defaultValue=0.0)
-            self.comp_force.addGlobalParameter('Ea',defaultValue=-1.0)
-            self.comp_force.addGlobalParameter('Eb',defaultValue=-2.0)
+            self.comp_force.addGlobalParameter('Ea',defaultValue=-1)
+            self.comp_force.addGlobalParameter('Eb',defaultValue=-2)
             self.comp_force.addPerParticleParameter('s')
             self.comp_force.addPerParticleParameter('chrom')
             for i in range(self.system.getNumParticles()):
@@ -132,10 +131,10 @@ class MultiEM:
         elif np.all(self.Cs!=None) and len(np.unique(self.Cs)>=4):
             self.comp_force = mm.CustomNonbondedForce('E0+E*exp(-(r-r0)^2/(2*sigma^2)); E=(Ea1*delta(s1-2)*delta(s2-2)+Ea2*delta(s1-1)*delta(s2-1)+Eb1*delta(s1+1)*delta(s2+1)+Eb2*delta(s1+2)*delta(s2+2)')
             self.comp_force.addGlobalParameter('sigma',defaultValue=0.5)
-            self.comp_force.addGlobalParameter('r0',defaultValue=0.2)
+            self.comp_force.addGlobalParameter('r0',defaultValue=0.1)
             self.comp_force.addGlobalParameter('E0',defaultValue=0.0)
             self.comp_force.addGlobalParameter('Ea1',defaultValue=-0.5)
-            self.comp_force.addGlobalParameter('Ea2',defaultValue=-1.0)
+            self.comp_force.addGlobalParameter('Ea2',defaultValue=-1)
             self.comp_force.addGlobalParameter('Eb1',defaultValue=-1.5)
             self.comp_force.addGlobalParameter('Eb2',defaultValue=-2.0)
             self.comp_force.addPerParticleParameter('s')
@@ -145,59 +144,60 @@ class MultiEM:
             self.system.addForce(self.comp_force)
         
         # Spherical container
-        radius1 = (self.N_beads/50000)**(1/3)*1.5
-        radius2 = (self.N_beads/50000)**(1/3)*6
-        self.container_force = mm.CustomExternalForce('C*(max(0, r-R2)^2+max(0, R1-r)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-        self.container_force.addGlobalParameter('C',defaultValue=1000)
-        self.container_force.addGlobalParameter('R1',defaultValue=radius1)
-        self.container_force.addGlobalParameter('R2',defaultValue=radius2)
-        self.container_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
-        self.container_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
-        self.container_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
-        for i in range(self.system.getNumParticles()):
-            self.container_force.addParticle(i, [])
-        self.system.addForce(self.container_force)
-
-        if np.all(self.Cs!=None):
-            # Interaction of A compartment with lamina
-            self.Alamina_force = mm.CustomExternalForce('-A*sin(pi*(r-R1)/(R2-R1))^2*(delta(s-1)+delta(s-2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-            self.Alamina_force.addGlobalParameter('A',defaultValue=1000)
-            self.Alamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
-            self.Alamina_force.addGlobalParameter('R1',defaultValue=radius1)
-            self.Alamina_force.addGlobalParameter('R2',defaultValue=radius2)
-            self.Alamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
-            self.Alamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
-            self.Alamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
-            self.Alamina_force.addPerParticleParameter('s')
+        if self.chrom==None:
+            radius1 = (self.N_beads/50000)**(1/3)
+            radius2 = (self.N_beads/50000)**(1/3)*6
+            self.container_force = mm.CustomExternalForce('C*(max(0, r-R2)^2+max(0, R1-r)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+            self.container_force.addGlobalParameter('C',defaultValue=1000)
+            self.container_force.addGlobalParameter('R1',defaultValue=radius1)
+            self.container_force.addGlobalParameter('R2',defaultValue=radius2)
+            self.container_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
+            self.container_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
+            self.container_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
             for i in range(self.system.getNumParticles()):
-                self.Alamina_force.addParticle(i, [self.Cs[i]])
-            self.system.addForce(self.Alamina_force)
-            
-            # Interaction of B compartment with lamina
-            self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-            self.Blamina_force.addGlobalParameter('B',defaultValue=1000)
-            self.Blamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
-            self.Blamina_force.addGlobalParameter('R1',defaultValue=radius1)
-            self.Blamina_force.addGlobalParameter('R2',defaultValue=radius2)
-            self.Blamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
-            self.Blamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
-            self.Blamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
-            self.Blamina_force.addPerParticleParameter('s')
-            for i in range(self.system.getNumParticles()):
-                self.Blamina_force.addParticle(i, [self.Cs[i]])
-            self.system.addForce(self.Blamina_force)
+                self.container_force.addParticle(i, [])
+            self.system.addForce(self.container_force)
 
-        # Force that sets smaller chromosomes closer to the center
-        self.central_force = mm.CustomExternalForce('G*(chrom-1)/23*(-1/(r-R1+1)+1/(r-R1+1)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-        self.central_force.addGlobalParameter('G',defaultValue=2000)
-        self.central_force.addGlobalParameter('R1',defaultValue=radius1)
-        self.central_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
-        self.central_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
-        self.central_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
-        self.central_force.addPerParticleParameter('chrom')
-        for i in range(self.system.getNumParticles()):
-            self.central_force.addParticle(i, [self.chroms[i]])
-        self.system.addForce(self.central_force)
+            if np.all(self.Cs!=None):
+                # Interaction of A compartment with lamina
+                self.Alamina_force = mm.CustomExternalForce('-A*sin(pi*(r-R1)/(R2-R1))^2*(delta(s-1)+delta(s-2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+                self.Alamina_force.addGlobalParameter('A',defaultValue=1000)
+                self.Alamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
+                self.Alamina_force.addGlobalParameter('R1',defaultValue=radius1)
+                self.Alamina_force.addGlobalParameter('R2',defaultValue=radius2)
+                self.Alamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
+                self.Alamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
+                self.Alamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
+                self.Alamina_force.addPerParticleParameter('s')
+                for i in range(self.system.getNumParticles()):
+                    self.Alamina_force.addParticle(i, [self.Cs[i]])
+                self.system.addForce(self.Alamina_force)
+                
+                # Interaction of B compartment with lamina
+                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+                self.Blamina_force.addGlobalParameter('B',defaultValue=1000)
+                self.Blamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
+                self.Blamina_force.addGlobalParameter('R1',defaultValue=radius1)
+                self.Blamina_force.addGlobalParameter('R2',defaultValue=radius2)
+                self.Blamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
+                self.Blamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
+                self.Blamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
+                self.Blamina_force.addPerParticleParameter('s')
+                for i in range(self.system.getNumParticles()):
+                    self.Blamina_force.addParticle(i, [self.Cs[i]])
+                self.system.addForce(self.Blamina_force)
+
+            # Force that sets smaller chromosomes closer to the center
+            self.central_force = mm.CustomExternalForce('G*(chrom-1)/23*(-1/(r-R1+1)+1/(r-R1+1)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+            self.central_force.addGlobalParameter('G',defaultValue=2000)
+            self.central_force.addGlobalParameter('R1',defaultValue=radius1)
+            self.central_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
+            self.central_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
+            self.central_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
+            self.central_force.addPerParticleParameter('chrom')
+            for i in range(self.system.getNumParticles()):
+                self.central_force.addParticle(i, [self.chroms[i]])
+            self.system.addForce(self.central_force)
 
         # Bond force
         self.bond_force = mm.HarmonicBondForce()
@@ -206,14 +206,14 @@ class MultiEM:
         self.system.addForce(self.bond_force)
         
         # Add fixed loops force
-        if np.all(self.ms!=None) and np.all(self.ns!=None):
+        if np.all(self.ms==None) and np.all(self.ns==None):
             self.loop_force = mm.HarmonicBondForce()
             counter=0
             for m,n in tqdm(zip(self.ms,self.ns),total=len(self.ms)):
                 if np.any(self.ks==None):
                     self.loop_force.addBond(m,n,0.1,30000)
                 else:
-                    self.loop_force.addBond(m,n,0.1,self.ks[counter])
+                    self.loop_force.addBond(m,n,0.05,self.ks[counter])
             self.system.addForce(self.loop_force)
 
         # Bending potential for stiffness
@@ -266,16 +266,15 @@ class MultiEM:
         self.system_n.addForce(histone_dna_force)
         print('DNA-histone force imported.')
 
-    def run_pipeline(self,MD_steps=10000,run_MD=True,write_files=False,build_init_struct=True,Temperature=300*mm.unit.kelvin,init_struct_path=None,pltf='CUDA'):
+    def run_pipeline(self,MD_steps=10000,write_files=False,build_init_struct=True,Temperature=300*mm.unit.kelvin,init_struct_path=None,pltf='CUDA'):
         '''
         Energy minimization for GW model.
         '''
         # Initialize simulation
-        self.run_MD=run_MD
         if build_init_struct:
             print('\nCreating initial structure...')
             comp_mode = 'compartments' if np.all(self.Cs!=None) and len(np.unique(self.Cs))<=3 else 'subcompartments'
-            if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'MultiEM_compartment_colors.cmd',mode=comp_mode)
+            if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'MultiEM_compartment_colors.cmd')
             pdb_content = build_init_mmcif(n_dna=self.N_beads,path=self.save_path)
             print('---Done!---')
         pdb = PDBxFile(self.save_path+'MultiEM_init.cif') if init_struct_path==None or build_init_mmcif else PDBxFile(init_struct_path)
@@ -302,32 +301,12 @@ class MultiEM:
         PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_minimized.cif', 'w'))
         print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)/60:.2f} minutes. :D ---")
 
-        # Run molecular Dynamics
-        if self.run_MD:
-            print('\nRunning MD simulation...')
+        if self.chrom==None:
             start = time.time()
-            simulation.reporters.append(DCDReporter(self.save_path+'/MultiEM_traj.dcd', 5))
-            simulation.reporters.append(StateDataReporter(stdout, MD_steps//10, step=True, totalEnergy=True, potentialEnergy=True, temperature=True))
-            simulation.context.setVelocitiesToTemperature(Temperature, 0)
-            for i in range(0,MD_steps,10):
-                self.ev_force.setGlobalParameterDefaultValue(0,1+99*i/MD_steps)
-                simulation.step(10)
-            end = time.time()
-            elapsed = end - start
-            speed = MD_steps / elapsed
-            print(f"\n---MD finished in {elapsed/60:.2f} minutes ({speed:0.1f} steps/s)---")
-            
-            state = simulation.context.getState(getPositions=True)
-            PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_afterMD.cif', 'w'))
-
-        start = time.time()
-        V = get_coordinates_mm(state.getPositions())
-        save_metrics(V,path_name=self.save_path+'GW_')
-        for i in range(len(self.chr_ends)-1):
-            write_mmcif(coords=10*V[self.chr_ends[i]:self.chr_ends[i+1]],
-                        path=self.save_path+f'chromosomes/MultiEM_minimized_{chrs[i]}.cif')
-            save_metrics(V[self.chr_ends[i]:self.chr_ends[i+1]],path_name=self.save_path+f'chromosomes_info/{chrs[i]}_')
-
+            V = get_coordinates_mm(state.getPositions())
+            for i in range(len(self.chr_ends)-1):
+                write_mmcif(coords=10*V[self.chr_ends[i]:self.chr_ends[i+1]],
+                            path=self.save_path+f'chromosomes/MultiEM_minimized_{chrs[i]}.cif')
         
         if self.num_nucs>0: self.run_nuc_pipeline()
 
@@ -370,12 +349,13 @@ def main():
     bw_path = '/mnt/raid/data/Trios/calder_HiChIP_subcomp/YRB_d.bed'
     loop_path = '/mnt/raid/data/Trios/ChiA-PiPE_Loops/loops_pet3+/GM19240_YRI_C_CTCF_1mb_pet3.bedpe'
     nuc_path = None#'/mnt/raid/codes/other/PuFFIN/input/ENCFF415FEC_rep1_chr1.bed.nucs'
-    out_path_name = 'nucleosome_test'
+    out_path_name = 'region_test'
+    chrom = 'chr4'
+    coords = [2e7,10e7]
     
     # Run simulation
-    md = MultiEM(N_beads=50000,out_path=out_path_name,n_chrom=23,loop_path=loop_path,comp_path=bw_path,nucs_path=nuc_path)
-    md.run_pipeline(run_MD=False,build_init_struct=True,
-                    init_struct_path=None,pltf='CUDA')
+    md = MultiEM(N_beads=10000,out_path=out_path_name,loop_path=loop_path,comp_path=bw_path,nucs_path=nuc_path)
+    md.run_pipeline(build_init_struct=True,init_struct_path=None,pltf='CUDA')
 
 if __name__=='__main__':
     main()

@@ -7,10 +7,10 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from hilbertcurve.hilbertcurve import HilbertCurve
 
-def write_cmm(comps,name='MultiEM_compartment_colors.cmd',mode='compartments'):
+def write_cmm(comps,name='MultiEM_compartment_colors.cmd'):
     comp_old = 2
     counter, start = 0, 0
-    comp_dict = {-1:'blue', 1:'red', 0:'#fafcfc'} if mode=='compartments' else {-2:'#181385', -1:'#20c8e6', 1:'#e36a24',2:'#bf0020',0:'#fafcfc'}
+    comp_dict = {-2:'#181385', -1:'#20c8e6', 1:'#e36a24',2:'#bf0020',0:'#fafcfc'}
     content = ''
     
     for i, comp in enumerate(comps):
