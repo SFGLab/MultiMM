@@ -13,8 +13,9 @@ from tqdm import tqdm
 import pyBigWig
 from scipy import stats
 import random as rd
-import networkx as nx
 from itertools import groupby
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 pd.options.mode.chained_assignment = None
 
@@ -41,18 +42,6 @@ chrom_colors = ['#ab0215','#f50a0a','#f5540a','#f5b20a','#e9f50a','#b6f50a','#3d
               '#0af59b','#0af5f1','#0abef5','#0a70f5','#0a2df5','#770af5',
               '#a60af5','#ce0af5','#f50ae1','#e37dcd','#d494c6','#d9abcf',
               '#d9bdd3','#e6dce4','#f7f7f7','#1c4e4f','#4e4f1c']
-
-def make_folder(N_beads,chrom,region):
-    folder_name = f'stochastic_model_Nbeads_{N_beads}_chr_{chrom}_region_{region[0]}_{region[1]}'
-    try:
-        os.mkdir(folder_name)
-        os.mkdir(folder_name+'/plots')
-        os.mkdir(folder_name+'/other')
-        os.mkdir(folder_name+'/pdbs')
-        os.mkdir(folder_name+'/heatmaps')
-    except OSError as error:
-        print(f'Directory with name "{folder_name}" already exists! No problem lets continue!')
-    return folder_name
 
 def get_coordinates_mm(mm_vec):
     '''
@@ -215,8 +204,8 @@ def import_compartments_from_Calder(bed_file,N_beads,coords=None,chrom=None,save
     # Find maximum coordinate of each chromosome
     print('Cleaning and transforming subcompartments dataframe...')
     chrom_ends = np.cumsum(chrom_lengths_array) if chrom==None else np.array([0,chrom_sizes[chrom]])
-    if not chrom==None:
-        comps_df = comps_df[(comps_df[1]>coords[0]) & (comps_df[2]<coords[1])].reset_index(drop=True)
+    if chrom!=None:
+        comps_df = comps_df[(comps_df[0]==chrom)&(comps_df[1]>coords[0]) & (comps_df[2]<coords[1])].reset_index(drop=True)
     n_chroms = len(np.unique(comps_df[0].values))
     
     # Sum bigger chromosomes with the maximum values of previous chromosomes
@@ -226,11 +215,11 @@ def import_compartments_from_Calder(bed_file,N_beads,coords=None,chrom=None,save
             comps_df[2][comps_df[0]==chrs[i]]=comps_df[2][comps_df[0]==chrs[i]]+chrom_ends[i]
 
     # Convert genomic coordinates to simulation beads
-    resolution = int(np.max(comps_df[2].values))//N_beads if chrom==None else (coords[1]-coords[0])//N_beads
+    resolution = chrom_ends[-1]//N_beads if chrom==None else (coords[1]-coords[0])//N_beads
     chrom_ends = np.array(chrom_ends)//resolution
     chrom_ends[-1] = N_beads
     np.save(save_path+'chrom_lengths.npy',chrom_ends)
-    if chrom!=None: 
+    if chrom!=None:
         comps_df[1], comps_df[2] = comps_df[1]-coords[0], comps_df[2]-coords[0]
     comps_df[1], comps_df[2] = comps_df[1]//resolution, comps_df[2]//resolution
     
@@ -272,13 +261,13 @@ def write_chrom_colors(chrom_ends,name='MultiEM_chromosome_colors.cmd'):
 def min_max_trans(x):
     return (x-x.min())/(x.max()-x.min())
 
-def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=10,viz=False,min_loop_dist=3,path=''):
+def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=3,viz=False,min_loop_dist=0,path=''):
     # Import loops
     loops = pd.read_csv(bedpe_file,header=None,sep='\t')
     n_chroms = len(np.unique(loops[0].values))
     chroms = list(chrs[i] for i in range(n_chroms)) if chrom==None else [chrom]
-    if not chrom==None:
-        loops = loops[(loops[1]>coords[0]) & (loops[2]<coords[1]) & (loops[4]>coords[0]) & (loops[5]<coords[1])].reset_index(drop=True)
+    if chrom!=None:
+        loops = loops[(loops[0]==chrom)&(loops[1]>coords[0])&(loops[2]<coords[1])&(loops[4]>coords[0])&(loops[5]<coords[1])].reset_index(drop=True)
     chrom_ends = np.cumsum(chrom_lengths_array) if chrom==None else np.array([0,chrom_sizes[chrom]])
     
     print('Cleaning and transforming loops dataframe...')
@@ -300,8 +289,6 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=10
     loops[1], loops[2], loops[4], loops[5] = loops[1]//resolution, loops[2]//resolution, loops[4]//resolution, loops[5]//resolution
     loops['ms'] = (loops[1].values+loops[2].values)//2
     loops['ns'] = (loops[4].values+loops[5].values)//2
-    
-
     loops['Total Count'] = loops.groupby(['ms', 'ns'])[6].transform('mean')
     counts = loops['Total Count'].values
     
@@ -313,9 +300,10 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=10
     ms, ns = mns[0,:], mns[1,:]
     ms[ms>=N_beads],ns[ns>=N_beads]=N_beads-1, N_beads-1
     ms,ns,cs = ms[ns>ms+min_loop_dist], ns[ns>ms+min_loop_dist], cs[ns>ms+min_loop_dist]
-    zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
-    zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
-    ks = 1000+28000*min_max_trans(zs)
+    # zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
+    # zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
+    # ks = 1000+599000*min_max_trans(zs)
+    ds = 0.05+0.15*min_max_trans(1/cs**2/3)
 
     # Perform some data cleaning
     mask = (ns-ms)!=0
@@ -323,14 +311,14 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=10
     ns = ns[mask]
     avg_ls = np.average(ns-ms)
     print('Average loop size:',avg_ls)
-    ks= ks[mask]
+    ds= ds[mask]
     cs = cs[mask]
     N_loops = len(ms)
     np.save(path+'ms.npy',ms)
     np.save(path+'ns.npy',ns)
-    np.save(path+'ks.npy',ks)
+    np.save(path+'ds.npy',ds)
     print('Done! Number of loops is ',N_loops)
-    return ms, ns, ks, chrom_ends
+    return ms, ns, ds, chrom_ends
 
 def generate_arrays(N_loops, N, l=6):
     # Generate array ms with random integers between 0 and N (exclusive)

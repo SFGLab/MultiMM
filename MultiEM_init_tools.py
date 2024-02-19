@@ -1,29 +1,121 @@
 import numpy as np
 import pandas as pd
-from points_io.hybrid36 import hy36encode
 from mpl_toolkits import mplot3d
 from scipy import interpolate
 import matplotlib.pyplot as plt
-import plotly.express as px
 from hilbertcurve.hilbertcurve import HilbertCurve
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
+def encode_pure(digits, value):
+    """encodes value using the given digits"""
+    assert value >= 0
+    if value == 0:
+        return digits[0]
+    n = len(digits)
+    result = []
+    while value != 0:
+        rest = value // n
+        result.append(digits[value - rest * n])
+        value = rest
+    result.reverse()
+    return "".join(result)
+
+
+def decode_pure(digits_values, s):
+    """decodes the string s using the digit, value associations for each character"""
+    result = 0
+    n = len(digits_values)
+    for c in s:
+        result *= n
+        result += digits_values[c]
+    return result
+
+
+def hy36encode(width, value):
+    """encodes value as base-10/upper-case base-36/lower-case base-36 hybrid"""
+    i = value
+    if i >= 1 - 10 ** (width - 1):
+        if i < 10 ** width:
+            return ("%%%dd" % width) % i
+        i -= 10 ** width
+        if i < 26 * 36 ** (width - 1):
+            i += 10 * 36 ** (width - 1)
+            return encode_pure(digits_upper, i)
+        i -= 26 * 36 ** (width - 1)
+        if i < 26 * 36 ** (width - 1):
+            i += 10 * 36 ** (width - 1)
+            return encode_pure(digits_lower, i)
+    raise ValueError("value out of range.")
+
+
+def hy36decode(width, s):
+    """decodes base-10/upper-case base-36/lower-case base-36 hybrid"""
+    if len(s) == width:
+        f = s[0]
+        if f == "-" or f == " " or f.isdigit():
+            try:
+                return int(s)
+            except ValueError:
+                pass
+            if s == " " * width:
+                return 0
+        elif f in digits_upper_values:
+            try:
+                return decode_pure(
+                    digits_values=digits_upper_values, s=s) - 10 * 36 ** (width - 1) + 10 ** width
+            except KeyError:
+                pass
+        elif f in digits_lower_values:
+            try:
+                return decode_pure(
+                    digits_values=digits_lower_values, s=s) + 16 * 36 ** (width - 1) + 10 ** width
+            except KeyError:
+                pass
+    raise ValueError("invalid number literal.")
+
+def find_element_indexes(arr, elem):
+    indexes = np.where(arr == elem)[0]
+    ranges = []
+    start_index = indexes[0]
+    
+    for i in range(1, len(indexes)):
+        if indexes[i] != indexes[i-1] + 1:
+            if start_index == indexes[i-1]:
+                ranges.append(str(start_index))
+            else:
+                ranges.append(f"{start_index}-{indexes[i-1]}")
+            start_index = indexes[i]
+
+    # Handle the last range
+    if start_index == indexes[-1]:
+        ranges.append(str(start_index))
+    else:
+        ranges.append(f"{start_index}-{indexes[-1]}")
+
+    return ', '.join(ranges)
 
 def write_cmm(comps,name='MultiEM_compartment_colors.cmd'):
     comp_old = 2
     counter, start = 0, 0
     comp_dict = {-2:'#181385', -1:'#20c8e6', 1:'#e36a24',2:'#bf0020',0:'#fafcfc'}
-    content = ''
+    spins = np.unique(comps)
+    lines = []
+    for s in spins:
+        lines.append('color '+comp_dict[int(s)]+' :')
     
-    for i, comp in enumerate(comps):
-        if comp_old==comp:
-            counter+=1
-        elif i!=0:
-            content+=f'color {comp_dict[int(comp_old)]} :{start}-{start+counter+1}\n'
-            counter, start = 0, i
-        comp_old=comp
+    for i, s in enumerate(spins):
+        positions = find_element_indexes(comps, s)
+        lines[i] = lines[i]+positions
 
-    content+=f'color {comp_dict[comp]} :{start}-{start+counter+1}\n'
-    with open(name, 'w') as f:
-        f.write(content)
+    content=''
+    for i in range(len(lines)):
+        content+=lines[i]+'\n'
+    
+    with open(name,'w') as fp:
+        fp.write(content)
+    fp.close()
+    
 
 def read_compartments(file,ch,reg,res,binary=True):
     file = pd.read_csv('/mnt/raid/data/compartments/RAO_GM12878_subcomp_hg38.bed',header=None,sep='\t')
@@ -54,12 +146,27 @@ def generate_hilbert_curve(n_points,p=10,n=3,viz=False):
 
         ax.plot3D (x, y, z, 'green')
         ax.set_title('Hilbert Curve')
-        plt.show()
+        plt.show() 
     return np.array(points)
 
-def build_init_mmcif(n_dna,psf=True,path=''):
+def polymer_circle(n: int, z_stretch: float = 0.0, radius: float = None) -> np.ndarray:
+    points = []
+    angle_increment = 360 / float(n)
+    radius = 1 / (2 * np.sin(np.radians(angle_increment) / 2.)) if radius==None else radius
+    z_stretch = z_stretch / n
+    z = 0
+    for i in range(n):
+        x = radius * np.cos(angle_increment * i * np.pi / 180)
+        y = radius * np.sin(angle_increment * i * np.pi / 180)
+        if z_stretch != 0:
+            z += z_stretch
+        points.append((x, y, z))
+    points = np.array(points)
+    return points
+
+def build_init_mmcif(n_dna,psf=True,path='',hilbert=True):
     # Define the initial coordinates of histones and the structure of DNA
-    dna_points = generate_hilbert_curve(n_dna)
+    dna_points = generate_hilbert_curve(n_dna) if hilbert else polymer_circle(n_dna,50,5)
     
     # Write the positions in .mmcif file
     atoms = ''
@@ -253,15 +360,53 @@ def get_df_cif(file):
     df['res_idxs'] = res_idxs
     return df
 
-def plot_structure(path,with_nucleosomes=False):
-    df = get_df_cif(file=path)
-    fig = px.line_3d(df[df['residue']=='ALA'], x="x", y="y", z="z")
-    fig.update_layout(
-        autosize=True,
-        width=1000,
-        height=900,
-        margin=dict(r=0, l=0, b=0, t=0))
-    fig.show()
+def random_walk(n: int, R1=0, R2=np.inf) -> np.ndarray:
+    r = (R1+R2)/2
+    points = [[r,0,0]]
+    count = 0
+    while count<n-1:
+        v = np.random.uniform(-1, 1, 3)
+        vec = [points[-1][0] + v[0], points[-1][1] + v[1], points[-1][2] + v[2]]
+        if np.linalg.norm(vec)>=R1 and np.linalg.norm(vec)<=R2:
+            points.append(vec)
+            count+=1
+    return np.array(points)
+
+def self_avoiding_random_walk(n: int, step: float = 1.0, bead_radius: float = 0.5, epsilon: float = 0.001, two_dimensions=False) -> np.ndarray:
+    potential_new_step = [0, 0, 0]
+    while True:
+        points = [np.array([0, 0, 0])]
+        for _ in tqdm(range(n - 1)):
+            step_is_ok = False
+            trials = 0
+            while not step_is_ok and trials < 1000:
+                potential_new_step = points[-1] + step * random_versor()
+                if two_dimensions:
+                    potential_new_step[2] = 0
+                for j in points:
+                    d = dist(j, potential_new_step)
+                    if d < 2 * bead_radius - epsilon:
+                        trials += 1
+                        break
+                else:
+                    step_is_ok = True
+            points.append(potential_new_step)
+        points = np.array(points)
+        return points
+
+def plot_structure(struct):
+    # syntax for 3-D projection
+    ax = plt.axes(projection ='3d')
+    
+    # defining all 3 axis
+    z = struct[:,2]
+    x = struct[:,0]
+    y = struct[:,1]
+    
+    # plotting
+    ax.plot3D(x, y, z, 'green')
+    ax.set_title('3D line plot')
+    plt.show()
 
 def load_from_file(path,num_pts):
     V = get_coordinates_cif(path)
