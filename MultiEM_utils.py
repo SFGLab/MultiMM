@@ -193,7 +193,7 @@ def import_bw(bw_path,N_beads,n_chroms,viz=False,binary=False,path=''):
         plt.grid()
         plt.close()
 
-    np.save(path+'genomewide_signal.npy',genomewide_signal[:N_beads])
+    np.save(path+'comps.npy',genomewide_signal[:N_beads])
     
     return genomewide_signal[:N_beads], polymer_lengths
 
@@ -236,7 +236,7 @@ def import_compartments_from_Calder(bed_file,N_beads,coords=None,chrom=None,save
         elif comps_df[3][i].startswith('B.2'):
             val = 2
         comps_array[comps_df[1][i]:comps_df[2][i]] = val
-    np.save(save_path+'genomewide_signal.npy',comps_array)
+    np.save(save_path+'compartments.npy',comps_array)
     print('Done')
     return comps_array.astype(int), chrom_ends.astype(int)
 
@@ -253,7 +253,7 @@ def align_comps(comps,ms,chrom_ends):
 def write_chrom_colors(chrom_ends,name='MultiEM_chromosome_colors.cmd'):    
     content = ''
     for i in range(len(chrom_ends)-1):
-        content+=f'color {chrom_colors[i]} :{chrom_ends[i]}-{chrom_ends[i+1]}\n'
+        content+=f'color bychain {chrom_colors[i]} : {chr(64+1+i)}\n'
 
     with open(name, 'w') as f:
         f.write(content)
