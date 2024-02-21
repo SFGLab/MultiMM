@@ -7,6 +7,8 @@ from hilbertcurve.hilbertcurve import HilbertCurve
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+subcomp_dict={-2:'B1',-1:'B2',0:'O',1:'A1',2:'A2'}
+
 def encode_pure(digits, value):
     """encodes value using the given digits"""
     assert value >= 0
@@ -98,7 +100,7 @@ def find_element_indexes(arr, elem):
 def write_cmm(comps,name='MultiEM_compartment_colors.cmd'):
     comp_old = 2
     counter, start = 0, 0
-    comp_dict = {-2:'#181385', -1:'#20c8e6', 1:'#e36a24',2:'#bf0020',0:'#fafcfc'}
+    comp_dict = {-2:'#bf0020', -1:'#ba5062', 1:'#4e4c87',2:'#181385',0:'#fafcfc'}
     spins = np.unique(comps)
     lines = []
     for s in spins:
@@ -107,7 +109,7 @@ def write_cmm(comps,name='MultiEM_compartment_colors.cmd'):
     for i, s in enumerate(spins):
         positions = find_element_indexes(comps, s)
         lines[i] = lines[i]+positions
-
+    
     content=''
     for i in range(len(lines)):
         content+=lines[i]+'\n'
@@ -115,7 +117,6 @@ def write_cmm(comps,name='MultiEM_compartment_colors.cmd'):
     with open(name,'w') as fp:
         fp.write(content)
     fp.close()
-    
 
 def read_compartments(file,ch,reg,res,binary=True):
     file = pd.read_csv('/mnt/raid/data/compartments/RAO_GM12878_subcomp_hg38.bed',header=None,sep='\t')
@@ -133,7 +134,7 @@ def read_compartments(file,ch,reg,res,binary=True):
 
 def generate_hilbert_curve(n_points,p=4,n=3,viz=False):
     hilbert_curve = HilbertCurve(p, n)
-    distances = list(range(4015))
+    distances = list(range(4095)) if n_points>4095 else list(range(n_points))
     points = np.array(hilbert_curve.points_from_distances(distances))
     if viz:
         fig = plt.figure()
@@ -146,12 +147,15 @@ def generate_hilbert_curve(n_points,p=4,n=3,viz=False):
         ax.plot3D (x, y, z, 'green')
         ax.set_title('Hilbert Curve')
         plt.show()
-        
-    x_sim, y_sim, z_sim = points[:,0], points[:,1], points[:,2]
-    tck, u = interpolate.splprep(x=[x_sim,y_sim,z_sim], s=2)
-    u_fine = np.linspace(0,1,n_points)
-    x_fine, y_fine, z_fine = interpolate.splev(u_fine, tck)
-    V_interpol = np.vstack((x_fine,y_fine,z_fine)).T
+    
+    if n_points>4095:
+        x_sim, y_sim, z_sim = points[:,0], points[:,1], points[:,2]
+        tck, u = interpolate.splprep(x=[x_sim,y_sim,z_sim], s=2)
+        u_fine = np.linspace(0,1,n_points)
+        x_fine, y_fine, z_fine = interpolate.splev(u_fine, tck)
+        V_interpol = np.vstack((x_fine,y_fine,z_fine)).T
+    else:
+        V_interpol = points
     return V_interpol
 
 def polymer_circle(n: int, z_stretch: float = 0.0, radius: float = None) -> np.ndarray:
@@ -169,37 +173,7 @@ def polymer_circle(n: int, z_stretch: float = 0.0, radius: float = None) -> np.n
     points = np.array(points)
     return points
 
-def write_mmcif_chrom(coords,path):
-    # Write the positions in .mmcif file
-    atoms = ''
-    
-    ## DNA beads
-    for i in range(len(coords)):
-        [res_name, atom_name, cl] = ['ALA', 'CA', 'A'] if (i!=0 and i!=len(coords)-1) else ['ALB', 'CB', 'A']
-        atoms += ('{0:} {1:} {2:} {3:} {4:} {5:} {6:} {7:} {8:} '
-                  '{9:} {10:.3f} {11:.3f} {12:.3f}\n'.format('ATOM', i+1, 'D', atom_name,\
-                                                             '.', res_name, cl, 1, i+1, '?',\
-                                                             coords[i,0], coords[i,1], coords[i,2]))
-    
-    # Write connections
-    connects = ''
-    
-    for i in range(len(coords)-1):
-        [res_name1, atom_name1, cl1] = ['ALA', 'CA', 'A'] if (i!=0 and i!=(len(coords)-1)) else ['ALB', 'CB', 'A']
-        [res_name2, atom_name2, cl2] = ['ALA', 'CA', 'A'] if ((i+1)!=0 and (i+1)!=(len(coords)-1)) else ['ALB', 'CB', 'A']
-        connects += f'D{i+1} covale {res_name1} {cl1} {i+1} {atom_name1} {res_name2} {cl2} {i+2} {atom_name2}\n'
-
-    # Save files
-    ## .pdb
-    atomhead = mmcif_atomhead()
-    conhead = mmcif_connecthead()
-    mmcif_file_content = atomhead+atoms+conhead+connects
-    
-    f = open(path, "w")
-    f.write(mmcif_file_content)
-    f.close()
-
-def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',hilbert=True):
+def build_init_mmcif(n_dna,chrom_ends,Cs,psf=True,path='',hilbert=True):
     # Define the initial coordinates of histones and the structure of DNA
     dna_points = generate_hilbert_curve(n_dna) if hilbert else polymer_circle(n_dna,50,5)
     
@@ -210,11 +184,12 @@ def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',hilbert=True):
     for i in range(n_dna):
         chain_idx = np.searchsorted(chrom_ends,i)
         if i in chrom_ends: chain_idx+=1
-        [atom_type,res_name, atom_name, cl] = ['HETATM','ALB', 'CB', chain_idx] if (i in chrom_ends) | (i in chrom_ends-1) else ['ATOM','ALA', 'CA', chain_idx]
+        [atom_type,res_name, atom_name, cl] = ['HETATM','ALB', 'CB', chr(64+chain_idx)] if (i in chrom_ends) | (i in chrom_ends-1) else ['ATOM','ALA', 'CA', chr(64+chain_idx)]
         atoms += ('{0:} {1:} {2:} {3:} {4:} {5:} {6:} {7:} {8:} '
-                  '{9:} {10:.3f} {11:.3f} {12:.3f}\n'.format(atom_type, i+1, 'D', atom_name,\
+                  '{9:} {10:.3f} {11:.3f} {12:.3f} {13:}\n'.format(atom_type, i+1, 'D', atom_name,\
                                                              '.', res_name, cl, chain_idx, i+1, '?',\
-                                                             dna_points[i,0], dna_points[i,1], dna_points[i,2]))
+                                                             dna_points[i,0], dna_points[i,1], dna_points[i,2],\
+                                                             subcomp_dict[Cs[i]]))
     
     # Write connections
     connects = ''
@@ -222,8 +197,8 @@ def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',hilbert=True):
     for i in range(n_dna-1):
         chain_idx = np.searchsorted(chrom_ends,i)
         if i in chrom_ends: chain_idx+=1
-        [atom_type1,res_name1, atom_name1, cl1] = ['HETATM','ALB', 'CB', chain_idx] if (i in chrom_ends) | (i in chrom_ends-1) else ['ATOM','ALA', 'CA', chain_idx]
-        [atom_type2,res_name2, atom_name2, cl2] = ['HETATM','ALB', 'CB', chain_idx] if (i+1 in chrom_ends) | (i+1 in chrom_ends-1) else ['ATOM','ALA', 'CA', chain_idx]
+        [atom_type1,res_name1, atom_name1, cl1] = ['HETATM','ALB', 'CB', chr(64+chain_idx)] if (i in chrom_ends) | (i in chrom_ends-1) else ['ATOM','ALA', 'CA', chr(64+chain_idx)]
+        [atom_type2,res_name2, atom_name2, cl2] = ['HETATM','ALB', 'CB', chr(64+chain_idx)] if (i+1 in chrom_ends) | (i+1 in chrom_ends-1) else ['ATOM','ALA', 'CA', chr(64+chain_idx)]
         connects += f'D{i+1} covale {res_name1} {cl1} {i+1} {atom_name1} {res_name2} {cl2} {i+2} {atom_name2}\n'
 
     # Save files
@@ -240,7 +215,7 @@ def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',hilbert=True):
 
     print("File {} saved...".format(mmcif_file_name))
 
-def write_mmcif(coords,chrom_ends,path):
+def write_mmcif(coords,chrom_ends,Cs,path):
     # Write the positions in .mmcif file
     atoms = ''
     
@@ -248,11 +223,11 @@ def write_mmcif(coords,chrom_ends,path):
     for i in range(len(coords)):
         chain_idx = np.searchsorted(chrom_ends,i)
         if i in chrom_ends: chain_idx+=1
-        [res_name, atom_name, cl] = ['ALB', 'CB', chain_idx] if (i in chrom_ends) | (i in chrom_ends-1) else ['ALA', 'CA', chain_idx]
+        [res_name, atom_name, cl] = ['ALB', 'CB', chr(64+chain_idx)] if (i in chrom_ends) | (i in chrom_ends-1) else ['ALA', 'CA', chr(64+chain_idx)]
         atoms += ('{0:} {1:} {2:} {3:} {4:} {5:} {6:} {7:} {8:} '
-                  '{9:} {10:.3f} {11:.3f} {12:.3f}\n'.format('ATOM', i+1, 'D', atom_name,\
+                  '{9:} {10:.3f} {11:.3f} {12:.3f} {13:}\n'.format('ATOM', i+1, 'D', atom_name,\
                                                              '.', res_name, cl, chain_idx, i+1, '?',\
-                                                             coords[i,0], coords[i,1], coords[i,2]))
+                                                             coords[i,0], coords[i,1], coords[i,2], subcomp_dict[Cs[i]]))
     
     # Write connections
     connects = ''
@@ -260,15 +235,45 @@ def write_mmcif(coords,chrom_ends,path):
     for i in range(len(coords)-1):
         chain_idx = np.searchsorted(chrom_ends,i)
         if i in chrom_ends: chain_idx+=1
-        [res_name1, atom_name1, cl1] = ['ALB', 'CB', chain_idx] if (i in chrom_ends) | (i in chrom_ends-1) else ['ALA', 'CA', chain_idx]
-        [res_name2, atom_name2, cl2] = ['ALB', 'CB', chain_idx] if (i+1 in chrom_ends) | (i+1 in chrom_ends-1) else ['ALA', 'CA', chain_idx]
+        [res_name1, atom_name1, cl1] = ['ALB', 'CB', chr(64+chain_idx)] if (i in chrom_ends) | (i in chrom_ends-1) else ['ALA', 'CA', chr(64+chain_idx)]
+        [res_name2, atom_name2, cl2] = ['ALB', 'CB', chr(64+chain_idx)] if (i+1 in chrom_ends) | (i+1 in chrom_ends-1) else ['ALA', 'CA', chr(64+chain_idx)]
         connects += f'D{i+1} covale {res_name1} {cl1} {i+1} {atom_name1} {res_name2} {cl2} {i+2} {atom_name2}\n'
 
     # Save files
     ## .pdb
     atomhead = mmcif_atomhead()
     conhead = mmcif_connecthead()
-    mmcif_file_content = atomhead+atoms+conhead+connects
+    mmcif_file_content = atomhead+atoms#+conhead+connects
+    
+    f = open(path, "w")
+    f.write(mmcif_file_content)
+    f.close()
+
+def write_mmcif_chrom(coords,Cs,path):
+    # Write the positions in .mmcif file
+    atoms = ''
+    
+    ## DNA beads
+    for i in range(len(coords)):
+        [res_name, atom_name, cl] = ['ALA', 'CA', 'A'] if (i!=0 and i!=len(coords)-1) else ['ALB', 'CB', 'A']
+        atoms += ('{0:} {1:} {2:} {3:} {4:} {5:} {6:} {7:} {8:} '
+                  '{9:} {10:.3f} {11:.3f} {12:.3f} {13:}\n'.format('ATOM', i+1, 'D', atom_name,\
+                                                             '.', res_name, cl, 1, i+1, '?',\
+                                                             coords[i,0], coords[i,1], coords[i,2], subcomp_dict[Cs[i]]))
+    
+    # Write connections
+    connects = ''
+    
+    for i in range(len(coords)-1):
+        [res_name1, atom_name1, cl1] = ['ALA', 'CA', 'A'] if (i!=0 and i!=(len(coords)-1)) else ['ALB', 'CB', 'A']
+        [res_name2, atom_name2, cl2] = ['ALA', 'CA', 'A'] if ((i+1)!=0 and (i+1)!=(len(coords)-1)) else ['ALB', 'CB', 'A']
+        connects += f'D{i+1} covale {res_name1} {cl1} {i+1} {atom_name1} {res_name2} {cl2} {i+2} {atom_name2}\n'
+
+    # Save files
+    ## .pdb
+    atomhead = mmcif_atomhead()
+    conhead = mmcif_connecthead()
+    mmcif_file_content = atomhead+atoms#+conhead+connects
     
     f = open(path, "w")
     f.write(mmcif_file_content)
@@ -300,9 +305,9 @@ def generate_psf(n: int, file_name='stochastic_LE.psf', title="No title provided
         f.writelines(lines)
 
 def mmcif_atomhead():
-    head = """data_nucsim
+    head = """data_MultiEM
 # 
-_entry.id nucsim
+_entry.id MultiEM
 # 
 _audit_conform.dict_name       mmcif_pdbx.dic 
 _audit_conform.dict_version    5.296 
@@ -322,6 +327,7 @@ _atom_site.pdbx_PDB_ins_code
 _atom_site.Cartn_x 
 _atom_site.Cartn_y 
 _atom_site.Cartn_z
+_atom_site.subcompartment
 """
     return head
 

@@ -116,7 +116,7 @@ class MultiEM:
         
         # Gaussian compartmentalization potential - compartment blocks
         radius1 = (self.N_beads/50000)**(1/3)*1
-        radius2 = (self.N_beads/50000)**(1/3)*6
+        radius2 = (self.N_beads/50000)**(1/3)*4
         r0 = radius2/10 if self.chrom==None else (self.coords[1]-self.coords[0])/chrom_sizes[self.chrom]
         print('Comp range:',r0)
         if np.all(self.Cs!=None) and len(np.unique(self.Cs)==2):
@@ -142,15 +142,16 @@ class MultiEM:
         
         # Spherical container
         if self.chrom==None:
-            # # Chromosomal blocks
-            # self.chrom_force = mm.CustomNonbondedForce('-E*exp(-r^2/(2*r1^2)); E=dE*delta(chrom1-chrom2)')
-            # self.chrom_force.addGlobalParameter('r1',defaultValue=r0/4)
-            # self.chrom_force.addGlobalParameter('dE',defaultValue=1)
-            # self.chrom_force.addPerParticleParameter('chrom')
-            # for i in range(self.system.getNumParticles()):
-            #     self.chrom_force.addParticle([self.chroms[i]])
-            # self.system.addForce(self.chrom_force)
+            # Chromosomal blocks
+            self.chrom_force = mm.CustomNonbondedForce('-E*exp(-r^2/(2*r1^2)); E=dE*delta(chrom1-chrom2)')
+            self.chrom_force.addGlobalParameter('r1',defaultValue=3*r0/4)
+            self.chrom_force.addGlobalParameter('dE',defaultValue=0.1)
+            self.chrom_force.addPerParticleParameter('chrom')
+            for i in range(self.system.getNumParticles()):
+                self.chrom_force.addParticle([self.chroms[i]])
+            self.system.addForce(self.chrom_force)
 
+            # Spherical container
             self.container_force = mm.CustomExternalForce('C*(max(0, r-R2)^2+max(0, R1-r)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             self.container_force.addGlobalParameter('C',defaultValue=1000)
             self.container_force.addGlobalParameter('R1',defaultValue=radius1)
@@ -161,7 +162,7 @@ class MultiEM:
             for i in range(self.system.getNumParticles()):
                 self.container_force.addParticle(i, [])
             self.system.addForce(self.container_force)
-
+            
             if np.all(self.Cs!=None):
                 # # Interaction of A compartment with lamina
                 # self.Alamina_force = mm.CustomExternalForce('-A*sin(pi*(r-R1)/(R2-R1))^2*(delta(s-1)+delta(s-2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
@@ -178,8 +179,11 @@ class MultiEM:
                 # self.system.addForce(self.Alamina_force)
                 
                 # Interaction of B compartment with lamina
-                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-                self.Blamina_force.addGlobalParameter('B',defaultValue=1e5)
+                if radius1!=0.0:
+                    self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^2-1)*(delta(s+1)+delta(s+2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+                else:
+                    self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^2-1)*(delta(s+1)+delta(s+2))*step(R2/2)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+                self.Blamina_force.addGlobalParameter('B',defaultValue=5e3)
                 self.Blamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
                 self.Blamina_force.addGlobalParameter('R1',defaultValue=radius1)
                 self.Blamina_force.addGlobalParameter('R2',defaultValue=radius2)
@@ -279,7 +283,7 @@ class MultiEM:
             print('\nCreating initial structure...')
             comp_mode = 'compartments' if np.all(self.Cs!=None) and len(np.unique(self.Cs))<=3 else 'subcompartments'
             if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'MultiEM_compartment_colors.cmd')
-            pdb_content = build_init_mmcif(n_dna=self.N_beads,chrom_ends=self.chr_ends,path=self.save_path,hilbert=self.chrom==None)
+            pdb_content = build_init_mmcif(n_dna=self.N_beads,chrom_ends=self.chr_ends,Cs=self.Cs,path=self.save_path,hilbert=self.chrom==None)
             print('---Done!---')
         pdb = PDBxFile(self.save_path+'MultiEM_init.cif') if init_struct_path==None or build_init_mmcif else PDBxFile(init_struct_path)
         self.mass_center = np.average(get_coordinates_mm(pdb.positions),axis=0)
@@ -305,16 +309,17 @@ class MultiEM:
         start_time = time.time()
         simulation.minimizeEnergy(tolerance=0.001)
         state = simulation.context.getState(getPositions=True)
-        PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_minimized.cif', 'w'))
+        PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_minimized_openmm.cif', 'w'))
+        write_mmcif(coords=10*get_coordinates_mm(state.getPositions()),chrom_ends=self.chr_ends,Cs=self.Cs,path=self.save_path+'MultiEM_minimized.cif')
         print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)/60:.2f} minutes. :D ---\n")
 
         if viz: plot_projection(get_coordinates_mm(state.getPositions()),self.Cs,save_path=self.save_path)
-
+        
         # if self.chrom==None:
         start = time.time()
         V = get_coordinates_mm(state.getPositions())
         for i in range(len(self.chr_ends)-1):
-            write_mmcif_chrom(coords=10*V[self.chr_ends[i]:self.chr_ends[i+1]],\
+            write_mmcif_chrom(coords=10*V[self.chr_ends[i]:self.chr_ends[i+1]],Cs=self.Cs[self.chr_ends[i]:self.chr_ends[i+1]],\
                         path=self.save_path+f'chromosomes/MultiEM_minimized_{chrs[i]}.cif')
 
         if run_SA:

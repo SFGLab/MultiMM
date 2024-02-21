@@ -3,6 +3,7 @@
 #########################################################################
 
 from matplotlib.pyplot import figure
+from matplotlib.colors import to_hex
 import matplotlib.pyplot as plt
 import os
 import pandas as pd
@@ -37,11 +38,6 @@ chrom_sizes = {'chr1':248387328,'chr2':242696752,'chr3':201105948,'chr4':1935749
                'chr13':113566686,'chr14':101161492,'chr15':99753195,'chr16':96330374,
                'chr17':84276897,'chr18':80542538,'chr19':61707364,'chr20':66210255,
                'chr21':45090682,'chr22':51324926,'chrX':154259566,'chrY':62460029}
-
-chrom_colors = ['#ab0215','#f50a0a','#f5540a','#f5b20a','#e9f50a','#b6f50a','#3df50a',
-              '#0af59b','#0af5f1','#0abef5','#0a70f5','#0a2df5','#770af5',
-              '#a60af5','#ce0af5','#f50ae1','#e37dcd','#d494c6','#d9abcf',
-              '#d9bdd3','#e6dce4','#f7f7f7','#1c4e4f','#4e4f1c']
 
 def get_coordinates_mm(mm_vec):
     '''
@@ -250,10 +246,22 @@ def align_comps(comps,ms,chrom_ends):
         if Aloops>Bloops: comps[start:end] = -comps[start:end]
     return comps
 
+def integers_to_hex_colors(start, end):
+    # Generate a range of integers
+    integers = np.arange(start, end + 1)
+
+    # Map each integer to a rainbow color and convert to hex format
+    rgb_colors = plt.cm.rainbow(integers / max(integers))
+    hex_colors = [to_hex(color) for color in rgb_colors]
+
+    return hex_colors
+
 def write_chrom_colors(chrom_ends,name='MultiEM_chromosome_colors.cmd'):    
+    colors = integers_to_hex_colors(0, len(chrom_ends)-1)
+    
     content = ''
     for i in range(len(chrom_ends)-1):
-        content+=f'color bychain {chrom_colors[i]} : {chr(64+1+i)}\n'
+        content+=f'color {colors[i]} :.{chr(64+1+i)}\n'
 
     with open(name, 'w') as f:
         f.write(content)

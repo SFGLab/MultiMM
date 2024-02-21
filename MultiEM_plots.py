@@ -30,32 +30,38 @@ def plot_projection(struct_3D,Cs,save_path):
     df['distance'] = dists
     df['subcomp'] = Cs
     df['subcomp_text'] = comps
+    df.drop(df[df['subcomp']==0.0].index,inplace=True)
 
     # Plot Distribution
-    figure(figsize=(8, 8), dpi=200)
-    sns.jointplot(data=df,x='x_PCA',y='y_PCA',hue='subcomp', palette="seismic", kind='hist',alpha=0.5)
+    figure(figsize=(8, 8), dpi=250)
+    sns.scatterplot(data=df,x='x_PCA',y='y_PCA',hue='subcomp', palette="coolwarm_r", alpha=0.5)
     plt.xlabel('First Pricipal Component')
     plt.ylabel('Second Pricipal Component')
+    plt.title('Scatter Plot of PCA 2D Projection')
     plt.savefig(save_path+'PCA.pdf',format='pdf',dpi=200)
     plt.show()
 
     # Plot more stuff
-    figure(figsize=(8, 8), dpi=200)
-    sns.kdeplot(data=df, x='x', y='y', cmap="Reds", shade=True)
-    plt.savefig(save_path+'density.pdf',format='pdf',dpi=200)
-    plt.show()
-
-    figure(figsize=(8, 8), dpi=200)
-    sns.kdeplot(data=df, x='x', y='y', palette="seismic", hue='subcomp', bw_adjust=.5)
+    figure(figsize=(8, 8), dpi=250)
+    sns.kdeplot(data=df, x='x', y='y', palette="coolwarm_r", hue='subcomp', bw_adjust=.5)
+    plt.title('Subcompartment 2D Density Plot')
     plt.savefig(save_path+'density_subcomp.pdf',format='pdf',dpi=200)
     plt.show()
     
     figure(figsize=(8, 5), dpi=200)
-    sns.kdeplot(data=df, x='distance', hue='subcomp', fill=True, palette='seismic')
+    sns.kdeplot(data=df, x='distance', hue='subcomp', fill=True, palette='coolwarm_r')
+    plt.title('Subcompartment Density Plot')
     plt.savefig(save_path+'kde_subcomp.pdf',format='pdf',dpi=200)
     plt.show()
 
     figure(figsize=(8, 5), dpi=200)
     sns.kdeplot(data=df,x='distance',fill=True)
+    plt.title('Density Plot')
     plt.savefig(save_path+'kde.pdf',format='pdf',dpi=200)
+    plt.show()
+
+    figure(figsize=(10, 8), dpi=200)
+    sns.kdeplot(data=df, x='x', y='y', cmap="gnuplot2", shade=True,cbar=True)
+    plt.title('2D Density Plot')
+    plt.savefig(save_path+'density.pdf',format='pdf',dpi=200)
     plt.show()
