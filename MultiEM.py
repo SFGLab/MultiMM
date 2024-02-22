@@ -115,7 +115,7 @@ class MultiEM:
         self.system.addForce(self.ev_force)
         
         # Gaussian compartmentalization potential - compartment blocks
-        radius1 = (self.N_beads/50000)**(1/3)*1
+        radius1 = (self.N_beads/50000)**(1/3)*0.5
         radius2 = (self.N_beads/50000)**(1/3)*4
         r0 = radius2/10 if self.chrom==None else (self.coords[1]-self.coords[0])/chrom_sizes[self.chrom]
         print('Comp range:',r0)
@@ -183,7 +183,7 @@ class MultiEM:
                     self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^2-1)*(delta(s+1)+delta(s+2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
                 else:
                     self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^2-1)*(delta(s+1)+delta(s+2))*step(R2/2)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-                self.Blamina_force.addGlobalParameter('B',defaultValue=5e3)
+                self.Blamina_force.addGlobalParameter('B',defaultValue=1e3)
                 self.Blamina_force.addGlobalParameter('pi',defaultValue=3.14159265358979323846)
                 self.Blamina_force.addGlobalParameter('R1',defaultValue=radius1)
                 self.Blamina_force.addGlobalParameter('R2',defaultValue=radius2)
@@ -194,7 +194,7 @@ class MultiEM:
                 for i in range(self.system.getNumParticles()):
                     self.Blamina_force.addParticle(i, [self.Cs[i]])
                 self.system.addForce(self.Blamina_force)
-
+            
             # Force that sets smaller chromosomes closer to the center
             self.central_force = mm.CustomExternalForce('G*(chrom-1)/23*(-1/(r-R1+1)+1/(r-R1+1)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             self.central_force.addGlobalParameter('G',defaultValue=100)
@@ -283,7 +283,7 @@ class MultiEM:
             print('\nCreating initial structure...')
             comp_mode = 'compartments' if np.all(self.Cs!=None) and len(np.unique(self.Cs))<=3 else 'subcompartments'
             if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'MultiEM_compartment_colors.cmd')
-            pdb_content = build_init_mmcif(n_dna=self.N_beads,chrom_ends=self.chr_ends,Cs=self.Cs,path=self.save_path,hilbert=self.chrom==None)
+            pdb_content = build_init_mmcif(n_dna=self.N_beads,chrom_ends=self.chr_ends,path=self.save_path,hilbert=self.chrom==None)
             print('---Done!---')
         pdb = PDBxFile(self.save_path+'MultiEM_init.cif') if init_struct_path==None or build_init_mmcif else PDBxFile(init_struct_path)
         self.mass_center = np.average(get_coordinates_mm(pdb.positions),axis=0)
@@ -307,10 +307,9 @@ class MultiEM:
         current_platform = simulation.context.getPlatform()
         print(f"Simulation will run on platform: {current_platform.getName()}.")
         start_time = time.time()
-        simulation.minimizeEnergy(tolerance=0.001)
+        simulation.minimizeEnergy()
         state = simulation.context.getState(getPositions=True)
-        PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_minimized_openmm.cif', 'w'))
-        write_mmcif(coords=10*get_coordinates_mm(state.getPositions()),chrom_ends=self.chr_ends,Cs=self.Cs,path=self.save_path+'MultiEM_minimized.cif')
+        PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_minimized.cif', 'w'))
         print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)/60:.2f} minutes. :D ---\n")
 
         if viz: plot_projection(get_coordinates_mm(state.getPositions()),self.Cs,save_path=self.save_path)
@@ -319,7 +318,7 @@ class MultiEM:
         start = time.time()
         V = get_coordinates_mm(state.getPositions())
         for i in range(len(self.chr_ends)-1):
-            write_mmcif_chrom(coords=10*V[self.chr_ends[i]:self.chr_ends[i+1]],Cs=self.Cs[self.chr_ends[i]:self.chr_ends[i+1]],\
+            write_mmcif_chrom(coords=10*V[self.chr_ends[i]:self.chr_ends[i+1]],\
                         path=self.save_path+f'chromosomes/MultiEM_minimized_{chrs[i]}.cif')
 
         if run_SA:
@@ -374,15 +373,15 @@ class MultiEM:
 
 def main():
     # Input data
-    bw_path = '/mnt/raid/data/Trios/calder_HiChIP_subcomp/YRB_d.bed'
-    loop_path = '/mnt/raid/data/Trios/ChiA-PiPE_Loops/loops_pet3+/GM19240_YRI_C_CTCF_1mb_pet3.bedpe'
+    bw_path = '/mnt/raid/data/Trios/calder_HiChIP_subcomp/PUR_d.bed'
+    loop_path = '/mnt/raid/data/Trios/ChiA-PiPE_Loops/loops_pet3+/HG00733_PUR_C_CTCF_1mb_pet3.bedpe'
     nuc_path = None#'/mnt/raid/codes/other/PuFFIN/input/ENCFF415FEC_rep1_chr1.bed.nucs'
-    out_path_name = 'GW_test'
+    out_path_name = 'PUR_d'
     chrom = 'chr1'
     coords = [178421513, 179491193]
     
     # Run simulation
-    md = MultiEM(N_beads=10000,out_path=out_path_name,loop_path=loop_path,comp_path=bw_path,nucs_path=nuc_path)
+    md = MultiEM(N_beads=20000,out_path=out_path_name,loop_path=loop_path,comp_path=bw_path,nucs_path=nuc_path)
     md.run_pipeline(build_init_struct=True,init_struct_path=None,pltf='CUDA',run_SA=False,MD_steps=1000,viz=True)
     # md.self.run_nuc_pipeline()
 
