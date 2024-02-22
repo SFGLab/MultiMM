@@ -1,0 +1,75 @@
+
+<ForceField>
+	
+    <AtomTypes>
+        <!-- theoretical mass of chromatin in a.m.u. -->
+        <Type name="0" class="DNA" element="C" mass="148.0"/>
+        <Type name="1" class="HIS" element="H" mass="1529.0"/>
+        <Type name="2" class="HIS" element="H" mass="1529.0"/>
+        <Type name="3" class="HIS" element="H" mass="1529.0"/>
+        <Type name="4" class="HIS" element="H" mass="1529.0"/>
+    </AtomTypes>
+	
+    <Residues>
+	
+        <Residue name="ALB">
+            <Atom name="CB" type="0"/>
+            <ExternalBond atomName="CB"/>
+        </Residue>
+        
+        <Residue name="ALA">
+            <Atom name="CA" type="0"/>
+            <ExternalBond atomName="CA"/>
+            <ExternalBond atomName="CA"/>
+        </Residue>
+        
+        <Residue name="HXX">
+            <Atom name="HIA" type="1"/>
+            <Atom name="HIB" type="2"/>
+            <Atom name="HIC" type="3"/>
+            <Atom name="HID" type="4"/>
+            <Bond atomName1="HIA" atomName2="HIB" />
+            <Bond atomName1="HIA" atomName2="HIC" />
+            <Bond atomName1="HIA" atomName2="HID" />
+            <Bond atomName1="HIB" atomName2="HIC" />
+            <Bond atomName1="HIB" atomName2="HID" />
+            <Bond atomName1="HIC" atomName2="HID" />
+        </Residue>
+        
+    </Residues>
+
+    <HarmonicBondForce>
+    	<Bond type1="0" type2="0" length="0.1" k="3000000.0"/>
+        <!-- Histone Square -->
+	<Bond type1="1" type2="2" length="0.118" k="300000.0" /> 
+	<Bond type1="1" type2="4" length="0.118" k="300000.0" />
+	<Bond type1="2" type2="3" length="0.118" k="300000.0" />
+	<Bond type1="3" type2="4" length="0.118" k="300000.0" />
+	
+	<!-- Histone diagonals -->
+	<Bond type1="1" type2="3" length="0.167" k="300000.0" />
+	<Bond type1="2" type2="4" length="0.167" k="300000.0" />
+	<!-- 	
+        diagonal distance - 0.167
+        border distance   - 0.118
+        -->
+    </HarmonicBondForce>
+    
+  
+    <CustomNonbondedForce energy="scale*((sigma2+sigma1/r)^12)" bondCutoff="2">
+        <GlobalParameter name="scale" defaultValue="5"/>
+        <PerParticleParameter name="sigma"/>
+        <Atom type="0" sigma="0.1"/>
+        <Atom type="1" sigma="0.1"/>
+        <Atom type="2" sigma="0.1"/>
+        <Atom type="3" sigma="0.1"/>
+        <Atom type="4" sigma="0.1"/>
+        <!--
+        kadlof said
+        dna signa = 0.05
+        histone sigma = 0.1
+        -->
+    </CustomNonbondedForce>
+   
+    <!-- 0.12209182 -->
+</ForceField>
