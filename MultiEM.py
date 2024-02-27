@@ -368,7 +368,7 @@ class MultiEM:
         simulation.context.setPositions(pdb.positions)
         simulation.minimizeEnergy()
         state = simulation.context.getState(getPositions=True)
-        PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+f'/other/minimized_nucres_model.cif', 'w'))
+        PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+f'minimized_nucres_model.cif', 'w'))
         print('Energy minimization of nucleosome model done :D\n')
 
 def main():
