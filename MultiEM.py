@@ -84,8 +84,6 @@ class MultiEM:
             self.is_nuc = np.full(self.nuc_sim_len,False)
             for i,j in zip(self.entry_points,self.exit_points):
                 self.is_nuc[i-1:j+1]=True
-            print('Nucleosome simulation length:',self.nuc_sim_len)
-            print('Number of nucleosomes',self.num_nucs)
             if self.nuc_sim_len>1e7: raise InterruptedError('Too large region or structure to model nucleosomes. Please choose smaller region or simulation beads. ;)')   
         else:
             self.entry_points, self.exit_points, self.nuc_sim_len, self.num_nucs = None, None, 0, 0
@@ -107,17 +105,17 @@ class MultiEM:
         Here we define the forcefield of MultiEM.
         '''
         # Leonard-Jones potential for excluded volume
-        self.ev_force = mm.CustomNonbondedForce('epsilon*((sigma1+sigma2)/r)^6')
+        self.ev_force = mm.CustomNonbondedForce('epsilon*(sigma/r)^3')
         self.ev_force.addGlobalParameter('epsilon', defaultValue=10)
-        self.ev_force.addPerParticleParameter('sigma')
+        self.ev_force.addGlobalParameter('sigma', defaultValue=np.min(self.ds))
         for i in range(self.system.getNumParticles()):
-            self.ev_force.addParticle([np.min(self.ds)])
+            self.ev_force.addParticle()
         self.system.addForce(self.ev_force)
         
         # Gaussian compartmentalization potential - compartment blocks
-        radius1 = (self.N_beads/50000)**(1/3)*0.5
-        radius2 = (self.N_beads/50000)**(1/3)*4
-        r0 = radius2/10 if self.chrom==None else (self.coords[1]-self.coords[0])/chrom_sizes[self.chrom]
+        radius1 = (self.N_beads/50000)**(1/3)*1
+        radius2 = (self.N_beads/50000)**(1/3)*6
+        r0 = (radius2-radius1)/20 if self.chrom==None else (self.coords[1]-self.coords[0])/chrom_sizes[self.chrom]
         print('Comp range:',r0)
         if np.all(self.Cs!=None) and len(np.unique(self.Cs)==2):
             self.comp_force = mm.CustomNonbondedForce('-E*exp(-r^2/(2*r0^2)); E=(Ea*delta(s1-1)*delta(s2-1)+Eb*delta(s1+1)*delta(s2+1))')
@@ -153,7 +151,7 @@ class MultiEM:
 
             # Spherical container
             self.container_force = mm.CustomExternalForce('C*(max(0, r-R2)^2+max(0, R1-r)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-            self.container_force.addGlobalParameter('C',defaultValue=1000)
+            self.container_force.addGlobalParameter('C',defaultValue=1e4)
             self.container_force.addGlobalParameter('R1',defaultValue=radius1)
             self.container_force.addGlobalParameter('R2',defaultValue=radius2)
             self.container_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
@@ -194,7 +192,7 @@ class MultiEM:
                 for i in range(self.system.getNumParticles()):
                     self.Blamina_force.addParticle(i, [self.Cs[i]])
                 self.system.addForce(self.Blamina_force)
-            
+
             # Force that sets smaller chromosomes closer to the center
             self.central_force = mm.CustomExternalForce('G*(chrom-1)/23*(-1/(r-R1+1)+1/(r-R1+1)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             self.central_force.addGlobalParameter('G',defaultValue=100)
@@ -274,7 +272,7 @@ class MultiEM:
         self.system_n.addForce(histone_dna_force)
         print('DNA-histone force imported.')
 
-    def run_pipeline(self,run_SA=False,MD_steps=int(1e6),sim_step=10,write_files=False,build_init_struct=True,Temperature=360*mm.unit.kelvin,Temp_f=280*mm.unit.kelvin,init_struct_path=None,pltf='CUDA',viz=False):
+    def run_pipeline(self,run_SA=False,MD_steps=int(1e4),sim_step=10,write_files=False,build_init_struct=True,Temperature=310*mm.unit.kelvin,Temp_f=280*mm.unit.kelvin,init_struct_path=None,pltf='CUDA',viz=False):
         '''
         Energy minimization for GW model.
         '''
@@ -289,7 +287,7 @@ class MultiEM:
         self.mass_center = np.average(get_coordinates_mm(pdb.positions),axis=0)
         forcefield = ForceField('forcefields/ff.xml')
         self.system = forcefield.createSystem(pdb.topology)
-        integrator = mm.LangevinIntegrator(Temperature, 0.05, 10 * mm.unit.femtosecond)
+        integrator = mm.LangevinIntegrator(Temperature, 0.01, 1 * mm.unit.femtosecond)
         
         # Import forcefield
         print('\nImporting forcefield...')
@@ -342,6 +340,8 @@ class MultiEM:
         Energy minimization for nucleosome simulation.
         '''
         # Define system
+        print('\nNucleosome simulation length:',self.nuc_sim_len)
+        print('Number of nucleosomes',self.num_nucs)
         print('\n\nBuilding initial structure of nucleosome simulation...')
         pdb_content = build_init_mmcif_nucs(entry=self.entry_points,exit=self.exit_points,n_nucs=self.num_nucs,n_dna=self.nuc_sim_len,
                                mode='path',psf=True,path=self.save_path+'MultiEM_minimized.cif')
@@ -350,7 +350,7 @@ class MultiEM:
         pdb = PDBxFile('dna_histones.cif')
         forcefield = ForceField('forcefields/dna_histones_ff.xml')
         self.system_n = forcefield.createSystem(pdb.topology, nonbondedCutoff=1*mm.unit.nanometer)
-        integrator = mm.LangevinIntegrator(310, 5, 10 * mm.unit.femtosecond)
+        integrator = mm.LangevinIntegrator(310, 0.5, 100 * mm.unit.femtosecond)
         print('Done\n')
 
         # Add nucleosome forcefield
@@ -381,9 +381,9 @@ def main():
     coords = [178421513, 179491193]
     
     # Run simulation
-    md = MultiEM(N_beads=20000,out_path=out_path_name,loop_path=loop_path,comp_path=bw_path,nucs_path=nuc_path)
-    md.run_pipeline(build_init_struct=True,init_struct_path=None,pltf='CUDA',run_SA=False,MD_steps=1000,viz=True)
-    # md.self.run_nuc_pipeline()
+    md = MultiEM(N_beads=50000,out_path=out_path_name,loop_path=loop_path,comp_path=bw_path,nucs_path=nuc_path)
+    md.run_pipeline(build_init_struct=True,init_struct_path=None,pltf='CUDA',run_SA=True,MD_steps=int(1e6),viz=True)
+    # md.run_nuc_pipeline()
 
 if __name__=='__main__':
     main()

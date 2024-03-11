@@ -133,34 +133,34 @@ def read_compartments(file,ch,reg,res,binary=True):
             comp_list.append(file[3][i])
     return coords, comp_list
 
-def generate_hilbert_curve(n_points,p=4,n=3,displacement_sigma=0.2,viz=False):
+def generate_hilbert_curve(n_points,p=8,n=3,displacement_sigma=0.2,viz=False):
     hilbert_curve = HilbertCurve(p, n)
-    distances = list(range(4095)) if n_points>4095 else list(range(n_points))
+    distances = list(range(n_points)) #if n_points>4095 else list(range(n_points))
     points = np.array(hilbert_curve.points_from_distances(distances))
     
-    if n_points>4095:
-        x_sim, y_sim, z_sim = points[:,0], points[:,1], points[:,2]
-        tck, u = interpolate.splprep(x=[x_sim,y_sim,z_sim], s=2)
-        u_fine = np.linspace(0,1,n_points)
-        x_fine, y_fine, z_fine = interpolate.splev(u_fine, tck)
-        V_interpol = np.vstack((x_fine,y_fine,z_fine)).T
-    else:
-        V_interpol = points
+    # if n_points>4095:
+    #    x_sim, y_sim, z_sim = points[:,0], points[:,1], points[:,2]
+    #    tck, u = interpolate.splprep(x=[x_sim,y_sim,z_sim], s=2)
+    #    u_fine = np.linspace(0,1,n_points)
+    #    x_fine, y_fine, z_fine = interpolate.splev(u_fine, tck)
+    #    V_interpol = np.vstack((x_fine,y_fine,z_fine)).T
+    #else:
+    #    V_interpol = points
     displacement = np.random.normal(loc=0.0, scale=displacement_sigma, size=n_points*3).reshape(n_points,3)
-    V_interpol = 10*(V_interpol + displacement)
+    points = points + displacement
 
-    if viz:
-        fig = plt.figure()
-        ax = plt.axes(projection='3d')
+    #if viz:
+    #    fig = plt.figure()
+    #    ax = plt.axes(projection='3d')
 
-        z = V_interpol[:,2]
-        x = V_interpol[:,0]
-        y = V_interpol[:,1]
+    #    z = V_interpol[:,2]
+    #    x = V_interpol[:,0]
+    #    y = V_interpol[:,1]
 
-        ax.plot3D (x, y, z, 'green')
-        ax.set_title('Hilbert Curve')
-        plt.show()
-    return V_interpol
+    #    ax.plot3D (x, y, z, 'green')
+    #    ax.set_title('Hilbert Curve')
+    #    plt.show()
+    return points
 
 def polymer_circle(n: int, z_stretch: float = 0.0, radius: float = None) -> np.ndarray:
     points = []

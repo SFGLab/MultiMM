@@ -269,7 +269,7 @@ def write_chrom_colors(chrom_ends,name='MultiEM_chromosome_colors.cmd'):
 def min_max_trans(x):
     return (x-x.min())/(x.max()-x.min())
 
-def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=3,viz=False,min_loop_dist=0,path=''):
+def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,viz=False,min_loop_dist=3,path=''):
     # Import loops
     loops = pd.read_csv(bedpe_file,header=None,sep='\t')
     n_chroms = len(np.unique(loops[0].values))
@@ -292,7 +292,7 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=3,
     chrom_ends = np.array(chrom_ends)//resolution
     chrom_ends[-1] = N_beads
     np.save(path+'chrom_lengths.npy',chrom_ends)
-    if chrom!=None: 
+    if chrom!=None:
         loops[1], loops[2], loops[4], loops[5] = loops[1]-coords[0], loops[2]-coords[0], loops[4]-coords[0], loops[5]-coords[0]
     loops[1], loops[2], loops[4], loops[5] = loops[1]//resolution, loops[2]//resolution, loops[4]//resolution, loops[5]//resolution
     loops['ms'] = (loops[1].values+loops[2].values)//2
