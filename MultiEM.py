@@ -190,10 +190,10 @@ class MultiEM:
         if self.args.CHB_USE_CHROMOSOMAL_BLOCKS:
             self.chrom_block_force = mm.CustomNonbondedForce('-E*exp(-r^2/(2*r1^2)); E=dE*delta(chrom1-chrom2)')
             self.chrom_block_force.addGlobalParameter('r1',defaultValue=r_chrom)
-            self.chrom_block_force.addGlobalParameter('dE',defaultValue=self.args.CHB_dE)
+            self.chrom_block_force.addGlobalParameter('dE',defaultValue=self.args.CHB_DE)
             self.chrom_block_force.addPerParticleParameter('chrom')
             for i in range(self.system.getNumParticles()):
-                self.chrom_block_force.addParticle([self.args.CHROMs[i]])
+                self.chrom_block_force.addParticle([self.chrom_spin[i]])
             self.system.addForce(self.chrom_block_force)
 
         # Spherical container

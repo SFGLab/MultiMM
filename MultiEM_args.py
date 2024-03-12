@@ -160,7 +160,7 @@ args = ListOfArgs([
     # Chromosomal Blocks
     Arg('CHB_USE_CHROMOSOMAL_BLOCKS', help='Use Chromosomal Blocks.', type=bool, default='False', val='False'),
     Arg('CHB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
-    Arg('CHB_dE', help='Energy factor for block copolymer chromosomal model.', type=float, default='0.1', val='0.1'),
+    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='0.1', val='0.1'),
 
     # Compartment Blocks
     Arg('COB_USE_COMPARTMENT_BLOCKS', help='Use Compartment Blocks.', type=bool, default='False', val='False'),
