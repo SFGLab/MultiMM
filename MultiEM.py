@@ -246,7 +246,7 @@ class MultiEM:
             # Force that sets smaller chromosomes closer to the center
             self.central_force = mm.CustomExternalForce('G*(chrom-1)/23*(-1/(r-R1+1)+1/(r-R1+1)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             self.central_force.addGlobalParameter('G',defaultValue=self.args.CF_STRENGTH)
-            self.central_force.addGlobalParameter('R1',defaultValue=R1)
+            self.central_force.addGlobalParameter('R1',defaultValue=radius1)
             self.central_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
             self.central_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
             self.central_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
