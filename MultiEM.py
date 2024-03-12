@@ -225,7 +225,7 @@ class MultiEM:
             self.system.addForce(self.Alamina_force)
             
         # Interaction of B compartment with lamina
-        if self.args.IAL_USE_B_LAMINA_INTERACTION:
+        if self.args.IBL_USE_B_LAMINA_INTERACTION:
             if radius1!=0.0:
                 self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^2-1)*(delta(s+1)+delta(s+2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             else:
