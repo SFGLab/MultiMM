@@ -1,4 +1,5 @@
 # MultiEM: An OpenMM-based software for the whole genome 3D structure reconstruction
+![gw](https://github.com/SFGLab/MultiEM/assets/49608786/f6d8c5f9-eda3-44d4-a779-5d45d3b4d79c)
 
 ## Installation
 The anaconda environment can be found in `biosym.yml` file. The software mainly needs OpenMM o run.
@@ -41,8 +42,11 @@ python MultiEM.py -c config.ini
 
 The sotware will return you a folder with the resulting structure, and some plots that show how compartments are distributed.
 
+![subcomp_dens](https://github.com/SFGLab/MultiEM/assets/49608786/f588553a-01fd-4638-b3a8-645e9e4c3b2e)
+
+
 ## Input Data
 For input data you should use 2D contracts in `.bedpe` file format, for the modelling of chromatin loops. This file is necessary to make simulation running. Furthermore, you can optionally add compartments in `.BigWig` format or subcompartments predicted with software Calder.
 
-# Copyrights
+## Copyrights
 Please cite our article if you would like to base your research in this software.
