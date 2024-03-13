@@ -157,10 +157,15 @@ class MultiEM:
             self.system.addForce(self.ev_force)
         
         # Gaussian compartmentalization potential - compartment blocks
-        radius1 = (self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
-        radius2 = (self.args.N_BEADS/50000)**(1/3)*6 if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
-        r_comp = (radius2-radius1)/20 if self.args.COB_DISTANCE==None else self.args.COB_DISTANCE
-        r_chrom = (radius2-radius1)/20 if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
+        radius1 = (self.args.N_BEADS/50000)**(1/3)*0.5 if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
+        radius2 = (self.args.N_BEADS/50000)**(1/3)*4 if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
+        if self.args.COB_DISTANCE!=None:
+            r_comp = self.args.COB_DISTANCE
+        elif self.args.SCB_DISTANCE!=None:
+            r_comp = self.args.SCB_DISTANCE
+        else:
+            r_comp = (radius2-radius1)/20
+        r_chrom = 3*r_comp/4 if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
 
         ## Compartment force
         if self.args.COB_USE_COMPARTMENT_BLOCKS:
@@ -175,7 +180,7 @@ class MultiEM:
         
         ## Subcompartment force
         if self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
-            self.comp_force = mm.CustomNonbondedForce('-E*exp(-r^2/(2*r0^2)); E=((Ea1*delta(s1-2)*delta(s2-2)+Ea2*delta(s1-1)*delta(s2-1)+Eb1*delta(s1+1)*delta(s2+1)+Eb2*delta(s1+2)*delta(s2+2))')
+            self.comp_force = mm.CustomNonbondedForce('-E*exp(-r^2/(2*r0^2)); E=Ea1*delta(s1-2)*delta(s2-2)+Ea2*delta(s1-1)*delta(s2-1)+Eb1*delta(s1+1)*delta(s2+1)+Eb2*delta(s1+2)*delta(s2+2)')
             self.comp_force.addGlobalParameter('r0',defaultValue=r_comp)
             self.comp_force.addGlobalParameter('Ea1',defaultValue=self.args.SCB_EA1)
             self.comp_force.addGlobalParameter('Ea2',defaultValue=self.args.SCB_EA2)
@@ -270,14 +275,15 @@ class MultiEM:
                 if np.any(self.ds==None):
                     self.loop_force.addBond(m,n,self.args.LE_HARMONIC_BOND_R0,self.args.LE_HARMONIC_BOND_K)
                 else:
-                    self.loop_force.addBond(m,n,self.ds,self.args.LE_HARMONIC_BOND_K)
+                    self.loop_force.addBond(m,n,self.ds[counter],self.args.LE_HARMONIC_BOND_K)
+                counter+=1
             self.system.addForce(self.loop_force)
 
         # Bending potential for stiffness
-        if self.POL_USE_HARMONIC_ANGLE:
+        if self.args.POL_USE_HARMONIC_ANGLE:
             self.angle_force = mm.HarmonicAngleForce()
             for i in range(self.system.getNumParticles()-2):
-                if (i not in self.chr_ends) and (i not in self.chr_ends-1): self.angle_force.addAngle(i, i+1, i+2, np.pi, 20)
+                if (i not in self.chr_ends) and (i not in self.chr_ends-1): self.angle_force.addAngle(i, i+1, i+2, self.args.POL_HARMONIC_ANGLE_R0, self.args.POL_HARMONIC_CONSTANT_K)
             self.system.addForce(self.angle_force)
 
     def add_nuc_forcefield(self,n_wraps=2):
@@ -337,7 +343,7 @@ class MultiEM:
             print('---Done!---')
         pdb = PDBxFile(self.save_path+'MultiEM_init.cif') if self.args.INITIAL_STRUCTURE_path==None or build_init_mmcif else PDBxFile(self.args.INITIAL_STRUCTURE_PATH)
         self.mass_center = np.average(get_coordinates_mm(pdb.positions),axis=0)
-        forcefield = ForceField('forcefields/ff.xml')
+        forcefield = ForceField(self.args.FORCEFIELD_PATH)
         self.system = forcefield.createSystem(pdb.topology)
         if args.SIM_INTEGRATOR_TYPE=='verlet':
             integrator  = mm.VerletIntegrator(self.args.SIM_TEMPERATURE,self.args.SIM_INTEGRATOR_STEP)
@@ -355,7 +361,7 @@ class MultiEM:
         simulation = Simulation(pdb.topology, self.system, integrator, platform)
         
         simulation.context.setPositions(pdb.positions)
-        simulation.context.setVelocitiesToself.args.SIM_TEMPERATURE(self.args.SIM_TEMPERATURE, 0)
+        simulation.context.setVelocitiesToTemperature(self.args.SIM_TEMPERATURE, 0)
         current_platform = simulation.context.getPlatform()
         print(f"Simulation will run on platform: {current_platform.getName()}.")
         start_time = time.time()
@@ -364,9 +370,11 @@ class MultiEM:
         PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_minimized.cif', 'w'))
         print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)/60:.2f} minutes. :D ---\n")
 
-        if self.args.SAVE_PLOTS: plot_projection(get_coordinates_mm(state.getPositions()),self.Cs,save_path=self.save_path)
+        if self.args.SAVE_PLOTS:
+            print('Creating and saving plots...')
+            plot_projection(get_coordinates_mm(state.getPositions()),self.Cs,save_path=self.save_path)
+            print('Done! :)')
         
-        # if self.args.CHROM==None:
         start = time.time()
         V = get_coordinates_mm(state.getPositions())
         for i in range(len(self.chr_ends)-1):

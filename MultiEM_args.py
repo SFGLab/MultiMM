@@ -145,7 +145,7 @@ args = ListOfArgs([
     # Long-Range loop bonds
     Arg('LE_USE_HARMONIC_BOND', help="Use harmonic bond interaction for long range loops.", type=bool, default='True', val='True'),
     Arg('LE_HARMONIC_BOND_R0', help="harmonic bond distance equilibrium constant", type=Quantity, default='0.1 nanometer', val='0.1 nanometer'),
-    Arg('LE_HARMONIC_BOND_K', help="harmonic bond force constant (fixed unit: kJ/mol/nm^2)", type=float, default='300000.0', val='300000.0'),
+    Arg('LE_HARMONIC_BOND_K', help="harmonic bond force constant (fixed unit: kJ/mol/nm^2)", type=float, default='30000.0', val='30000.0'),
 
     # Excluded Volume
     Arg('EV_USE_EXCLUDED_VOLUME', help="Use excluded volume.", type=bool, default='True', val='True'),
@@ -214,7 +214,7 @@ args = ListOfArgs([
     Arg('SIM_SAMPLING_STEP', help='It determines in t how many steps we save a structure.', type=int, default='', val=''),
     Arg('SIM_INTEGRATOR_TYPE', help='Alternative: langevin, verlet', type=str, default='langevin', val='langevin'),
     Arg('SIM_INTEGRATOR_STEP', help='The step of integrator.', type=Quantity, default='1 femtosecond', val='1 femtosecond'),
-    Arg('SIM_FRICTION_COEFF', help='Friction coefficient (Used only with langevin integrator)', type=float, default='0.1', val='0.1'),
+    Arg('SIM_FRICTION_COEFF', help='Friction coefficient (Used only with langevin integrator)', type=float, default='0.5', val='0.5'),
     Arg('SIM_SET_INITIAL_VELOCITIES', help='Sets initial velocities based on Boltzmann distribution', type=bool, default='False', val='False'),
     Arg('SIM_TEMPERATURE', help='Simulation temperature', type=Quantity, default='310 kelvin', val='310 kelvin'),
 
