@@ -42,7 +42,8 @@ python MultiEM.py -c config.ini
 
 The sotware will return you a folder with the resulting structure, and some plots that show how compartments are distributed.
 
-![subcomp_dens](https://github.com/SFGLab/MultiEM/assets/49608786/f588553a-01fd-4638-b3a8-645e9e4c3b2e)
+
+![subcomp_dens72](https://github.com/SFGLab/MultiEM/assets/49608786/23ce78d0-709c-4b39-8b36-72b6ddba01fc)
 
 
 ## Input Data
