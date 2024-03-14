@@ -149,8 +149,8 @@ args = ListOfArgs([
 
     # Excluded Volume
     Arg('EV_USE_EXCLUDED_VOLUME', help="Use excluded volume.", type=bool, default='True', val='True'),
-    Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='100000.0', val='100000.0'),
-    Arg('EV_ALPHA', help="Scalling factor of Morse potential.", type=float, default='5.0', val='5.0'),
+    Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='1000000.0', val='1000000.0'),
+    Arg('EV_ALPHA', help="Scalling factor of Morse potential.", type=float, default='10.0', val='10.0'),
 
     # Spherical container
     Arg('SC_USE_SPHERICAL_CONTAINER', help='Use Spherical container', type=bool, default='False', val='False'),
