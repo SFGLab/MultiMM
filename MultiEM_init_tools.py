@@ -133,9 +133,10 @@ def read_compartments(file,ch,reg,res,binary=True):
             comp_list.append(file[3][i])
     return coords, comp_list
 
-def generate_hilbert_curve(n_points,p=4,n=3,displacement_sigma=0.2,viz=False):
+def generate_hilbert_curve(n_points,p=4,n=3,displacement_sigma=0.1,scale=6,viz=False):
     hilbert_curve = HilbertCurve(p, n)
-    distances = list(range(4095)) #if n_points>4095 else list(range(n_points))
+
+    distances = range(4095) if n_points>4095 else list(range(n_points))
     points = np.array(hilbert_curve.points_from_distances(distances))
     
     if n_points>4095:
@@ -147,7 +148,8 @@ def generate_hilbert_curve(n_points,p=4,n=3,displacement_sigma=0.2,viz=False):
     else:
        V_interpol = points
     displacement = np.random.normal(loc=0.0, scale=displacement_sigma, size=n_points*3).reshape(n_points,3)
-    V_interpol = (V_interpol + displacement)
+    V_interpol = scale*(V_interpol + displacement)
+    # max_dist = np.max(np.linalg.norm(V_interpol,axis=1))
 
     if viz:
         fig = plt.figure()
@@ -160,6 +162,7 @@ def generate_hilbert_curve(n_points,p=4,n=3,displacement_sigma=0.2,viz=False):
         ax.plot3D (x, y, z, 'green')
         ax.set_title('Hilbert Curve')
         plt.show()
+    
     return V_interpol
 
 def polymer_circle(n: int, z_stretch: float = 0.0, radius: float = None) -> np.ndarray:
@@ -177,9 +180,9 @@ def polymer_circle(n: int, z_stretch: float = 0.0, radius: float = None) -> np.n
     points = np.array(points)
     return points
 
-def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',hilbert=True):
+def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',hilbert=True,scale=5):
     # Define the initial coordinates of histones and the structure of DNA
-    dna_points = generate_hilbert_curve(n_dna) if hilbert else polymer_circle(n_dna,50,5)
+    dna_points = generate_hilbert_curve(n_dna,scale=scale) if hilbert else polymer_circle(n_dna,50,5)
     
     # Write the positions in .mmcif file
     atoms = ''

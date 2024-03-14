@@ -134,7 +134,7 @@ args = ListOfArgs([
     
     # Basic Polymer Bond
     Arg('POL_USE_HARMONIC_BOND', help="Use harmonic bond interaction.", type=bool, default='True', val='True'),
-    Arg('POL_HARMONIC_BOND_R0', help="harmonic bond distance equilibrium constant", type=Quantity, default='0.1 nanometer', val='0.1 nanometer'),
+    Arg('POL_HARMONIC_BOND_R0', help="harmonic bond distance equilibrium constant", type=float, default='0.1', val='0.1'),
     Arg('POL_HARMONIC_BOND_K', help="harmonic bond force constant (fixed unit: kJ/mol/nm^2)", type=float, default='300000.0', val='300000.0'),
 
     # Basic polymer stiffness
@@ -144,18 +144,19 @@ args = ListOfArgs([
 
     # Long-Range loop bonds
     Arg('LE_USE_HARMONIC_BOND', help="Use harmonic bond interaction for long range loops.", type=bool, default='True', val='True'),
-    Arg('LE_HARMONIC_BOND_R0', help="harmonic bond distance equilibrium constant", type=Quantity, default='0.1 nanometer', val='0.1 nanometer'),
+    Arg('LE_HARMONIC_BOND_R0', help="harmonic bond distance equilibrium constant", type=float, default='0.1', val='0.1'),
     Arg('LE_HARMONIC_BOND_K', help="harmonic bond force constant (fixed unit: kJ/mol/nm^2)", type=float, default='30000.0', val='30000.0'),
 
     # Excluded Volume
     Arg('EV_USE_EXCLUDED_VOLUME', help="Use excluded volume.", type=bool, default='True', val='True'),
-    Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='10.0', val='10.0'),    
+    Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='100000.0', val='100000.0'),
+    Arg('EV_ALPHA', help="Scalling factor of Morse potential.", type=float, default='5.0', val='5.0'),
 
     # Spherical container
     Arg('SC_USE_SPHERICAL_CONTAINER', help='Use Spherical container', type=bool, default='False', val='False'),
-    Arg('SC_RADIUS1', help='Spherical container radius, fixed unit: nanometers', type=float, default='', val=''),
-    Arg('SC_RADIUS2', help='Spherical container radius, fixed unit: nanometers', type=float, default='', val=''),
-    Arg('SC_SCALE', help='Spherical container scaling factor', type=float, default='1000', val='1000'),
+    Arg('SC_RADIUS1', help='Spherical container radius,', type=float, default='', val=''),
+    Arg('SC_RADIUS2', help='Spherical container radius,', type=float, default='', val=''),
+    Arg('SC_SCALE', help='Spherical container scaling factor', type=float, default='10', val='10'),
 
     # Chromosomal Blocks
     Arg('CHB_USE_CHROMOSOMAL_BLOCKS', help='Use Chromosomal Blocks.', type=bool, default='False', val='False'),
@@ -213,7 +214,7 @@ args = ListOfArgs([
     Arg('SIM_N_STEPS', help='Number of steps in MD simulation', type=int, default='', val=''),
     Arg('SIM_SAMPLING_STEP', help='It determines in t how many steps we save a structure.', type=int, default='', val=''),
     Arg('SIM_INTEGRATOR_TYPE', help='Alternative: langevin, verlet', type=str, default='langevin', val='langevin'),
-    Arg('SIM_INTEGRATOR_STEP', help='The step of integrator.', type=Quantity, default='1 femtosecond', val='1 femtosecond'),
+    Arg('SIM_INTEGRATOR_STEP', help='The step of integrator.', type=Quantity, default='100 femtosecond', val='100 femtosecond'),
     Arg('SIM_FRICTION_COEFF', help='Friction coefficient (Used only with langevin integrator)', type=float, default='0.5', val='0.5'),
     Arg('SIM_SET_INITIAL_VELOCITIES', help='Sets initial velocities based on Boltzmann distribution', type=bool, default='False', val='False'),
     Arg('SIM_TEMPERATURE', help='Simulation temperature', type=Quantity, default='310 kelvin', val='310 kelvin'),
