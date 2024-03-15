@@ -144,6 +144,7 @@ args = ListOfArgs([
 
     # Long-Range loop bonds
     Arg('LE_USE_HARMONIC_BOND', help="Use harmonic bond interaction for long range loops.", type=bool, default='True', val='True'),
+    Arg('LE_FIXED_DISTANCES', help="For fixed distances between loops. False if you want to correlate with the hatmap strength.", type=bool, default='False', val='False'),
     Arg('LE_HARMONIC_BOND_R0', help="harmonic bond distance equilibrium constant", type=float, default='0.1', val='0.1'),
     Arg('LE_HARMONIC_BOND_K', help="harmonic bond force constant (fixed unit: kJ/mol/nm^2)", type=float, default='30000.0', val='30000.0'),
 
@@ -179,11 +180,11 @@ args = ListOfArgs([
 
     # Interactions of A compartment with lamina
     Arg('IAL_USE_A_LAMINA_INTERACTION', help='Interactions of A compartment with lamina.', type=bool, default='False', val='False'),
-    Arg('IAL_SCALE', help='Scaling factor for A comoartment interaction with lamina.', type=float, default='1000.0', val='1000.0'),
+    Arg('IAL_SCALE', help='Scaling factor for A comoartment interaction with lamina.', type=float, default='2000.0', val='2000.0'),
 
     # Interactions of B compartment with lamina
     Arg('IBL_USE_B_LAMINA_INTERACTION', help='Interactions of B compartment with lamina.', type=bool, default='False', val='False'),
-    Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='1000.0', val='1000.0'),
+    Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='2000.0', val='2000.0'),
     
     # Small Chromosomes Attraction to Center
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),

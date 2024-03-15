@@ -239,8 +239,8 @@ class MultiEM:
                 self.Blamina_force.addParticle(i, [self.Cs[i]])
             self.system.addForce(self.Blamina_force)
 
+        # Force that sets smaller chromosomes closer to the center
         if self.args.CF_USE_CENTRAL_FORCE:
-            # Force that sets smaller chromosomes closer to the center
             self.central_force = mm.CustomExternalForce('G*chrom/23*(-1/(r-R1+1)+1/(r-R1+1)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             self.central_force.addGlobalParameter('G',defaultValue=self.args.CF_STRENGTH)
             self.central_force.addGlobalParameter('R1',defaultValue=self.radius1)
@@ -264,7 +264,7 @@ class MultiEM:
             self.loop_force = mm.HarmonicBondForce()
             counter=0
             for m,n in tqdm(zip(self.ms,self.ns),total=len(self.ms)):
-                if np.any(self.ds==None):
+                if self.args.LE_FIXED_DISTANCES:
                     self.loop_force.addBond(m,n,self.args.LE_HARMONIC_BOND_R0,self.args.LE_HARMONIC_BOND_K)
                 else:
                     self.loop_force.addBond(m,n,self.ds[counter],self.args.LE_HARMONIC_BOND_K)
@@ -283,6 +283,7 @@ class MultiEM:
         Here we define the forcefield of the nucleosome model.
         '''
         # Bending potential for stiffness
+        print('Importing Stiffness...')
         angle_force = mm.HarmonicAngleForce()
         for i in range(4*self.num_nucs,self.system_n.getNumParticles()-2):
             if self.is_nuc[i-4*self.num_nucs]:
@@ -335,7 +336,7 @@ class MultiEM:
             self.r_comp = self.args.SCB_DISTANCE
         else:
             self.r_comp = (self.radius2-self.radius1)/20
-        self.r_chrom = 2*self.r_comp if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
+        self.r_chrom = self.r_comp/2 if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
 
         # Initialize simulation
         if self.args.BUILD_INITIAL_STRUCTURE:
