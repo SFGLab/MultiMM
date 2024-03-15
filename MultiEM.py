@@ -152,10 +152,9 @@ class MultiEM:
         '''
         # Leonard-Jones potential for excluded volume
         if self.args.EV_USE_EXCLUDED_VOLUME:
-            self.ev_force = mm.CustomNonbondedForce('(1-step(r_min))*epsilon*(1-exp(-a*(r-r_min)))^2')
+            self.ev_force = mm.CustomNonbondedForce(f'epsilon*(sigma/r)^{self.args.EV_POWER}')
             self.ev_force.addGlobalParameter('epsilon', defaultValue=self.args.EV_EPSILON)
-            self.ev_force.addGlobalParameter('a', defaultValue=self.args.EV_ALPHA)
-            self.ev_force.addGlobalParameter('r_min', defaultValue=np.min(self.ds))
+            self.ev_force.addGlobalParameter('sigma', defaultValue=np.min(self.ds))
             for i in range(self.system.getNumParticles()):
                 self.ev_force.addParticle()
             self.system.addForce(self.ev_force)
@@ -328,22 +327,22 @@ class MultiEM:
         Energy minimization for GW model.
         '''
         # Estimation of parameters
-        self.radius1 = 0.5*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
-        self.radius2 = 4*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
+        self.radius1 = (self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
+        self.radius2 = 6*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
         if self.args.COB_DISTANCE!=None:
             self.r_comp = self.args.COB_DISTANCE
         elif self.args.SCB_DISTANCE!=None:
             self.r_comp = self.args.SCB_DISTANCE
         else:
-            self.r_comp = (self.radius2-self.radius1)/40
-        self.r_chrom = self.r_comp if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
+            self.r_comp = (self.radius2-self.radius1)/20
+        self.r_chrom = 2*self.r_comp if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
 
         # Initialize simulation
         if self.args.BUILD_INITIAL_STRUCTURE:
             print('\nCreating initial structure...')
             comp_mode = 'compartments' if np.all(self.Cs!=None) and len(np.unique(self.Cs))<=3 else 'subcompartments'
             if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'MultiEM_compartment_colors.cmd')
-            pdb_content = build_init_mmcif(n_dna=self.args.N_BEADS,chrom_ends=self.chr_ends,path=self.save_path,hilbert=self.args.CHROM==None,scale=self.radius2)
+            pdb_content = build_init_mmcif(n_dna=self.args.N_BEADS,chrom_ends=self.chr_ends,path=self.save_path,hilbert=self.args.CHROM==None,scale=(self.radius1+self.radius2)/2)
             print('---Done!---')
         pdb = PDBxFile(self.save_path+'MultiEM_init.cif') if self.args.INITIAL_STRUCTURE_path==None or build_init_mmcif else PDBxFile(self.args.INITIAL_STRUCTURE_PATH)
         self.mass_center = np.average(get_coordinates_mm(pdb.positions),axis=0)

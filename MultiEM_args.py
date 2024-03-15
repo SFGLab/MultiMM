@@ -140,7 +140,7 @@ args = ListOfArgs([
     # Basic polymer stiffness
     Arg('POL_USE_HARMONIC_ANGLE', help="Use harmonic angle interaction.", type=bool, default='True', val='True'),
     Arg('POL_HARMONIC_ANGLE_R0', help="harmonic angle distance equilibrium constant", type=float, default=str(pi), val=str(pi)),
-    Arg('POL_HARMONIC_CONSTANT_K', help="harmonic angle force constant (fixed unit: kJ/mol/radian^2)", type=float, default='20.0', val='20.0'),
+    Arg('POL_HARMONIC_CONSTANT_K', help="harmonic angle force constant (fixed unit: kJ/mol/radian^2)", type=float, default='200.0', val='200.0'),
 
     # Long-Range loop bonds
     Arg('LE_USE_HARMONIC_BOND', help="Use harmonic bond interaction for long range loops.", type=bool, default='True', val='True'),
@@ -149,19 +149,19 @@ args = ListOfArgs([
 
     # Excluded Volume
     Arg('EV_USE_EXCLUDED_VOLUME', help="Use excluded volume.", type=bool, default='True', val='True'),
-    Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='1000000.0', val='1000000.0'),
-    Arg('EV_ALPHA', help="Scalling factor of Morse potential.", type=float, default='10.0', val='10.0'),
+    Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='10.0', val='10.0'),
+    Arg('EV_POWER', help="Power in the exponent of EV potential.", type=float, default='6.0', val='6.0'),
 
     # Spherical container
     Arg('SC_USE_SPHERICAL_CONTAINER', help='Use Spherical container', type=bool, default='False', val='False'),
     Arg('SC_RADIUS1', help='Spherical container radius,', type=float, default='', val=''),
     Arg('SC_RADIUS2', help='Spherical container radius,', type=float, default='', val=''),
-    Arg('SC_SCALE', help='Spherical container scaling factor', type=float, default='10', val='10'),
+    Arg('SC_SCALE', help='Spherical container scaling factor', type=float, default='1000.0', val='1000.0'),
 
     # Chromosomal Blocks
     Arg('CHB_USE_CHROMOSOMAL_BLOCKS', help='Use Chromosomal Blocks.', type=bool, default='False', val='False'),
     Arg('CHB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
-    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='0.1', val='0.1'),
+    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='1.0', val='1.0'),
 
     # Compartment Blocks
     Arg('COB_USE_COMPARTMENT_BLOCKS', help='Use Compartment Blocks.', type=bool, default='False', val='False'),
@@ -177,7 +177,7 @@ args = ListOfArgs([
     Arg('SCB_EB1', help='Energy strength for B1 compartment.', type=float, default='1.5', val='1.5'),
     Arg('SCB_EB2', help='Energy strength for B2 compartment.', type=float, default='2.0', val='2.0'),
 
-    # Interactions of B compartment with lamina
+    # Interactions of A compartment with lamina
     Arg('IAL_USE_A_LAMINA_INTERACTION', help='Interactions of A compartment with lamina.', type=bool, default='False', val='False'),
     Arg('IAL_SCALE', help='Scaling factor for A comoartment interaction with lamina.', type=float, default='1000.0', val='1000.0'),
 
@@ -214,7 +214,7 @@ args = ListOfArgs([
     Arg('SIM_N_STEPS', help='Number of steps in MD simulation', type=int, default='', val=''),
     Arg('SIM_SAMPLING_STEP', help='It determines in t how many steps we save a structure.', type=int, default='', val=''),
     Arg('SIM_INTEGRATOR_TYPE', help='Alternative: langevin, verlet', type=str, default='langevin', val='langevin'),
-    Arg('SIM_INTEGRATOR_STEP', help='The step of integrator.', type=Quantity, default='100 femtosecond', val='100 femtosecond'),
+    Arg('SIM_INTEGRATOR_STEP', help='The step of integrator.', type=Quantity, default='10 femtosecond', val='10 femtosecond'),
     Arg('SIM_FRICTION_COEFF', help='Friction coefficient (Used only with langevin integrator)', type=float, default='0.5', val='0.5'),
     Arg('SIM_SET_INITIAL_VELOCITIES', help='Sets initial velocities based on Boltzmann distribution', type=bool, default='False', val='False'),
     Arg('SIM_TEMPERATURE', help='Simulation temperature', type=Quantity, default='310 kelvin', val='310 kelvin'),
