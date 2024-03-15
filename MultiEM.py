@@ -89,31 +89,28 @@ class MultiEM:
             print("Folder 'chromosomes' already exists!")
 
         self.args  = args
-        loop_path = args.LOOPS_PATH
-        comp_path = args.COMPARTMENT_PATH
-        nuc_path = args.NUC_PATH
+        coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
         
         ################################################################
         ################ LOAD COMPARTMENTS #############################
         ################################################################
-        if comp_path.endswith('.bw') or comp_path.endswith('.bigwig') or comp_path.endswith('.BigWig'):
-            self.Cs, self.chr_ends = import_bw(bw_PATH=comp_path,N_beads=self.args.N_BEADS,\
-                                               viz=False,binary=True,\
-                                               path=self.save_PATH)
-        elif comp_path.endswith('.bed'):
-            self.Cs, self.chr_ends = import_compartments_from_Calder(bed_file=comp_path,N_beads=self.args.N_BEADS,\
-                                                                     chrom=self.args.CHROM,coords=self.args.COORDS,\
-                                                                     save_path=self.save_path)
-        else:
-            self.Cs = None
+        if args.COMPARTMENT_PATH!=None:
+            if args.COMPARTMENT_PATH.endswith('.bw') or args.COMPARTMENT_PATH.endswith('.bigwig') or args.COMPARTMENT_PATH.endswith('.BigWig'):
+                self.Cs, self.chr_ends = import_bw(bw_PATH=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
+                                                viz=False,binary=True,\
+                                                path=self.save_path)
+            elif args.COMPARTMENT_PATH.endswith('.bed'):
+                self.Cs, self.chr_ends = import_compartments_from_Calder(bed_file=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
+                                                                        chrom=self.args.CHROM,coords=coords,\
+                                                                        save_path=self.save_path)
 
         ################################################################
         ################ LOAD LOOPS ####################################
         ################################################################
         # Print the value and length of LOOPS_path for debugging
-        if loop_path.endswith('.bedpe'):
-            self.ms, self.ns, self.ds, self.chr_ends = import_mns_from_bedpe(bedpe_file = loop_path,N_beads=self.args.N_BEADS,\
-                                                                             coords = args.COORDS, chrom=args.CHROM,\
+        if args.LOOPS_PATH.endswith('.bedpe'):
+            self.ms, self.ns, self.ds, self.chr_ends = import_mns_from_bedpe(bedpe_file = args.LOOPS_PATH,N_beads=self.args.N_BEADS,\
+                                                                             coords = coords, chrom=args.CHROM,\
                                                                              viz=False, path=self.save_path)
         else:
             raise InterruptedError('You did not provide appropriate loop file. Loop .bedpe file is obligatory.')
@@ -123,8 +120,8 @@ class MultiEM:
         ################################################################
         ################ LOAD NUCLEOSOMES ##############################
         ################################################################
-        if nuc_path!=None:
-            self.entry_points, self.exit_points = puffin_to_array(nucs_path,args.COORDS)
+        if args.NUC_PATH!=None:
+            self.entry_points, self.exit_points = puffin_to_array(nucs_path,coords)
             self.nuc_sim_len, self.num_nucs = int(np.max(self.exit_points+1)), len(self.entry_points)
             self.is_nuc = np.full(self.nuc_sim_len,False)
             for i,j in zip(self.entry_points,self.exit_points):
@@ -133,7 +130,7 @@ class MultiEM:
         else:
             self.entry_points, self.exit_points, self.nuc_sim_len, self.num_nucs = None, None, 0, 0
         
-        # if np.all(comp_path!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
+        # if np.all(args.COMPARTMENT_PATH!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
         
         ################################################################
         ################ LOAD CHROMOSOMES ##############################
@@ -152,9 +149,10 @@ class MultiEM:
         '''
         # Leonard-Jones potential for excluded volume
         if self.args.EV_USE_EXCLUDED_VOLUME:
+            sigma = self.args.LE_HARMONIC_BOND_R0 if self.args.LE_FIXED_DISTANCES else np.min(self.ds)
             self.ev_force = mm.CustomNonbondedForce(f'epsilon*(sigma/r)^{self.args.EV_POWER}')
             self.ev_force.addGlobalParameter('epsilon', defaultValue=self.args.EV_EPSILON)
-            self.ev_force.addGlobalParameter('sigma', defaultValue=np.min(self.ds))
+            self.ev_force.addGlobalParameter('sigma', defaultValue=sigma)
             for i in range(self.system.getNumParticles()):
                 self.ev_force.addParticle()
             self.system.addForce(self.ev_force)
@@ -275,7 +273,8 @@ class MultiEM:
         if self.args.POL_USE_HARMONIC_ANGLE:
             self.angle_force = mm.HarmonicAngleForce()
             for i in range(self.system.getNumParticles()-2):
-                if (i not in self.chr_ends) and (i not in self.chr_ends-1): self.angle_force.addAngle(i, i+1, i+2, self.args.POL_HARMONIC_ANGLE_R0, self.args.POL_HARMONIC_CONSTANT_K)
+                if (i not in self.chr_ends) and (i not in self.chr_ends-1): 
+                    self.angle_force.addAngle(i, i+1, i+2, self.args.POL_HARMONIC_ANGLE_R0, self.args.POL_HARMONIC_CONSTANT_K)
             self.system.addForce(self.angle_force)
 
     def add_nuc_forcefield(self,n_wraps=2):
@@ -343,7 +342,7 @@ class MultiEM:
             print('\nCreating initial structure...')
             comp_mode = 'compartments' if np.all(self.Cs!=None) and len(np.unique(self.Cs))<=3 else 'subcompartments'
             if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'MultiEM_compartment_colors.cmd')
-            pdb_content = build_init_mmcif(n_dna=self.args.N_BEADS,chrom_ends=self.chr_ends,path=self.save_path,hilbert=self.args.CHROM==None,scale=(self.radius1+self.radius2)/2)
+            pdb_content = build_init_mmcif(n_dna=self.args.N_BEADS,chrom_ends=self.chr_ends,path=self.save_path,curve=self.args.INITIAL_STRUCTURE_TYPE,scale=(self.radius1+self.radius2)/2)
             print('---Done!---')
         pdb = PDBxFile(self.save_path+'MultiEM_init.cif') if self.args.INITIAL_STRUCTURE_path==None or build_init_mmcif else PDBxFile(self.args.INITIAL_STRUCTURE_PATH)
         self.mass_center = np.average(get_coordinates_mm(pdb.positions),axis=0)
@@ -395,7 +394,7 @@ class MultiEM:
             PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_afterMD.cif', 'w'))
             print(f'Everything is done! Simulation finished succesfully!\nMD finished in {elapsed/60:.2f} minutes.\n')
 
-        if self.args.SAVE_PLOTS:
+        if self.args.SAVE_PLOTS and self.Cs!=None:
             print('Creating and saving plots...')
             plot_projection(get_coordinates_mm(state.getPositions()),self.Cs,save_path=self.save_path)
             print('Done! :)')

@@ -1,6 +1,4 @@
-from structuregenerator.generator import self_avoiding_random_walk, line, polymer_circle
 import numpy as np
-from points_io.hybrid36 import hy36encode
 from nucs_helixes_banecki import *
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
