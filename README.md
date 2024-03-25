@@ -2,7 +2,11 @@
 ![gw](https://github.com/SFGLab/MultiEM/assets/49608786/f6d8c5f9-eda3-44d4-a779-5d45d3b4d79c)
 
 ## Installation
-The anaconda environment can be found in `biosym.yml` file. The software mainly needs OpenMM o run.
+Create a python 3.10 environment and type,
+
+```
+pip install -r requirements.txt
+```
 
 ## Usage
 All the parameters of the model are saved within a `config.ini` file. This file should have the following form,
@@ -20,7 +24,7 @@ COMPARTMENT_PATH = /mnt/raid/data/Trios/calder_HiChIP_subcomp/PUR_d.bed
 OUT_PATH = test
 
 ; Simulation Parameters
-N_BEADS = 200000
+N_BEADS = 50000
 
 ; Enable forcefield for GW simulation
 SC_USE_SPHERICAL_CONTAINER = True
@@ -29,9 +33,6 @@ SCB_USE_SUBCOMPARTMENT_BLOCKS = True
 IAL_USE_A_LAMINA_INTERACTION = False
 IBL_USE_B_LAMINA_INTERACTION = True
 CF_USE_CENTRAL_FORCE = True
-
-; Disable nucleosome simulation
-NUC_SIM = False
 ```
 
 Having specified the paramameters that you would like to use, you can run on terminal the following command,
