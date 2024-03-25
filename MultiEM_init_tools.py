@@ -180,12 +180,9 @@ def polymer_circle(n: int, z_stretch: float = 0.0, radius: float = None) -> np.n
     points = np.array(points)
     return points
 
-def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',curve='hilbert',scale=5):
+def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',hilbert=True,scale=5):
     # Define the initial coordinates of histones and the structure of DNA
-    if curve=='hilbert':
-        dna_points = generate_hilbert_curve(n_dna,scale=scale) 
-    elif curve=='circle': 
-        dna_points = polymer_circle(n_dna,50,5)
+    dna_points = generate_hilbert_curve(n_dna,scale=scale) if hilbert else polymer_circle(n_dna,50,5)
     
     # Write the positions in .mmcif file
     atoms = ''

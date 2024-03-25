@@ -18,8 +18,6 @@ from MultiEM_init_tools import *
 from MultiEM_utils import *
 from MultiEM_plots import *
 from MultiEM_args import *
-from nucs_init_struct_tools import *
-from nucs_preprocessing import *
 import time
 import os
 
@@ -89,28 +87,31 @@ class MultiEM:
             print("Folder 'chromosomes' already exists!")
 
         self.args  = args
-        coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
+        loop_path = args.LOOPS_PATH
+        comp_path = args.COMPARTMENT_PATH
+        nuc_path = args.NUC_PATH
         
         ################################################################
         ################ LOAD COMPARTMENTS #############################
         ################################################################
-        if args.COMPARTMENT_PATH!=None:
-            if args.COMPARTMENT_PATH.endswith('.bw') or args.COMPARTMENT_PATH.endswith('.bigwig') or args.COMPARTMENT_PATH.endswith('.BigWig'):
-                self.Cs, self.chr_ends = import_bw(bw_PATH=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
-                                                viz=False,binary=True,\
-                                                path=self.save_path)
-            elif args.COMPARTMENT_PATH.endswith('.bed'):
-                self.Cs, self.chr_ends = import_compartments_from_Calder(bed_file=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
-                                                                        chrom=self.args.CHROM,coords=coords,\
-                                                                        save_path=self.save_path)
+        if comp_path.endswith('.bw') or comp_path.endswith('.bigwig') or comp_path.endswith('.BigWig'):
+            self.Cs, self.chr_ends = import_bw(bw_PATH=comp_path,N_beads=self.args.N_BEADS,\
+                                               viz=False,binary=True,\
+                                               path=self.save_PATH)
+        elif comp_path.endswith('.bed'):
+            self.Cs, self.chr_ends = import_compartments_from_Calder(bed_file=comp_path,N_beads=self.args.N_BEADS,\
+                                                                     chrom=self.args.CHROM,coords=self.args.COORDS,\
+                                                                     save_path=self.save_path)
+        else:
+            self.Cs = None
 
         ################################################################
         ################ LOAD LOOPS ####################################
         ################################################################
         # Print the value and length of LOOPS_path for debugging
-        if args.LOOPS_PATH.endswith('.bedpe'):
-            self.ms, self.ns, self.ds, self.chr_ends = import_mns_from_bedpe(bedpe_file = args.LOOPS_PATH,N_beads=self.args.N_BEADS,\
-                                                                             coords = coords, chrom=args.CHROM,\
+        if loop_path.endswith('.bedpe'):
+            self.ms, self.ns, self.ds, self.chr_ends = import_mns_from_bedpe(bedpe_file = loop_path,N_beads=self.args.N_BEADS,\
+                                                                             coords = args.COORDS, chrom=args.CHROM,\
                                                                              viz=False, path=self.save_path)
         else:
             raise InterruptedError('You did not provide appropriate loop file. Loop .bedpe file is obligatory.')
@@ -120,8 +121,8 @@ class MultiEM:
         ################################################################
         ################ LOAD NUCLEOSOMES ##############################
         ################################################################
-        if args.NUC_PATH!=None:
-            self.entry_points, self.exit_points = puffin_to_array(nucs_path,coords)
+        if nuc_path!=None:
+            self.entry_points, self.exit_points = puffin_to_array(nucs_path,args.COORDS)
             self.nuc_sim_len, self.num_nucs = int(np.max(self.exit_points+1)), len(self.entry_points)
             self.is_nuc = np.full(self.nuc_sim_len,False)
             for i,j in zip(self.entry_points,self.exit_points):
@@ -130,7 +131,7 @@ class MultiEM:
         else:
             self.entry_points, self.exit_points, self.nuc_sim_len, self.num_nucs = None, None, 0, 0
         
-        # if np.all(args.COMPARTMENT_PATH!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
+        # if np.all(comp_path!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
         
         ################################################################
         ################ LOAD CHROMOSOMES ##############################
@@ -149,10 +150,9 @@ class MultiEM:
         '''
         # Leonard-Jones potential for excluded volume
         if self.args.EV_USE_EXCLUDED_VOLUME:
-            sigma = self.args.LE_HARMONIC_BOND_R0 if self.args.LE_FIXED_DISTANCES else np.min(self.ds)
             self.ev_force = mm.CustomNonbondedForce(f'epsilon*(sigma/r)^{self.args.EV_POWER}')
             self.ev_force.addGlobalParameter('epsilon', defaultValue=self.args.EV_EPSILON)
-            self.ev_force.addGlobalParameter('sigma', defaultValue=sigma)
+            self.ev_force.addGlobalParameter('sigma', defaultValue=np.min(self.ds))
             for i in range(self.system.getNumParticles()):
                 self.ev_force.addParticle()
             self.system.addForce(self.ev_force)
@@ -237,8 +237,8 @@ class MultiEM:
                 self.Blamina_force.addParticle(i, [self.Cs[i]])
             self.system.addForce(self.Blamina_force)
 
-        # Force that sets smaller chromosomes closer to the center
         if self.args.CF_USE_CENTRAL_FORCE:
+            # Force that sets smaller chromosomes closer to the center
             self.central_force = mm.CustomExternalForce('G*chrom/23*(-1/(r-R1+1)+1/(r-R1+1)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             self.central_force.addGlobalParameter('G',defaultValue=self.args.CF_STRENGTH)
             self.central_force.addGlobalParameter('R1',defaultValue=self.radius1)
@@ -262,7 +262,7 @@ class MultiEM:
             self.loop_force = mm.HarmonicBondForce()
             counter=0
             for m,n in tqdm(zip(self.ms,self.ns),total=len(self.ms)):
-                if self.args.LE_FIXED_DISTANCES:
+                if np.any(self.ds==None):
                     self.loop_force.addBond(m,n,self.args.LE_HARMONIC_BOND_R0,self.args.LE_HARMONIC_BOND_K)
                 else:
                     self.loop_force.addBond(m,n,self.ds[counter],self.args.LE_HARMONIC_BOND_K)
@@ -273,61 +273,15 @@ class MultiEM:
         if self.args.POL_USE_HARMONIC_ANGLE:
             self.angle_force = mm.HarmonicAngleForce()
             for i in range(self.system.getNumParticles()-2):
-                if (i not in self.chr_ends) and (i not in self.chr_ends-1): 
-                    self.angle_force.addAngle(i, i+1, i+2, self.args.POL_HARMONIC_ANGLE_R0, self.args.POL_HARMONIC_CONSTANT_K)
+                if (i not in self.chr_ends) and (i not in self.chr_ends-1): self.angle_force.addAngle(i, i+1, i+2, self.args.POL_HARMONIC_ANGLE_R0, self.args.POL_HARMONIC_CONSTANT_K)
             self.system.addForce(self.angle_force)
-
-    def add_nuc_forcefield(self,n_wraps=2):
-        '''
-        Here we define the forcefield of the nucleosome model.
-        '''
-        # Bending potential for stiffness
-        print('Importing Stiffness...')
-        angle_force = mm.HarmonicAngleForce()
-        for i in range(4*self.num_nucs,self.system_n.getNumParticles()-2):
-            if self.is_nuc[i-4*self.num_nucs]:
-                angle_force.addAngle(i, i+1, i+2, self.args.NAF_HARMONIC_ANGLE_R0, self.args.NAF_HARD_HARMONIC_CONSTANT_K)
-            else:
-                angle_force.addAngle(i, i+1, i+2, self.args.NAF_HARMONIC_ANGLE_R0, self.args.NAF_SOFT_HARMONIC_CONSTANT_K)
-        angle_force.setForceGroup(2)
-        self.system_n.addForce(angle_force)
-        print('Angle force imported.')
-
-        # Add DNA-DNA interactions
-        print('Importing DNA-DNA interactions...')
-        dnadna_force = mm.HarmonicBondForce()
-        r = int(np.average(self.exit_points-self.entry_points))//n_wraps
-        res = []
-        for k in tqdm(range(self.num_nucs)):
-            for j in range(self.entry_points[k], self.exit_points[k]-r):
-                dnadna_force.addBond(4*self.num_nucs+j, 4*self.num_nucs+j+r, self.args.NDD_HARMONIC_LENGTH_R0, self.args.NDD_ARMONIC_CONSTANT_K)
-                res.append(f':{self.num_nucs+j+1}\t:{self.num_nucs+j+r+1}\tred\n')
-        dnadna_force.setForceGroup(3)
-        self.system_n.addForce(dnadna_force)
-        print('DNA-DNA force imported.')
-
-        # Interaction between histone and DNA
-        print('Import DNA-histone forcefield...')
-        histone_dna_force = mm.HarmonicBondForce()
-        atoms = ['HIA','HIB','HIC','HID']
-        for k in tqdm(range(self.num_nucs)):
-            for i in range(4*k,4*k+4):
-                for w in range(n_wraps):
-                    helix_factor = (self.exit_points[k]-self.entry_points[k])//n_wraps
-                    wrap_factor = (self.exit_points[k]-self.entry_points[k])//n_wraps//4
-                    for j in range(self.entry_points[k]+w*helix_factor+(i%4)*wrap_factor, self.entry_points[k]+w*helix_factor+(i%4+1)*wrap_factor):
-                        histone_dna_force.addBond(i, 4*self.num_nucs+j, self.args.NDH_HARMONIC_LENGTH_R0, self.args.NDH_HARMONIC_CONSTANT_K)
-                        res.append(f':{k+1}@{atoms[i%4]}\t:{self.num_nucs+j+1}\tgreen\n')
-        histone_dna_force.setForceGroup(4)
-        self.system_n.addForce(histone_dna_force)
-        print('DNA-histone force imported.')
 
     def run_pipeline(self):
         '''
         Energy minimization for GW model.
         '''
         # Estimation of parameters
-        self.radius1 = (self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
+        self.radius1 = 1*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
         self.radius2 = 6*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
         if self.args.COB_DISTANCE!=None:
             self.r_comp = self.args.COB_DISTANCE
@@ -342,7 +296,7 @@ class MultiEM:
             print('\nCreating initial structure...')
             comp_mode = 'compartments' if np.all(self.Cs!=None) and len(np.unique(self.Cs))<=3 else 'subcompartments'
             if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'MultiEM_compartment_colors.cmd')
-            pdb_content = build_init_mmcif(n_dna=self.args.N_BEADS,chrom_ends=self.chr_ends,path=self.save_path,curve=self.args.INITIAL_STRUCTURE_TYPE,scale=(self.radius1+self.radius2)/2)
+            pdb_content = build_init_mmcif(n_dna=self.args.N_BEADS,chrom_ends=self.chr_ends,path=self.save_path,hilbert=self.args.CHROM==None,scale=(self.radius1+self.radius2)/2)
             print('---Done!---')
         pdb = PDBxFile(self.save_path+'MultiEM_init.cif') if self.args.INITIAL_STRUCTURE_path==None or build_init_mmcif else PDBxFile(self.args.INITIAL_STRUCTURE_PATH)
         self.mass_center = np.average(get_coordinates_mm(pdb.positions),axis=0)
@@ -394,49 +348,10 @@ class MultiEM:
             PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_afterMD.cif', 'w'))
             print(f'Everything is done! Simulation finished succesfully!\nMD finished in {elapsed/60:.2f} minutes.\n')
 
-        if self.args.SAVE_PLOTS and self.Cs!=None:
+        if self.args.SAVE_PLOTS:
             print('Creating and saving plots...')
             plot_projection(get_coordinates_mm(state.getPositions()),self.Cs,save_path=self.save_path)
             print('Done! :)')
-
-    def run_nuc_pipeline(self):
-        '''
-        Energy minimization for nucleosome simulation.
-        '''
-        # Define system
-        print('\nNucleosome simulation length:',self.nuc_sim_len)
-        print('Number of nucleosomes',self.num_nucs)
-        print('\n\nBuilding initial structure of nucleosome simulation...')
-        pdb_content = build_init_mmcif_nucs(entry=self.entry_points,exit=self.exit_points,n_nucs=self.num_nucs,n_dna=self.nuc_sim_len,
-                               mode='path',psf=True,path=self.save_path+'MultiEM_minimized.cif')
-
-        print('Creating system...')
-        pdb = PDBxFile('dna_histones.cif')
-        forcefield = ForceField('forcefields/dna_histones_ff.xml')
-        self.system_n = forcefield.createSystem(pdb.topology, nonbondedCutoff=1*mm.unit.nanometer)
-        if args.SIM_INTEGRATOR_TYPE=='verlet':
-            integrator  = mm.VerletIntegrator(self.args.SIM_TEMPERATURE,self.args.SIM_INTEGRATOR_STEP)
-        else:
-            integrator = mm.LangevinIntegrator(self.args.SIM_TEMPERATURE, self.args.SIM_FRICTION_COEFF, self.args.SIM_INTEGRATOR_STEP)
-        print('Done\n')
-
-        # Add nucleosome forcefield
-        print('Adding forcefield for nucleosomes...')
-        self.add_nuc_forcefield()
-        print('Done\n')
-        
-        # Energy minimization
-        print('Energy minimizing of nucleosome potential (this may take several minutes or hours)...')
-        platform = mm.Platform.getPlatformByName('CUDA')
-        simulation = Simulation(pdb.topology, self.system_n, integrator, platform)
-        current_platform = simulation.context.getPlatform()
-        print(f"Simulation will run on platform: {current_platform.getName()}")
-        simulation.reporters.append(StateDataReporter(stdout, 1000, step=True, totalEnergy=True, potentialEnergy=True, Temperature=True))
-        simulation.context.setPositions(pdb.positions)
-        simulation.minimizeEnergy()
-        state = simulation.context.getState(getPositions=True)
-        PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+f'minimized_nucres_model.cif', 'w'))
-        print('Energy minimization of nucleosome model done :D\n')
 
 def main():
     # Input data
