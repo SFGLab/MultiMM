@@ -126,9 +126,22 @@ def get_heatmap(mm_vec,viz=False,save=False,path=''):
         plt.close()
     return mat
 
-def import_bw(bw_path,N_beads,n_chroms,viz=False,binary=False,path=''):
-    genomewide_signal = list()
+def compute_averages(arr1, N2):
+    # Calculate the window size
+    window_size = len(arr1) // N2
+
+    # Reshape the array into a 2D array with the specified window size
+    reshaped_arr = arr1[:N2 * window_size].reshape(N2, -1)
+
+    # Calculate the average along the specified axis (axis=1)
+    averaged_arr = np.mean(reshaped_arr, axis=1)
+
+    return averaged_arr
+
+def import_bw(bw_path,N_beads,viz=False,binary=False,path=''):
+    # Open file
     bw = pyBigWig.open(bw_path)
+    n_chroms = len(bw.chroms())
 
     # Compute the total length of chromosomes
     chrom_length = 0
@@ -136,62 +149,56 @@ def import_bw(bw_path,N_beads,n_chroms,viz=False,binary=False,path=''):
     for i in range(n_chroms):
         chrom_length += bw.chroms(chrs[i])
         lengths.append(bw.chroms(chrs[i]))
-    step = chrom_length//N_beads-5*n_chroms
-
-    # Just import signal
-    mean=0
-    print('Computing mean of bw signal...')
-    for i in tqdm(range(n_chroms)):
-        mean += bw.stats(chrs[i])[0]
-    mean = mean/n_chroms
+    lengths = np.array(lengths)
+    resolution = chrom_length//(2*N_beads)
+    polymer_lengths = lengths//resolution
+    print('Sum of lengths = ',np.sum(polymer_lengths))
 
     # Import the downgraded signal
-    polymer_lengths = [0]
-    count=0
     print('Importing bw signal...')
+    genomewide_signal = list()
     for i in tqdm(range(n_chroms)):
-        signal = bw.values(chrs[i],0,-1)
-        new_signal =  list()
-        for i in range(step,len(signal)+1,step):
-            new_signal.append(np.average(signal[(i-step):i]))
-            count+=1
-        polymer_lengths.append(count)
-        genomewide_signal.append(new_signal)
-    genomewide_signal=np.concatenate(genomewide_signal)
-    print('Length of signal:',len(genomewide_signal))
+        signal = bw.values(chrs[i],0,-1, numpy=True)
+        genomewide_signal.append(compute_averages(signal, polymer_lengths[i]))
+    genomewide_signal = np.concatenate(genomewide_signal)
+    genomewide_signal = compute_averages(signal,N_beads)
+    genomewide_signal = (genomewide_signal-np.mean(genomewide_signal))/np.std(genomewide_signal)
+    bw.close()
 
     # Write chromosomes file
     np.save(path+'chrom_lengths.npy',polymer_lengths)
     
     # Transform signal to binary or adjuct it to have zero mean
     if binary:
-        genomewide_signal[genomewide_signal<mean]=-1
-        genomewide_signal[genomewide_signal>mean]=1
+        genomewide_signal[genomewide_signal>0] = 1
+        genomewide_signal[genomewide_signal<0] = -1
         
         # Subtitute zeros with random spin states
         mask = genomewide_signal==0
         n_zeros = np.count_nonzero(mask)
         nums = np.array(rd.choices([-1,1],k=n_zeros))
         genomewide_signal[mask] = nums
-    else:
-        genomewide_signal = genomewide_signal-mean
-        max_val = np.max([np.max(genomewide_signal),-np.min(genomewide_signal)])
-        genomewide_signal = genomewide_signal/max_val
+
     print('Done!\n')
 
+    # Plotting
     if viz:
-        figure(figsize=(25, 5), dpi=600)
+        figure(figsize=(25, 5), dpi=100)
         xax = np.arange(len(genomewide_signal))
-        plt.fill_between(xax,genomewide_signal, where=(new_signal>0),alpha=0.50,color='purple')
-        plt.fill_between(xax,genomewide_signal, where=(new_signal<0),alpha=0.50,color='orange')
-        plt.xlabel('Genomic Distance (x250kb)',fontsize=16)
+        plt.fill_between(xax,genomewide_signal, where=(genomewide_signal>0),alpha=0.50,color='purple')
+        plt.fill_between(xax,genomewide_signal, where=(genomewide_signal<0),alpha=0.50,color='orange')
+        lines = np.cumsum(polymer_lengths//2)
+        for i in range(n_chroms):
+            plt.axvline(x=lines[i], color='b')
+        plt.xlabel('Genomic Distance',fontsize=16)
         plt.ylabel('BW signal renormalized',fontsize=16)
+        plt.ylim((np.mean(genomewide_signal)-np.std(genomewide_signal),np.mean(genomewide_signal)+np.std(genomewide_signal)))
         plt.grid()
-        plt.close()
+        plt.show()
 
-    np.save(path+'comps.npy',genomewide_signal[:N_beads])
+    np.save(path+'comps.npy',genomewide_signal)
     
-    return genomewide_signal[:N_beads], polymer_lengths
+    return genomewide_signal
 
 def import_compartments_from_Calder(bed_file,N_beads,coords=None,chrom=None,save_path=''):
     # Load compartment dataset
@@ -223,14 +230,15 @@ def import_compartments_from_Calder(bed_file,N_beads,coords=None,chrom=None,save
     print('Building subcompartments_array...')
     comps_array = np.zeros(N_beads)
     for i in tqdm(range(len(comps_df))):
-        if comps_df[3][i].startswith('A.1'):
-            val = -2
-        elif comps_df[3][i].startswith('A.2'):
-            val = -1
-        elif comps_df[3][i].startswith('B.1'):
-            val = 1
-        elif comps_df[3][i].startswith('B.2'):
+        if comps_df[3][i].startswith('A.1') or comps_df[3][i].startswith('A1'):
             val = 2
+        elif comps_df[3][i].startswith('A.2') or comps_df[3][i].startswith('A2') or comps_df[3][i].startswith('A'):
+            val = 1
+        elif comps_df[3][i].startswith('B.2') or comps_df[3][i].startswith('B2'):
+            val = -2
+        elif comps_df[3][i].startswith('B.1') or comps_df[3][i].startswith('B1') or comps_df[3][i].startswith('B'):
+            val = -1
+
         comps_array[comps_df[1][i]:comps_df[2][i]] = val
     np.save(save_path+'compartments.npy',comps_array)
     print('Done')
@@ -311,7 +319,7 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,
     # zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
     # zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
     # ks = 1000+599000*min_max_trans(zs)
-    ds = 0.1+0.15*min_max_trans(1/cs**2/3)
+    ds = 0.1+0.1*min_max_trans(1/cs**2/3)
 
     # Perform some data cleaning
     mask = (ns-ms)!=0
