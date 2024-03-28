@@ -178,7 +178,7 @@ def import_bw(bw_path,N_beads,viz=False,binary=False,path=''):
         n_zeros = np.count_nonzero(mask)
         nums = np.array(rd.choices([-1,1],k=n_zeros))
         genomewide_signal[mask] = nums
-
+    
     print('Done!\n')
 
     # Plotting

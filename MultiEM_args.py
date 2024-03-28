@@ -141,7 +141,6 @@ args = ListOfArgs([
     Arg('N_BEADS', help="Number of Simulation Beads.", type=int, default='50000', val='50000'),
     Arg('COMPARTMENT_PATH', help="It can be either .bed file with subcompartments from Calder or .BigWig signal.", type=str, default='', val=''),
     Arg('LOOPS_PATH', help="A .bedpe file path with loops. It is required.", type=str, default='', val=''),
-    Arg('NUC_PATH', help="A .bed file with the locations of nucleosomes (preferably output of PuFFIN).", type=str, default='', val=''),
     Arg('OUT_PATH', help="Output folder name.", type=str, default='results', val='results'),
     Arg('LOC_START', help="Starting region coordinate.", type=int, default='', val=''),
     Arg('LOC_END', help="Ending region coordinate.", type=int, default='', val=''),
@@ -156,7 +155,7 @@ args = ListOfArgs([
     # Basic polymer stiffness
     Arg('POL_USE_HARMONIC_ANGLE', help="Use harmonic angle interaction.", type=bool, default='True', val='True'),
     Arg('POL_HARMONIC_ANGLE_R0', help="harmonic angle distance equilibrium constant", type=float, default=str(pi), val=str(pi)),
-    Arg('POL_HARMONIC_CONSTANT_K', help="harmonic angle force constant (fixed unit: kJ/mol/radian^2)", type=float, default='200.0', val='200.0'),
+    Arg('POL_HARMONIC_CONSTANT_K', help="harmonic angle force constant (fixed unit: kJ/mol/radian^2)", type=float, default='40.0', val='40.0'),
 
     # Long-Range loop bonds
     Arg('LE_USE_HARMONIC_BOND', help="Use harmonic bond interaction for long range loops.", type=bool, default='True', val='True'),
@@ -166,8 +165,9 @@ args = ListOfArgs([
 
     # Excluded Volume
     Arg('EV_USE_EXCLUDED_VOLUME', help="Use excluded volume.", type=bool, default='True', val='True'),
-    Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='10.0', val='10.0'),
-    Arg('EV_POWER', help="Power in the exponent of EV potential.", type=float, default='6.0', val='6.0'),
+    Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='50.0', val='50.0'),
+    Arg('EV_R_SMALL', help="Add something small in denominator to make it not exploding all the time.", type=float, default='0.05', val='0.05'),
+    Arg('EV_POWER', help="Power in the exponent of EV potential.", type=float, default='3.0', val='3.0'),
 
     # Spherical container
     Arg('SC_USE_SPHERICAL_CONTAINER', help='Use Spherical container', type=bool, default='False', val='False'),
@@ -205,27 +205,7 @@ args = ListOfArgs([
     # Small Chromosomes Attraction to Center
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
     Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='100.0', val='100.0'),
-
-    # Nucleosome simulation
-    Arg('NUC_SIM', help='Do you want to include nucleosomes in the simulation?', type=bool, default='False', val='False'),
-
-    # Add stiffnes in nucleosome simulation
-    # Basic polymer stiffness
-    Arg('NAF_USE_HARMONIC_ANGLE', help="Use harmonic angle interaction.", type=bool, default='True', val='True'),
-    Arg('NAF_HARMONIC_ANGLE_R0', help="harmonic angle distance equilibrium constant", type=float, default=str(pi), val=str(pi)),
-    Arg('NAF_HARD_HARMONIC_CONSTANT_K', help="hard harmonic angle force constant (fixed unit: kJ/mol/radian^2) around nucleosomes", type=float, default='5000.0', val='5000.0'),
-    Arg('NAF_SOFT_HARMONIC_CONSTANT_K', help="soft harmonic angle force constant (fixed unit: kJ/mol/radian^2) bertween nucleosomes", type=float, default='100.0', val='100.0'),
-
-    # DNA-DNA Interactions
-    Arg('NDD_USE_DNA_DNA_INTERACTION', help="Use long range interactions for the formation of helixes around nucleosomes.", type=bool, default='True', val='True'),
-    Arg('NDD_HARMONIC_LENGTH_R0', help="harmonic length equilibrium constant", type=float, default='0.11', val='0.11'),
-    Arg('NDD_ARMONIC_CONSTANT_K', help="hard harmonic angle force constant (fixed unit: kJ/mol/radian^2) around nucleosomes", type=float, default='3000.0', val='3000.0'),
     
-    # DNA-histone interactions
-    Arg('NDH_USE_DNA_DNA_INTERACTION', help="Use interactions between histones and dna, so as to have histones within helixes.", type=bool, default='True', val='True'),
-    Arg('NDH_HARMONIC_LENGTH_R0', help="harmonic length equilibrium constant", type=float, default='0.175', val='0.175'),
-    Arg('NDH_HARMONIC_CONSTANT_K', help="hard harmonic angle force constant (fixed unit: kJ/mol/radian^2) around nucleosomes", type=float, default='500.0', val='500.0'),
-
     # Simulation parameters
     Arg('SIM_RUN_MD', help='Do you want to run MD simulation?', type=bool, default='False', val='False'),
     Arg('SIM_N_STEPS', help='Number of steps in MD simulation', type=int, default='', val=''),
