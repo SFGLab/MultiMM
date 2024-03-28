@@ -4,10 +4,8 @@ from dataclasses import dataclass
 from math import pi
 from typing import Union
 
-import simtk
-import simtk.openmm as mm
-from simtk.unit import Quantity
-
+import openmm as mm
+from openmm.unit import Quantity
 
 @dataclass
 class Arg(object):
@@ -17,6 +15,13 @@ class Arg(object):
     default: Union[str, float, int, bool, Quantity, None]
     val: Union[str, float, int, bool, Quantity, None]
 
+
+# Define custom type to parse list from string
+def parse_list(s):
+    try:
+        return [int(x.strip()) for x in s.strip('[]').split(',')]
+    except ValueError:
+        raise argparse.ArgumentTypeError("Invalid list format. Must be a comma-separated list of integers.")
 
 class ListOfArgs(list):
     quantity_regexp = re.compile(r'(?P<value>[-+]?\d+(?:\.\d+)?) ?(?P<unit>\w+)')
@@ -32,13 +37,22 @@ class ListOfArgs(list):
     def __getattr__(self, item):
         return self.get_arg(item).val
 
+    def parse_args(self):
+        parser = argparse.ArgumentParser()
+        for arg in self.arg_list:
+            parser.add_argument(arg['name'], help=arg['help'], type=arg.get('type', str), default=arg.get('default', ''), val=arg.get('val', ''))
+
+        args = parser.parse_args()
+        parsed_args = {arg['name']: getattr(args, arg['name']) for arg in self.arg_list}
+        return parsed_args
+
     def parse_quantity(self, val: str) -> Union[Quantity, None]:
         if val == '':
             return None
         match_obj = self.quantity_regexp.match(val)
         value, unit = match_obj.groups()
         try:
-            unit = getattr(simtk.unit, unit)
+            unit = getattr(mm.unit, unit)
         except AttributeError:
             raise ValueError(f"I Can't recognise unit {unit} in expression {val}. Example of valid quantity: 12.3 femtosecond.")
         return Quantity(value=float(value), unit=unit)
@@ -49,7 +63,7 @@ class ListOfArgs(list):
             if i.val == '':
                 i.val = None
             elif i.name == "HR_K_PARAM":  # Workaround for complex unit
-                i.val = Quantity(float(i.val), simtk.unit.kilojoule_per_mole / simtk.unit.nanometer ** 2)
+                i.val = Quantity(float(i.val), mm.unit.kilojoule_per_mole / mm.unit.nanometer ** 2)
             elif i.type == str:
                 continue
             elif i.type == int:
@@ -78,7 +92,7 @@ class ListOfArgs(list):
         w += "# This is automatically generated config file.\n"
         w += f"# Generated at: {datetime.datetime.now().isoformat()}\n\n"
         w += "# Notes:\n"
-        w += "# Some fields require units. Units are represented as objects from simtk.units module.\n"
+        w += "# Some fields require units. Units are represented as objects from mm.units module.\n"
         w += "# Simple units are parsed directly. For example: \n"
         w += "# HR_R0_PARAM = 0.2 nanometer\n"
         w += "# But more complex units does not have any more sophisticated parser written, and will fail.'\n"
@@ -122,13 +136,15 @@ args = ListOfArgs([
     # Input data
     Arg('INITIAL_STRUCTURE_PATH', help="Path to CIF file.", type=str, default='', val=''),
     Arg('BUILD_INITIAL_STRUCTURE', help="To build a new initial structure.", type=bool, default='True', val='True'),
+    Arg('INITIAL_STRUCTURE_TYPE', help="you can choose between: hilbert, circle.", type=str, default='hilbert', val='hilbert'),
     Arg('FORCEFIELD_PATH', help="Path to XML file with forcefield.", type=str, default='', val=''),
     Arg('N_BEADS', help="Number of Simulation Beads.", type=int, default='50000', val='50000'),
     Arg('COMPARTMENT_PATH', help="It can be either .bed file with subcompartments from Calder or .BigWig signal.", type=str, default='', val=''),
     Arg('LOOPS_PATH', help="A .bedpe file path with loops. It is required.", type=str, default='', val=''),
     Arg('NUC_PATH', help="A .bed file with the locations of nucleosomes (preferably output of PuFFIN).", type=str, default='', val=''),
     Arg('OUT_PATH', help="Output folder name.", type=str, default='results', val='results'),
-    Arg('COORDS', help="Coordinates of the specific region (in case that you do not want to model the whole genome).", type=list, default='', val=''),
+    Arg('LOC_START', help="Starting region coordinate.", type=int, default='', val=''),
+    Arg('LOC_END', help="Ending region coordinate.", type=int, default='', val=''),
     Arg('CHROM', help="Chromosome that corresponds the the modelling region of interest (in case that you do not want to model the whole genome).", type=str, default='', val=''),
     Arg('SAVE_PLOTS', help='Save plots.', type=bool, default='True', val='True'),
     
@@ -144,6 +160,7 @@ args = ListOfArgs([
 
     # Long-Range loop bonds
     Arg('LE_USE_HARMONIC_BOND', help="Use harmonic bond interaction for long range loops.", type=bool, default='True', val='True'),
+    Arg('LE_FIXED_DISTANCES', help="For fixed distances between loops. False if you want to correlate with the hatmap strength.", type=bool, default='False', val='False'),
     Arg('LE_HARMONIC_BOND_R0', help="harmonic bond distance equilibrium constant", type=float, default='0.1', val='0.1'),
     Arg('LE_HARMONIC_BOND_K', help="harmonic bond force constant (fixed unit: kJ/mol/nm^2)", type=float, default='30000.0', val='30000.0'),
 
@@ -188,7 +205,27 @@ args = ListOfArgs([
     # Small Chromosomes Attraction to Center
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
     Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='100.0', val='100.0'),
+
+    # Nucleosome simulation
+    Arg('NUC_SIM', help='Do you want to include nucleosomes in the simulation?', type=bool, default='False', val='False'),
+
+    # Add stiffnes in nucleosome simulation
+    # Basic polymer stiffness
+    Arg('NAF_USE_HARMONIC_ANGLE', help="Use harmonic angle interaction.", type=bool, default='True', val='True'),
+    Arg('NAF_HARMONIC_ANGLE_R0', help="harmonic angle distance equilibrium constant", type=float, default=str(pi), val=str(pi)),
+    Arg('NAF_HARD_HARMONIC_CONSTANT_K', help="hard harmonic angle force constant (fixed unit: kJ/mol/radian^2) around nucleosomes", type=float, default='5000.0', val='5000.0'),
+    Arg('NAF_SOFT_HARMONIC_CONSTANT_K', help="soft harmonic angle force constant (fixed unit: kJ/mol/radian^2) bertween nucleosomes", type=float, default='100.0', val='100.0'),
+
+    # DNA-DNA Interactions
+    Arg('NDD_USE_DNA_DNA_INTERACTION', help="Use long range interactions for the formation of helixes around nucleosomes.", type=bool, default='True', val='True'),
+    Arg('NDD_HARMONIC_LENGTH_R0', help="harmonic length equilibrium constant", type=float, default='0.11', val='0.11'),
+    Arg('NDD_ARMONIC_CONSTANT_K', help="hard harmonic angle force constant (fixed unit: kJ/mol/radian^2) around nucleosomes", type=float, default='3000.0', val='3000.0'),
     
+    # DNA-histone interactions
+    Arg('NDH_USE_DNA_DNA_INTERACTION', help="Use interactions between histones and dna, so as to have histones within helixes.", type=bool, default='True', val='True'),
+    Arg('NDH_HARMONIC_LENGTH_R0', help="harmonic length equilibrium constant", type=float, default='0.175', val='0.175'),
+    Arg('NDH_HARMONIC_CONSTANT_K', help="hard harmonic angle force constant (fixed unit: kJ/mol/radian^2) around nucleosomes", type=float, default='500.0', val='500.0'),
+
     # Simulation parameters
     Arg('SIM_RUN_MD', help='Do you want to run MD simulation?', type=bool, default='False', val='False'),
     Arg('SIM_N_STEPS', help='Number of steps in MD simulation', type=int, default='', val=''),
