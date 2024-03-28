@@ -109,9 +109,6 @@ class MultiEM:
         # Chromosomes
         self.chrom_spin = np.zeros(self.args.N_BEADS)
         if self.args.CHROM==None or self.args.CHROM=='':
-            print('___________________________________________________________')
-            print('A region was not specified. Whole genome simulation starts.')
-            print('___________________________________________________________')
             for i in range(len(self.chr_ends)-1):
                 self.chrom_spin[self.chr_ends[i]:self.chr_ends[i+1]] = i
 
