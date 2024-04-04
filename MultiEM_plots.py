@@ -33,8 +33,8 @@ def plot_projection(struct_3D,Cs,save_path):
     df.drop(df[df['subcomp']==0.0].index,inplace=True)
 
     # Plot Distribution
-    figure(figsize=(10, 10), dpi=100)
-    sns.scatterplot(data=df,x='x_PCA',y='y_PCA',hue='subcomp', palette="coolwarm_r", alpha=0.5)
+    figure(figsize=(8, 8), dpi=100)
+    sns.scatterplot(data=df,x='x_PCA',y='y_PCA',hue='subcomp', palette="coolwarm", alpha=0.5)
     plt.xlabel('First Pricipal Component')
     plt.ylabel('Second Pricipal Component')
     plt.title('Scatter Plot of PCA 2D Projection')
@@ -42,25 +42,25 @@ def plot_projection(struct_3D,Cs,save_path):
     plt.close()
 
     # Plot more stuff
-    figure(figsize=(10, 10), dpi=100)
-    sns.kdeplot(data=df, x='x', y='y', palette="coolwarm_r", hue='subcomp', bw_adjust=.5)
+    figure(figsize=(8, 8), dpi=100)
+    sns.kdeplot(data=df, x='x', y='y', palette="coolwarm", hue='subcomp', bw_adjust=.5)
     plt.title('Subcompartment 2D Density Plot')
     plt.savefig(save_path+'plots/density_subcomp.svg',format='svg',dpi=100)
     plt.close()
     
-    figure(figsize=(10, 6), dpi=100)
-    sns.kdeplot(data=df, x='distance', hue='subcomp', fill=True, palette='coolwarm_r')
+    figure(figsize=(8, 5), dpi=100)
+    sns.kdeplot(data=df, x='distance', hue='subcomp', fill=True, palette='coolwarm')
     plt.title('Subcompartment Density Plot')
     plt.savefig(save_path+'plots/kde_subcomp.svg',format='svg',dpi=100)
     plt.close()
 
-    figure(figsize=(10, 6), dpi=100)
+    figure(figsize=(8, 5), dpi=100)
     sns.kdeplot(data=df,x='distance',fill=True)
     plt.title('Density Plot')
     plt.savefig(save_path+'plots/kde.svg',format='svg',dpi=100)
     plt.close()
     
-    figure(figsize=(12, 9), dpi=100)
+    figure(figsize=(10, 8), dpi=100)
     sns.kdeplot(data=df, x='x_PCA', y='y_PCA', cmap="gnuplot2", shade=True,cbar=True)
     plt.title('2D Density Plot')
     plt.savefig(save_path+'plots/density.svg',format='svg',dpi=100)

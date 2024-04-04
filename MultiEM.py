@@ -173,28 +173,13 @@ class MultiEM:
             for i in range(self.system.getNumParticles()):
                 self.container_force.addParticle(i, [])
             self.system.addForce(self.container_force)
-        
-        # Interaction of A compartment with lamina
-        if self.args.IAL_USE_A_LAMINA_INTERACTION:
-            self.Alamina_force = mm.CustomExternalForce('-A*sin(pi*(r-R1)/(R2-R1))^2*(delta(s-1)+delta(s-2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
-            self.Alamina_force.addGlobalParameter('A',defaultValue=self.args.IAL_SCALE)
-            self.Alamina_force.addGlobalParameter('pi',defaultValue=np.pi)
-            self.Alamina_force.addGlobalParameter('R1',defaultValue=self.radius1)
-            self.Alamina_force.addGlobalParameter('R2',defaultValue=self.radius2)
-            self.Alamina_force.addGlobalParameter('x0',defaultValue=self.mass_center[0])
-            self.Alamina_force.addGlobalParameter('y0',defaultValue=self.mass_center[1])
-            self.Alamina_force.addGlobalParameter('z0',defaultValue=self.mass_center[2])
-            self.Alamina_force.addPerParticleParameter('s')
-            for i in range(self.system.getNumParticles()):
-                self.Alamina_force.addParticle(i, [self.Cs[i]])
-            self.system.addForce(self.Alamina_force)
             
         # Interaction of B compartment with lamina
         if self.args.IBL_USE_B_LAMINA_INTERACTION:
             if self.radius1!=0.0:
-                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^2-1)*(delta(s+1)+delta(s+2))*step(R1)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             else:
-                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^2-1)*(delta(s+1)+delta(s+2))*step(R2/2)*(1-step(R2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             self.Blamina_force.addGlobalParameter('B',defaultValue=self.args.IBL_SCALE)
             self.Blamina_force.addGlobalParameter('pi',defaultValue=np.pi)
             self.Blamina_force.addGlobalParameter('R1',defaultValue=self.radius1)
@@ -238,7 +223,7 @@ class MultiEM:
                     self.loop_force.addBond(m,n,self.ds[counter],self.args.LE_HARMONIC_BOND_K)
                 counter+=1
             self.system.addForce(self.loop_force)
-
+        
         # Bending potential for stiffness
         if self.args.POL_USE_HARMONIC_ANGLE:
             self.angle_force = mm.HarmonicAngleForce()
@@ -253,7 +238,7 @@ class MultiEM:
         '''
         # Estimation of parameters
         self.radius1 = (self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
-        self.radius2 = 6*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
+        self.radius2 = 4*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
         if self.args.COB_DISTANCE!=None:
             self.r_comp = self.args.COB_DISTANCE
         elif self.args.SCB_DISTANCE!=None:
@@ -261,7 +246,7 @@ class MultiEM:
         else:
             self.r_comp = (self.radius2-self.radius1)/20
         self.r_chrom = self.r_comp/2 if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
-
+        
         # Initialize simulation
         if self.args.BUILD_INITIAL_STRUCTURE:
             print('\nCreating initial structure...')
@@ -296,7 +281,7 @@ class MultiEM:
         simulation.minimizeEnergy()
         state = simulation.context.getState(getPositions=True)
         PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_minimized.cif', 'w'))
-        print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)/60:.2f} minutes. :D ---\n")        
+        print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)//3600:.0f} hours, {(time.time() - start_time)%3600//60:.0f} minutes and  {(time.time() - start_time)%60:.0f} seconds. :D ---\n")        
         
         start = time.time()
         V = get_coordinates_mm(state.getPositions())
@@ -317,14 +302,12 @@ class MultiEM:
             elapsed = end - start
             state = simulation.context.getState(getPositions=True)
             PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_afterMD.cif', 'w'))
-            print(f'Everything is done! Simulation finished succesfully!\nMD finished in {elapsed/60:.2f} minutes.\n')
+            print(f'Everything is done! Simulation finished succesfully!\nMD finished in {(time.time() - start_time)//3600:.0f} hours, {(time.time() - start_time)%3600//60:.0f} minutes and  {(time.time() - start_time)%60:.0f} seconds. ---\n')
 
         if self.args.SAVE_PLOTS and np.any(self.Cs!=None):
             print('Creating and saving plots...')
             plot_projection(get_coordinates_mm(state.getPositions()),self.Cs,save_path=self.save_path)
             print('Done! :)')
-
-
 
 def main():
     # Input data
