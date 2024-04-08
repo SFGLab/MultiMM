@@ -138,7 +138,14 @@ def compute_averages(arr1, N2):
 
     return averaged_arr
 
-def import_bw(bw_path,N_beads,viz=False,binary=False,path=''):
+def import_bw(bw_path,N_beads,viz=False,binary=False,path='',sign=1):
+    '''
+    Imports .BigWig data and outputs compartments.
+
+    It assumes that higher signal coresponds to B compartment.
+
+    In case that you would like to switch the sign then add flag sign=-1.
+    '''
     # Open file
     bw = pyBigWig.open(bw_path)
     n_chroms = len(bw.chroms())
@@ -170,8 +177,8 @@ def import_bw(bw_path,N_beads,viz=False,binary=False,path=''):
     
     # Transform signal to binary or adjuct it to have zero mean
     if binary:
-        genomewide_signal[genomewide_signal>0] = 1
-        genomewide_signal[genomewide_signal<0] = -1
+        genomewide_signal[genomewide_signal>0] = -1
+        genomewide_signal[genomewide_signal<=0] = 1
         
         # Subtitute zeros with random spin states
         mask = genomewide_signal==0
@@ -198,9 +205,9 @@ def import_bw(bw_path,N_beads,viz=False,binary=False,path=''):
 
     np.save(path+'comps.npy',genomewide_signal)
     
-    return genomewide_signal
+    return sign*genomewide_signal
 
-def import_compartments_from_Calder(bed_file,N_beads,coords=None,chrom=None,save_path=''):
+def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path=''):
     # Load compartment dataset
     comps_df = pd.read_csv(bed_file,header=None,sep='\t')
 

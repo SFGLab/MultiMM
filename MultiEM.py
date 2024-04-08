@@ -89,11 +89,10 @@ class MultiEM:
         # Compartments
         if args.COMPARTMENT_PATH!=None:
             if args.COMPARTMENT_PATH.endswith('.bed'):
-                self.Cs, self.chr_ends = import_compartments_from_Calder(bed_file=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
+                self.Cs, self.chr_ends = import_bed(bed_file=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
                                                                         chrom=self.args.CHROM,coords=coords,\
                                                                         save_path=self.save_path)
 
-        
         # Loops
         if args.LOOPS_PATH.endswith('.bedpe'):
             self.ms, self.ns, self.ds, self.chr_ends = import_mns_from_bedpe(bedpe_file = args.LOOPS_PATH,N_beads=self.args.N_BEADS,\
@@ -177,9 +176,9 @@ class MultiEM:
         # Interaction of B compartment with lamina
         if self.args.IBL_USE_B_LAMINA_INTERACTION:
             if self.radius1!=0.0:
-                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^16-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             else:
-                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^16-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             self.Blamina_force.addGlobalParameter('B',defaultValue=self.args.IBL_SCALE)
             self.Blamina_force.addGlobalParameter('pi',defaultValue=np.pi)
             self.Blamina_force.addGlobalParameter('R1',defaultValue=self.radius1)
@@ -229,7 +228,7 @@ class MultiEM:
             self.angle_force = mm.HarmonicAngleForce()
             for i in range(self.system.getNumParticles()-2):
                 if (i not in self.chr_ends) and (i not in self.chr_ends-1): 
-                    self.angle_force.addAngle(i, i+1, i+2, self.args.POL_HARMONIC_ANGLE_R0, self.args.POL_HARMONIC_CONSTANT_K)
+                    self.angle_force.addAngle(i, i+1, i+2, self.args.POL_HARMONIC_ANGLE_R0, self.args.POL_HARMONIC_ANGLE_CONSTANT_K)
             self.system.addForce(self.angle_force)
 
     def run_pipeline(self):
@@ -237,7 +236,7 @@ class MultiEM:
         Energy minimization for GW model.
         '''
         # Estimation of parameters
-        self.radius1 = (self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
+        self.radius1 = 0.5*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
         self.radius2 = 4*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
         if self.args.COB_DISTANCE!=None:
             self.r_comp = self.args.COB_DISTANCE
@@ -302,7 +301,7 @@ class MultiEM:
             elapsed = end - start
             state = simulation.context.getState(getPositions=True)
             PDBxFile.writeFile(pdb.topology, state.getPositions(), open(self.save_path+'MultiEM_afterMD.cif', 'w'))
-            print(f'Everything is done! Simulation finished succesfully!\nMD finished in {(time.time() - start_time)//3600:.0f} hours, {(time.time() - start_time)%3600//60:.0f} minutes and  {(time.time() - start_time)%60:.0f} seconds. ---\n')
+            print(f'Everything is done! Simulation finished succesfully!\nMD finished in {elapsed//3600:.0f} hours, {elapsed%3600//60:.0f} minutes and  {elapsed%60:.0f} seconds. ---\n')
 
         if self.args.SAVE_PLOTS and np.any(self.Cs!=None):
             print('Creating and saving plots...')
