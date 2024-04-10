@@ -4,10 +4,6 @@
 #########################################################
 
 import numpy as np
-from scipy.interpolate import CubicSpline
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import plotly.graph_objects as go
 from MultiEM_utils import *
 from MultiEM_init_tools import *
 from tqdm import tqdm
