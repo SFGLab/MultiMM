@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 from MultiEM_utils import *
 from MultiEM_init_tools import *
 from tqdm import tqdm
+import pyvista as pv
 import torch
 
 def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path='',sign=1,norm=False):
@@ -217,10 +218,9 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,tu
     segment_vector = end_point - start_point
 
     # Calculate helix parameters
-    helix_radius = np.linalg.norm(segment_vector)/np.pi
+    helix_radius = np.linalg.norm(segment_vector)/(4*np.pi)
     helix_axis = segment_vector / np.linalg.norm(segment_vector)
     helix_height = 0.2
-    
 
     # Initialize helices
     theta = np.linspace(0, turns* 2 * np.pi, 10)
@@ -229,12 +229,12 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,tu
     helix_points = [start_point]
     for i in range(num_nucleosomes):
         helix_points.append(start_point +  (i + 1.0/num_nucleosomes) * helix_axis* helix_height)
-    
+
     # Generate helices for each nucleosome
     for i in range(num_nucleosomes):
         # Calculate helix angle
-        if sign==1: phi+=np.pi/6
-        zigzag_displacement = sign*np.pi/4
+        if sign==1: phi+=np.pi/3
+        zigzag_displacement = sign*np.pi/12
         zz_add = np.array([zigzag_displacement*np.sin(phi),zigzag_displacement*np.cos(phi),0])
         helix = make_helix(helix_radius,theta,helix_height,sign)+zz_add
         helix = move_structure_to(helix,helix_points[i],helix_points[i+1])
@@ -245,49 +245,28 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,tu
 
     return helices, sign, phi
 
-# Example data
-V = get_coordinates_cif('/mnt/raid/codes/mine/MultiEM-main/Trios_ensembles/CHS_d/MultiEM_minimized.cif')
-N = len(V)
-bw_array = import_bw('/mnt/raid/data/encode/ATAC-Seq/ENCSR637XSC_GM12878/ENCFF667MDI_pval.bigWig',N,viz=True)  # Mock signal array
+def polyline_from_points(points):
+    poly = pv.PolyData()
+    poly.points = points
+    the_cell = np.arange(0, len(points), dtype=np.int_)
+    the_cell = np.insert(the_cell, 0, len(points))
+    poly.lines = the_cell
+    return poly
 
-# Interpolate structure with nucleosomes
-iV = interpolate_structure_with_nucleosomes(V, bw_array)
-points = np.arange(0,len(iV))
-print('Final Length of Nucleosome Interpolated Structure:',len(iV))
+def viz_structure(V):
+    polyline = polyline_from_points(V)
+    polyline["scalars"] = np.arange(polyline.n_points)
+    tube = polyline.tube(radius=0.1)
+    tube.plot(smooth_shading=False,cmap='rainbow')
+    
+def main():
+    # Example data
+    V = get_coordinates_cif('/mnt/raid/codes/mine/MultiEM-main/Trios_ensembles/CHS_d/MultiEM_minimized.cif')
+    N = len(V)
+    bw_array = import_bw('/mnt/raid/data/encode/ATAC-Seq/ENCSR637XSC_GM12878/ENCFF667MDI_pval.bigWig',N,viz=True)  # Mock signal array
 
-fig = go.Figure(data=go.Scatter3d(
-    x=iV[:100000,0], y=iV[:100000,1], z=iV[:100000,2],
-    marker=dict(
-        size=2,
-        color=points[:100000],
-        colorscale='rainbow',
-    ),
-    line=dict(
-        color='darkblue',
-        width=1
-    )
-))
+    # Interpolate structure with nucleosomes
+    iV = interpolate_structure_with_nucleosomes(V, bw_array)
+    points = np.arange(0,len(iV))
+    print('Final Length of Nucleosome Interpolated Structure:',len(iV))
 
-fig.update_layout(
-    width=800,
-    height=800,
-    autosize=False,
-    scene=dict(
-        camera=dict(
-            up=dict(
-                x=0,
-                y=0,
-                z=1
-            ),
-            eye=dict(
-                x=0,
-                y=1.0707,
-                z=1,
-            )
-        ),
-        aspectratio = dict( x=5, y=5, z=5 ),
-        aspectmode = 'manual'
-    ),
-)
-
-fig.show()

@@ -141,6 +141,7 @@ args = ListOfArgs([
     Arg('N_BEADS', help="Number of Simulation Beads.", type=int, default='50000', val='50000'),
     Arg('COMPARTMENT_PATH', help="It can be either .bed file with subcompartments from Calder or .BigWig signal.", type=str, default='', val=''),
     Arg('LOOPS_PATH', help="A .bedpe file path with loops. It is required.", type=str, default='', val=''),
+    Arg('ATACSEQ_PATH', help="A .bw or .BigWig file path with atacseq data. It is not required.", type=str, default='', val=''),
     Arg('OUT_PATH', help="Output folder name.", type=str, default='results', val='results'),
     Arg('LOC_START', help="Starting region coordinate.", type=int, default='', val=''),
     Arg('LOC_END', help="Ending region coordinate.", type=int, default='', val=''),
@@ -201,6 +202,9 @@ args = ListOfArgs([
     # Small Chromosomes Attraction to Center
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
     Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='200.0', val='200.0'),
+
+    # Nucleosome interpolation
+    Arg('NUC_DO_INTERPOLATION', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
     
     # Simulation parameters
     Arg('SIM_RUN_MD', help='Do you want to run MD simulation?', type=bool, default='False', val='False'),

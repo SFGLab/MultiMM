@@ -18,6 +18,7 @@ from MultiEM_init_tools import *
 from MultiEM_utils import *
 from MultiEM_plots import *
 from MultiEM_args import *
+from MultiEM_nuc_interpol import *
 import time
 import os
 
@@ -92,6 +93,9 @@ class MultiEM:
                 self.Cs, self.chr_ends = import_bed(bed_file=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
                                                                         chrom=self.args.CHROM,coords=coords,\
                                                                         save_path=self.save_path)
+            else:
+                raise InterruptedError('Compartments file should be in .bed format.')
+
 
         # Loops
         if args.LOOPS_PATH.endswith('.bedpe'):
@@ -100,6 +104,13 @@ class MultiEM:
                                                                              viz=False, path=self.save_path)
         else:
             raise InterruptedError('You did not provide appropriate loop file. Loop .bedpe file is obligatory.')
+
+        # Nucleosomes
+        if args.ATACSEQ_PATH!=None:
+            if args.ATACSEQ_PATH.endswith('.bed'):
+                self.atacseq = import_bw(args.ATACSEQ_PATH,self.args.N_BEADS,chrom=self.args.CHROM,coords=coords)
+            else:
+                raise InterruptedError('ATAC-Seq file should be in .bw or .BigWig format.')
         
         write_chrom_colors(self.chr_ends,name=self.save_path+'MultiEM_chromosome_colors.cmd')
         
@@ -307,6 +318,9 @@ class MultiEM:
             print('Creating and saving plots...')
             plot_projection(get_coordinates_mm(state.getPositions()),self.Cs,save_path=self.save_path)
             print('Done! :)')
+
+        if self.args.NUC_DO_INTERPOLATION:
+            interpolate_structure_with_nucleosomes(state.getPositions(), self.atacseq)
 
 def main():
     # Input data
