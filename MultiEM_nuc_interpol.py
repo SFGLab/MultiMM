@@ -1,3 +1,8 @@
+#########################################################
+######## SEBASTIAN KORSAK, WARSAW 2024 ##################
+######## SPECIAL THANKS TO KRZYSTOF BANECKI #############
+#########################################################
+
 import numpy as np
 from scipy.interpolate import CubicSpline
 import matplotlib.pyplot as plt
@@ -7,6 +12,80 @@ from MultiEM_utils import *
 from MultiEM_init_tools import *
 from tqdm import tqdm
 import torch
+
+def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path='',sign=1,norm=False):
+    '''
+    Imports .BigWig data and outputs compartments.
+
+    It assumes that higher signal coresponds to B compartment.
+
+    In case that you would like to switch the sign then add flag sign=-1.
+    '''
+    # Open file
+    bw = pyBigWig.open(bw_path)
+    chroms_set = np.fromiter(bw.chroms().keys(),dtype='S20')
+    n_chroms=24 if b'chrY' in chroms_set else 23
+    print('Number of chromosomes:',n_chroms)
+
+    # Compute the total length of chromosomes
+    if chrom==None:
+        chrom_length = 0
+        lengths = list()
+        for i in range(n_chroms):
+            chrom_length += bw.chroms(chrs[i])
+            lengths.append(bw.chroms(chrs[i]))
+        lengths = np.array(lengths)
+        resolution = chrom_length//(2*N_beads)
+        polymer_lengths = lengths//resolution
+        np.save(path+'chrom_lengths.npy',polymer_lengths)
+
+    # Import the downgraded signal
+    print('Importing bw signal...')
+    if chrom==None:
+        genomewide_signal = list()
+        for i in tqdm(range(n_chroms)):
+            signal = bw.values(chrs[i],0,-1, numpy=True)
+            signal = np.nan_to_num(signal, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
+            genomewide_signal.append(compute_averages(signal, polymer_lengths[i]))
+        genomewide_signal = np.concatenate(genomewide_signal)
+    else:
+        genomewide_signal = bw.values(chrom,coords[0],coords[1], numpy=True)
+    bw.close()
+
+    genomewide_signal = compute_averages(genomewide_signal,N_beads)
+    if norm: genomewide_signal = (genomewide_signal-np.mean(genomewide_signal))/np.std(genomewide_signal)
+    
+    # Transform signal to binary or adjuct it to have zero mean
+    if binary:
+        genomewide_signal[genomewide_signal>0] = -1
+        genomewide_signal[genomewide_signal<=0] = 1
+        
+        # Subtitute zeros with random spin states
+        mask = genomewide_signal==0
+        n_zeros = np.count_nonzero(mask)
+        nums = np.array(rd.choices([-1,1],k=n_zeros))
+        genomewide_signal[mask] = nums
+    
+    print('Done!\n')
+
+    # Plotting
+    if viz:
+        figure(figsize=(25, 5), dpi=100)
+        xax = np.arange(len(genomewide_signal))
+        plt.fill_between(xax,genomewide_signal, where=(genomewide_signal>np.mean(genomewide_signal)),alpha=0.50,color='purple')
+        plt.fill_between(xax,genomewide_signal, where=(genomewide_signal<np.mean(genomewide_signal)),alpha=0.50,color='orange')
+        lines = np.cumsum(polymer_lengths//2)
+        for i in range(n_chroms):
+            plt.axvline(x=lines[i], color='b')
+        plt.xlabel('Genomic Distance',fontsize=16)
+        plt.ylabel('BW signal renormalized',fontsize=16)
+        plt.ylim((np.mean(genomewide_signal)-np.std(genomewide_signal),np.mean(genomewide_signal)+np.std(genomewide_signal)))
+        plt.grid()
+        plt.show()
+
+    np.save(path+'signal.npy',genomewide_signal)
+    
+    return sign*genomewide_signal
 
 def amplify(structure, scale=10):
     return [(s[0]*scale, s[1]*scale, s[2]*scale) for s in structure]
@@ -68,21 +147,22 @@ def move_structure_to(struct, p1, p2, x0=np.array([None])):
                          x0[2]+p[0]*w_x[2]+p[1]*w_y[2]+p[2]*w_z[2]))
     return np.array(new_helix)
 
-def interpolate_structure_with_nucleosomes(V, bw_array, N_nuc=3):
+def interpolate_structure_with_nucleosomes(V, bw_array, max_Nnuc=3):
     """
     Interpolate the 3D structure V with nucleosomes.
     """
     # Calculate mean of bw_array
     mean_signal = np.mean(bw_array)
+    std_signal = np.std(bw_array)
     
     # Normalize bw_array
-    norm_bw_array = bw_array / mean_signal
+    norm_bw_array = (bw_array - mean_signal)/std_signal
     
     # Initialize interpolated structure
     interpolated_structure = []
     
     # Interpolate each segment with nucleosomes
-    sign = 1 
+    sign, phi = 1, 0 
     print('Building nucleosome structure...')
     for i in tqdm(range(len(V) - 1)):
         # Get segment endpoints
@@ -93,10 +173,10 @@ def interpolate_structure_with_nucleosomes(V, bw_array, N_nuc=3):
         segment_length = np.linalg.norm(end_point - start_point)
         
         # Calculate number of nucleosomes in segment
-        num_nucleosomes = int(np.round(norm_bw_array[i] * N_nuc))
+        num_nucleosomes = int(np.round(norm_bw_array[i] * max_Nnuc))
         
         # Generate helices for nucleosomes
-        helices, sign = generate_nucleosome_helices(start_point, end_point, num_nucleosomes, 1.6, sign)
+        helices, sign, phi = generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi, 1.6, sign)
         
         # Append helices to interpolated structure
         interpolated_structure.extend(helices)
@@ -129,7 +209,7 @@ def make_helix(r,theta,z0,sign):
     z = z0 * theta / (2 * np.pi)
     return np.vstack([x, y, z]).T
 
-def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, turns=1.6, sign=1):
+def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,turns=1.6, sign=1):
     """
     Generate helices for nucleosomes in a segment.
     """
@@ -140,6 +220,7 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, turns=1
     helix_radius = np.linalg.norm(segment_vector)/np.pi
     helix_axis = segment_vector / np.linalg.norm(segment_vector)
     helix_height = 0.2
+    
 
     # Initialize helices
     theta = np.linspace(0, turns* 2 * np.pi, 10)
@@ -148,37 +229,37 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, turns=1
     helix_points = [start_point]
     for i in range(num_nucleosomes):
         helix_points.append(start_point +  (i + 1.0/num_nucleosomes) * helix_axis* helix_height)
-
+    
     # Generate helices for each nucleosome
     for i in range(num_nucleosomes):
-        # Calculate helix center
-        phi = np.pi/2
-        
         # Calculate helix angle
-        zigzag_angle = sign*np.pi/3
-        helix = make_helix(helix_radius,theta,helix_height,sign)
-        helix = move_structure_to(helix,helix_points[i],helix_points[i+1])+[0,0,zigzag_angle]
+        if sign==1: phi+=np.pi/6
+        zigzag_displacement = sign*np.pi/4
+        zz_add = np.array([zigzag_displacement*np.sin(phi),zigzag_displacement*np.cos(phi),0])
+        helix = make_helix(helix_radius,theta,helix_height,sign)+zz_add
+        helix = move_structure_to(helix,helix_points[i],helix_points[i+1])
         sign*=-1
 
         # Generate helix coordinates        
         helices.append(helix)
 
-    return helices, sign
+    return helices, sign, phi
 
 # Example data
 V = get_coordinates_cif('/mnt/raid/codes/mine/MultiEM-main/Trios_ensembles/CHS_d/MultiEM_minimized.cif')
 N = len(V)
-bw_array = np.random.rand(N)  # Mock signal array
+bw_array = import_bw('/mnt/raid/data/encode/ATAC-Seq/ENCSR637XSC_GM12878/ENCFF667MDI_pval.bigWig',N,viz=True)  # Mock signal array
 
 # Interpolate structure with nucleosomes
 iV = interpolate_structure_with_nucleosomes(V, bw_array)
 points = np.arange(0,len(iV))
+print('Final Length of Nucleosome Interpolated Structure:',len(iV))
 
 fig = go.Figure(data=go.Scatter3d(
-    x=iV[:1000,0], y=iV[:1000,1], z=iV[:1000,2],
+    x=iV[:100000,0], y=iV[:100000,1], z=iV[:100000,2],
     marker=dict(
         size=2,
-        color=points[:1000],
+        color=points[:100000],
         colorscale='rainbow',
     ),
     line=dict(
@@ -189,7 +270,7 @@ fig = go.Figure(data=go.Scatter3d(
 
 fig.update_layout(
     width=800,
-    height=700,
+    height=800,
     autosize=False,
     scene=dict(
         camera=dict(
@@ -204,23 +285,9 @@ fig.update_layout(
                 z=1,
             )
         ),
-        aspectratio = dict( x=1, y=1, z=0.7 ),
+        aspectratio = dict( x=5, y=5, z=5 ),
         aspectmode = 'manual'
     ),
 )
 
 fig.show()
-
-# # Plot the result
-# fig = plt.figure(figsize=(10,10),dpi=200)
-# ax = fig.add_subplot(111, projection='3d')
-# ax.plot(interpolated_structure[:1000, 0], interpolated_structure[:1000, 1], interpolated_structure[:1000,2])
-
-# ax.set_xlabel('X')
-# ax.set_ylabel('Y')
-# ax.set_zlabel('Z')
-# ax.set_title('Interpolated Structure with Nucleosomes')
-# plt.savefig('/mnt/raid/codes/mine/MultiEM-main/structure.pdf',format='pdf',dpi=300)
-# plt.show()
-
-# write_mmcif_chrom(interpolated_structure,'/mnt/raid/codes/mine/MultiEM-main/with_nucs.cif')
