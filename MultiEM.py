@@ -139,7 +139,7 @@ class MultiEM:
 
         # Compartment force
         if self.args.COB_USE_COMPARTMENT_BLOCKS:
-            self.comp_force = mm.CustomNonbondedForce('-E*exp(-r^2/(2*rc^2)); E=(Ea*(delta(s1-1)*delta(s2-1)+delta(s1-2)*delta(s2-2))+Eb*(delta(s1+1)*delta(s2+1)+delta(s1+2)*delta(s2+2)))')
+            self.comp_force = mm.CustomNonbondedForce('-E*exp(-r^2/(2*rc^2)); E=(Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2))+Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2))')
             self.comp_force.addGlobalParameter('rc',defaultValue=self.r_comp)
             self.comp_force.addGlobalParameter('Ea',defaultValue=self.args.COB_EA)
             self.comp_force.addGlobalParameter('Eb',defaultValue=self.args.COB_EB)
@@ -247,15 +247,15 @@ class MultiEM:
         Energy minimization for GW model.
         '''
         # Estimation of parameters
-        self.radius1 = 0.5*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
-        self.radius2 = 4*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
+        self.radius1 = 0.2*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
+        self.radius2 = 3*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
         if self.args.COB_DISTANCE!=None:
             self.r_comp = self.args.COB_DISTANCE
         elif self.args.SCB_DISTANCE!=None:
             self.r_comp = self.args.SCB_DISTANCE
         else:
-            self.r_comp = (self.radius2-self.radius1)/20
-        self.r_chrom = self.r_comp/2 if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
+            self.r_comp = (self.radius2-self.radius1)/10
+        self.r_chrom = 3*self.r_comp/4 if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
         
         # Initialize simulation
         if self.args.BUILD_INITIAL_STRUCTURE:

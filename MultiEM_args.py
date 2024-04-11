@@ -162,13 +162,13 @@ args = ListOfArgs([
     Arg('LE_USE_HARMONIC_BOND', help="Use harmonic bond interaction for long range loops.", type=bool, default='True', val='True'),
     Arg('LE_FIXED_DISTANCES', help="For fixed distances between loops. False if you want to correlate with the hatmap strength.", type=bool, default='False', val='False'),
     Arg('LE_HARMONIC_BOND_R0', help="harmonic bond distance equilibrium constant", type=float, default='0.1', val='0.1'),
-    Arg('LE_HARMONIC_BOND_K', help="harmonic bond force constant (fixed unit: kJ/mol/nm^2)", type=float, default='30000.0', val='30000.0'),
+    Arg('LE_HARMONIC_BOND_K', help="harmonic bond force constant (fixed unit: kJ/mol/nm^2)", type=float, default='300000.0', val='300000.0'),
 
     # Excluded Volume
     Arg('EV_USE_EXCLUDED_VOLUME', help="Use excluded volume.", type=bool, default='True', val='True'),
-    Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='50.0', val='50.0'),
+    Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='100.0', val='100.0'),
     Arg('EV_R_SMALL', help="Add something small in denominator to make it not exploding all the time.", type=float, default='0.05', val='0.05'),
-    Arg('EV_POWER', help="Power in the exponent of EV potential.", type=float, default='4.0', val='4.0'),
+    Arg('EV_POWER', help="Power in the exponent of EV potential.", type=float, default='3.0', val='3.0'),
 
     # Spherical container
     Arg('SC_USE_SPHERICAL_CONTAINER', help='Use Spherical container', type=bool, default='False', val='False'),
@@ -184,20 +184,20 @@ args = ListOfArgs([
     # Compartment Blocks
     Arg('COB_USE_COMPARTMENT_BLOCKS', help='Use Compartment Blocks.', type=bool, default='False', val='False'),
     Arg('COB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
-    Arg('COB_EA', help='Energy strength for A compartment.', type=float, default='1.0', val='1.0'),
-    Arg('COB_EB', help='Energy strength for B compartment.', type=float, default='2.0', val='4.0'),
+    Arg('COB_EA', help='Energy strength for A compartment.', type=float, default='6.0', val='6.0'),
+    Arg('COB_EB', help='Energy strength for B compartment.', type=float, default='2.0', val='2.0'),
 
     # Subcompartment Blocks
     Arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', help='Use Subcompartment Blocks.', type=bool, default='False', val='False'),
     Arg('SCB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
-    Arg('SCB_EA1', help='Energy strength for A1 compartment.', type=float, default='0.5', val='1.0'),
-    Arg('SCB_EA2', help='Energy strength for A2 compartment.', type=float, default='1.0', val='2.0'),
-    Arg('SCB_EB1', help='Energy strength for B1 compartment.', type=float, default='1.5', val='3.0'),
-    Arg('SCB_EB2', help='Energy strength for B2 compartment.', type=float, default='2.0', val='4.0'),
+    Arg('SCB_EA1', help='Energy strength for A1 compartment.', type=float, default='7.0', val='7.0'),
+    Arg('SCB_EA2', help='Energy strength for A2 compartment.', type=float, default='5.0', val='5.0'),
+    Arg('SCB_EB1', help='Energy strength for B1 compartment.', type=float, default='3.0', val='3.0'),
+    Arg('SCB_EB2', help='Energy strength for B2 compartment.', type=float, default='1.0', val='1.0'),
 
     # Interactions of B compartment with lamina
     Arg('IBL_USE_B_LAMINA_INTERACTION', help='Interactions of B compartment with lamina.', type=bool, default='False', val='False'),
-    Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='20.0', val='20.0'),
+    Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='50.0', val='50.0'),
     
     # Small Chromosomes Attraction to Center
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),

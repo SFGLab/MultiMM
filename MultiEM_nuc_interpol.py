@@ -153,7 +153,7 @@ def interpolate_structure_with_nucleosomes(V, bw_array, max_Nnuc=3):
     std_signal = np.std(bw_array)
     
     # Normalize bw_array
-    norm_bw_array = (bw_array - mean_signal)/std_signal
+    norm_bw_array = -(bw_array - mean_signal)/std_signal
     
     # Initialize interpolated structure
     interpolated_structure = []
@@ -177,7 +177,7 @@ def interpolate_structure_with_nucleosomes(V, bw_array, max_Nnuc=3):
         
         # Append helices to interpolated structure
         interpolated_structure.extend(helices)
-    print('Done you have the whole structure with nucleosomes')
+    print('Done! You have the whole structure with nucleosomes. ;)')
     
     return np.concatenate(np.array(interpolated_structure))
 
@@ -214,7 +214,7 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,tu
     segment_vector = end_point - start_point
 
     # Calculate helix parameters
-    helix_radius = np.linalg.norm(segment_vector)/(4*np.pi)
+    helix_radius = np.linalg.norm(segment_vector)/np.pi
     helix_axis = segment_vector / np.linalg.norm(segment_vector)
     helix_height = 0.2
 
@@ -230,7 +230,7 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,tu
     for i in range(num_nucleosomes):
         # Calculate helix angle
         if sign==1: phi+=np.pi/3
-        zigzag_displacement = sign*np.pi/12
+        zigzag_displacement = sign*np.pi/6
         zz_add = np.array([zigzag_displacement*np.sin(phi),zigzag_displacement*np.cos(phi),0])
         helix = make_helix(helix_radius,theta,helix_height,sign)+zz_add
         helix = move_structure_to(helix,helix_points[i],helix_points[i+1])
@@ -249,20 +249,39 @@ def polyline_from_points(points):
     poly.lines = the_cell
     return poly
 
-def viz_structure(V):
+def viz_structure(V, colors=None):
     polyline = polyline_from_points(V)
     polyline["scalars"] = np.arange(polyline.n_points)
-    tube = polyline.tube(radius=0.1)
-    tube.plot(smooth_shading=False,cmap='rainbow')
+
+    if colors is not None:
+        cmap = "coolwarm"
+        color_values = (colors - np.min(colors)) / (np.max(colors) - np.min(colors))  # Normalize colors
+        polyline["colors"] = color_values  # Set colors as point scalars
+        polymer = polyline.tube(radius=0.3)
+        polymer.plot(smooth_shading=True, cmap=cmap, scalars="colors")
+    else:
+        polymer = polyline.tube(radius=0.1)
+        polymer.plot(smooth_shading=True)
+
+def viz_chroms(cif_path,chrom_ends_path):
+    chrom_ends = np.load(chrom_ends_path)
+    V = get_coordinates_cif(cif_path)
+    N = len(V)
+    chroms = np.zeros(N)
+    for chrom, i in enumerate(range(len(chrom_ends)-1)):
+        start, end = chrom_ends[i], chrom_ends[i+1]
+        chroms[start:end] = chrom
+    viz_structure(V,chroms[:len(V)])
     
 def main():
     # Example data
-    V = get_coordinates_cif('/mnt/raid/codes/mine/MultiEM-main/Trios_ensembles/CHS_d/MultiEM_minimized.cif')
+    V = get_coordinates_cif('/home/skorsak/Templates/MultiEM-main/test/MultiEM_minimized.cif')
     N = len(V)
-    bw_array = import_bw('/mnt/raid/data/encode/ATAC-Seq/ENCSR637XSC_GM12878/ENCFF667MDI_pval.bigWig',N,viz=True)  # Mock signal array
+    bw_array = import_bw('/home/skorsak/Documents/data/encode/ATAC-Seq/ENCSR637XSC_GM12878/ENCFF667MDI_pval.bigWig',N)  # Mock signal array
 
     # Interpolate structure with nucleosomes
     iV = interpolate_structure_with_nucleosomes(V, bw_array)
     points = np.arange(0,len(iV))
     print('Final Length of Nucleosome Interpolated Structure:',len(iV))
 
+    viz_structure(iV)
