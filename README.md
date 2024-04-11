@@ -1,5 +1,6 @@
 # MultiEM: An OpenMM-based software for the whole genome 3D structure reconstruction
-![gw](https://github.com/SFGLab/MultiEM/assets/49608786/f6d8c5f9-eda3-44d4-a779-5d45d3b4d79c)
+
+![nucleosomes](https://github.com/SFGLab/MultiEM/assets/49608786/8038e269-d95f-4b59-813a-84b30053bcb7)
 
 ## Installation
 Create a python 3.10 environment and type,
@@ -42,9 +43,6 @@ python MultiEM.py -c config.ini
 ```
 
 The sotware will return you a folder with the resulting structure, and some plots that show how compartments are distributed.
-
-
-![subcomp_dens72](https://github.com/SFGLab/MultiEM/assets/49608786/23ce78d0-709c-4b39-8b36-72b6ddba01fc)
 
 
 ## Input Data
