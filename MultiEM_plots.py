@@ -5,6 +5,7 @@ from matplotlib.pyplot import figure
 import pandas as pd
 from MultiEM_utils import *
 from sklearn.decomposition import PCA
+import pyvista as pv
 
 color_dict = {-2:'#bf0020', -1:'#e36a24', 1:'#20c8e6',2:'#181385',0:'#ffffff'}
 comp_dict = {-2:'B2', -1:'B1', 1:'A2',2:'A1',0:'no compartment'}
@@ -17,7 +18,7 @@ def plot_projection(struct_3D,Cs,save_path):
     for c in Cs[:len(struct_3D)]: 
         colors.append(color_dict[c])
         comps.append(comp_dict[c])
-
+    
     # Calculate Distances
     dists = list()
     for vec in struct_3D: dists.append(np.linalg.norm(vec))
@@ -65,3 +66,69 @@ def plot_projection(struct_3D,Cs,save_path):
     plt.title('2D Density Plot')
     plt.savefig(save_path+'plots/density.svg',format='svg',dpi=100)
     plt.close()
+
+def polyline_from_points(points):
+    poly = pv.PolyData()
+    poly.points = points
+    the_cell = np.arange(0, len(points), dtype=np.int_)
+    the_cell = np.insert(the_cell, 0, len(points))
+    poly.lines = the_cell
+    return poly
+
+def viz_structure(V, colors=None, r=0.3):
+    polyline = polyline_from_points(V)
+    polyline["scalars"] = np.arange(polyline.n_points)
+
+    if colors is not None:
+        cmap = "coolwarm"
+        colors = colors[:len(V)]
+        color_values = (colors - np.min(colors)) / (np.max(colors) - np.min(colors))  # Normalize colors
+        polyline["colors"] = color_values  # Set colors as point scalars
+        polymer = polyline.tube(radius=r)
+        polymer.plot(smooth_shading=True, cmap=cmap, scalars="colors")
+    else:
+        polymer = polyline.tube(radius=r)
+        polymer.plot(smooth_shading=True)
+
+def viz_chroms(cif_path,chrom_ends_path):
+    chrom_ends = np.load(chrom_ends_path)
+    V = get_coordinates_cif(cif_path)
+    N = len(V)
+    chroms = np.zeros(N)
+    for chrom, i in enumerate(range(len(chrom_ends)-1)):
+        start, end = chrom_ends[i], chrom_ends[i+1]
+        chroms[start:end] = chrom
+    viz_structure(V,chroms[:len(V)])
+
+def get_heatmap(cif_file,viz=False,th=1,save=False,save_path=None,vmax=1,vmin=0):
+    '''
+    It returns the corrdinate matrix V (N,3) of a .pdb file.
+    The main problem of this function is that coordiantes are not always in 
+    the same column position of a .pdb file. Do changes appropriatelly,
+    in case that the data aren't stored correctly.
+    
+    Input:
+    file (Openmm Qunatity): an OpenMM vector of the form 
+    Quantity(value=[Vec3(x=0.16963918507099152, y=0.9815883636474609, z=-1.4776774644851685),
+    Vec3(x=0.1548253297805786, y=0.9109517931938171, z=-1.4084612131118774),
+    Vec3(x=0.14006929099559784, y=0.8403329849243164, z=-1.3392155170440674),
+    Vec3(x=0.12535107135772705, y=0.7697405219078064, z=-1.269935131072998),
+    ...,
+    unit=nanometer)
+    
+    Output:
+    H (np.array): a heatmap of the 3D structure.
+    '''
+    V = get_coordinates_cif(cif_file)
+    print('Matrix shape:',V.shape)
+    mat = distance.cdist(V, V, 'euclidean') # this is the way \--/
+    mat = 1/(mat+1)
+
+    if viz:
+        figure(figsize=(15, 12),dpi=500)
+        plt.imshow(mat,cmap="Reds",vmax=vmax,vmin=vmin)
+        if save: plt.savefig(save_path,format='svg',dpi=500)
+        plt.colorbar()
+        plt.show()
+        if save: np.save(save_path.replace("svg", "npy"),mat)
+    return mat

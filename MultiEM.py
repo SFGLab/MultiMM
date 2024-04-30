@@ -187,9 +187,9 @@ class MultiEM:
         # Interaction of B compartment with lamina
         if self.args.IBL_USE_B_LAMINA_INTERACTION:
             if self.radius1!=0.0:
-                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^16-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             else:
-                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^16-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+                self.Blamina_force = mm.CustomExternalForce('B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
             self.Blamina_force.addGlobalParameter('B',defaultValue=self.args.IBL_SCALE)
             self.Blamina_force.addGlobalParameter('pi',defaultValue=np.pi)
             self.Blamina_force.addGlobalParameter('R1',defaultValue=self.radius1)
@@ -247,15 +247,15 @@ class MultiEM:
         Energy minimization for GW model.
         '''
         # Estimation of parameters
-        self.radius1 = 0.2*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
-        self.radius2 = 3*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
+        self.radius1 = 0.5*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
+        self.radius2 = 4*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
         if self.args.COB_DISTANCE!=None:
             self.r_comp = self.args.COB_DISTANCE
         elif self.args.SCB_DISTANCE!=None:
             self.r_comp = self.args.SCB_DISTANCE
         else:
             self.r_comp = (self.radius2-self.radius1)/10
-        self.r_chrom = 3*self.r_comp/4 if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
+        self.r_chrom = self.r_comp if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
         
         # Initialize simulation
         if self.args.BUILD_INITIAL_STRUCTURE:

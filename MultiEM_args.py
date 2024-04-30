@@ -15,7 +15,6 @@ class Arg(object):
     default: Union[str, float, int, bool, Quantity, None]
     val: Union[str, float, int, bool, Quantity, None]
 
-
 # Define custom type to parse list from string
 def parse_list(s):
     try:
@@ -169,7 +168,7 @@ args = ListOfArgs([
     Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='100.0', val='100.0'),
     Arg('EV_R_SMALL', help="Add something small in denominator to make it not exploding all the time.", type=float, default='0.05', val='0.05'),
     Arg('EV_POWER', help="Power in the exponent of EV potential.", type=float, default='3.0', val='3.0'),
-
+    
     # Spherical container
     Arg('SC_USE_SPHERICAL_CONTAINER', help='Use Spherical container', type=bool, default='False', val='False'),
     Arg('SC_RADIUS1', help='Spherical container radius,', type=float, default='', val=''),
@@ -179,21 +178,21 @@ args = ListOfArgs([
     # Chromosomal Blocks
     Arg('CHB_USE_CHROMOSOMAL_BLOCKS', help='Use Chromosomal Blocks.', type=bool, default='False', val='False'),
     Arg('CHB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
-    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='1.0', val='1.0'),
+    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='0.5', val='0.5'),
 
     # Compartment Blocks
     Arg('COB_USE_COMPARTMENT_BLOCKS', help='Use Compartment Blocks.', type=bool, default='False', val='False'),
     Arg('COB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
-    Arg('COB_EA', help='Energy strength for A compartment.', type=float, default='6.0', val='6.0'),
+    Arg('COB_EA', help='Energy strength for A compartment.', type=float, default='1.0', val='1.0'),
     Arg('COB_EB', help='Energy strength for B compartment.', type=float, default='2.0', val='2.0'),
 
     # Subcompartment Blocks
     Arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', help='Use Subcompartment Blocks.', type=bool, default='False', val='False'),
     Arg('SCB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
-    Arg('SCB_EA1', help='Energy strength for A1 compartment.', type=float, default='7.0', val='7.0'),
-    Arg('SCB_EA2', help='Energy strength for A2 compartment.', type=float, default='5.0', val='5.0'),
-    Arg('SCB_EB1', help='Energy strength for B1 compartment.', type=float, default='3.0', val='3.0'),
-    Arg('SCB_EB2', help='Energy strength for B2 compartment.', type=float, default='1.0', val='1.0'),
+    Arg('SCB_EA1', help='Energy strength for A1 compartment.', type=float, default='1.0', val='1.0'),
+    Arg('SCB_EA2', help='Energy strength for A2 compartment.', type=float, default='1.33', val='1.33'),
+    Arg('SCB_EB1', help='Energy strength for B1 compartment.', type=float, default='1.66', val='1.66'),
+    Arg('SCB_EB2', help='Energy strength for B2 compartment.', type=float, default='2.0', val='2.0'),
 
     # Interactions of B compartment with lamina
     Arg('IBL_USE_B_LAMINA_INTERACTION', help='Interactions of B compartment with lamina.', type=bool, default='False', val='False'),

@@ -6,8 +6,8 @@
 import numpy as np
 from MultiEM_utils import *
 from MultiEM_init_tools import *
+from MultiEM_plots import *
 from tqdm import tqdm
-import pyvista as pv
 import torch
 
 def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path='',sign=1,norm=False):
@@ -240,38 +240,6 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,tu
         helices.append(helix)
 
     return helices, sign, phi
-
-def polyline_from_points(points):
-    poly = pv.PolyData()
-    poly.points = points
-    the_cell = np.arange(0, len(points), dtype=np.int_)
-    the_cell = np.insert(the_cell, 0, len(points))
-    poly.lines = the_cell
-    return poly
-
-def viz_structure(V, colors=None):
-    polyline = polyline_from_points(V)
-    polyline["scalars"] = np.arange(polyline.n_points)
-
-    if colors is not None:
-        cmap = "coolwarm"
-        color_values = (colors - np.min(colors)) / (np.max(colors) - np.min(colors))  # Normalize colors
-        polyline["colors"] = color_values  # Set colors as point scalars
-        polymer = polyline.tube(radius=0.3)
-        polymer.plot(smooth_shading=True, cmap=cmap, scalars="colors")
-    else:
-        polymer = polyline.tube(radius=0.1)
-        polymer.plot(smooth_shading=True)
-
-def viz_chroms(cif_path,chrom_ends_path):
-    chrom_ends = np.load(chrom_ends_path)
-    V = get_coordinates_cif(cif_path)
-    N = len(V)
-    chroms = np.zeros(N)
-    for chrom, i in enumerate(range(len(chrom_ends)-1)):
-        start, end = chrom_ends[i], chrom_ends[i+1]
-        chroms[start:end] = chrom
-    viz_structure(V,chroms[:len(V)])
     
 def main():
     # Example data

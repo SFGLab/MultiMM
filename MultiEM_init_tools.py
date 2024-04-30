@@ -165,7 +165,7 @@ def generate_hilbert_curve(n_points,p=8,n=3,displacement_sigma=0.1,scale=6,viz=F
     
     return points
 
-def polymer_circle(n: int, z_stretch: float = 0.0, radius: float = None) -> np.ndarray:
+def polymer_circle(n: int, z_stretch: float = 1.0, radius: float = 5.0) -> np.ndarray:
     points = []
     angle_increment = 360 / float(n)
     radius = 1 / (2 * np.sin(np.radians(angle_increment) / 2.)) if radius==None else radius
