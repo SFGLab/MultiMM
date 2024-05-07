@@ -89,7 +89,7 @@ class MultiEM:
         
         # Compartments
         if args.COMPARTMENT_PATH!=None:
-            if args.COMPARTMENT_PATH.endswith('.bed'):
+            if args.COMPARTMENT_PATH.lower().endswith('.bed'):
                 self.Cs, self.chr_ends = import_bed(bed_file=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
                                                                         chrom=self.args.CHROM,coords=coords,\
                                                                         save_path=self.save_path)
@@ -98,7 +98,7 @@ class MultiEM:
 
 
         # Loops
-        if args.LOOPS_PATH.endswith('.bedpe'):
+        if args.LOOPS_PATH.lower().endswith('.bedpe'):
             self.ms, self.ns, self.ds, self.chr_ends = import_mns_from_bedpe(bedpe_file = args.LOOPS_PATH,N_beads=self.args.N_BEADS,\
                                                                              coords = coords, chrom=args.CHROM,\
                                                                              viz=False, path=self.save_path)
@@ -106,8 +106,8 @@ class MultiEM:
             raise InterruptedError('You did not provide appropriate loop file. Loop .bedpe file is obligatory.')
 
         # Nucleosomes
-        if args.ATACSEQ_PATH!=None:
-            if args.ATACSEQ_PATH.endswith('.bed'):
+        if args.NUC_DO_INTERPOLATION:
+            if args.ATACSEQ_PATH.lower().endswith('.bw') or args.ATACSEQ_PATH.lower().endswith('.bigwig'):
                 self.atacseq = import_bw(args.ATACSEQ_PATH,self.args.N_BEADS,chrom=self.args.CHROM,coords=coords)
             else:
                 raise InterruptedError('ATAC-Seq file should be in .bw or .BigWig format.')
@@ -254,8 +254,8 @@ class MultiEM:
         elif self.args.SCB_DISTANCE!=None:
             self.r_comp = self.args.SCB_DISTANCE
         else:
-            self.r_comp = (self.radius2-self.radius1)/10
-        self.r_chrom = self.r_comp if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
+            self.r_comp = (self.radius2-self.radius1)/20
+        self.r_chrom = self.r_comp/2 if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
         
         # Initialize simulation
         if self.args.BUILD_INITIAL_STRUCTURE:
@@ -318,9 +318,10 @@ class MultiEM:
             print('Creating and saving plots...')
             plot_projection(get_coordinates_mm(state.getPositions()),self.Cs,save_path=self.save_path)
             print('Done! :)')
-
+        
         if self.args.NUC_DO_INTERPOLATION:
-            interpolate_structure_with_nucleosomes(state.getPositions(), self.atacseq)
+            Vnuc = interpolate_structure_with_nucleosomes(get_coordinates_mm(state.getPositions()), self.atacseq)
+            write_mmcif_chrom(Vnuc,path=self.save_path+f'MultiEM_minimized_with_nucs.cif')
 
 def main():
     # Input data
