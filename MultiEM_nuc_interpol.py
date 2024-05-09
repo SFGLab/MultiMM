@@ -10,7 +10,7 @@ from MultiEM_plots import *
 from tqdm import tqdm
 import torch
 
-def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path='',sign=1,norm=False):
+def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path='',norm=False):
     '''
     Imports .BigWig data and outputs compartments.
 
@@ -82,7 +82,7 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
 
     np.save(path+'signal.npy',genomewide_signal)
     
-    return sign*genomewide_signal
+    return genomewide_signal
 
 def amplify(structure, scale=10):
     return [(s[0]*scale, s[1]*scale, s[2]*scale) for s in structure]
@@ -142,24 +142,24 @@ def move_structure_to(struct, p1, p2, x0=np.array([None])):
         new_helix.append((x0[0]+p[0]*w_x[0]+p[1]*w_y[0]+p[2]*w_z[0],
                          x0[1]+p[0]*w_x[1]+p[1]*w_y[1]+p[2]*w_z[1],
                          x0[2]+p[0]*w_x[2]+p[1]*w_y[2]+p[2]*w_z[2]))
-    return np.array(new_helix)
+    return new_helix
 
 def interpolate_structure_with_nucleosomes(V, bw_array, max_Nnuc=3):
     """
     Interpolate the 3D structure V with nucleosomes.
-    """
-    # Calculate mean of bw_array
-    mean_signal = np.mean(bw_array)
-    std_signal = np.std(bw_array)
-    
+    """    
     # Normalize bw_array
-    norm_bw_array = -(bw_array - mean_signal)/std_signal
+    bw_array[bw_array>np.mean(bw_array)+6*np.std(bw_array)] = np.mean(bw_array)+6*np.std(bw_array)
+    bw_array[bw_array<np.mean(bw_array)-6*np.std(bw_array)] = np.mean(bw_array)-6*np.std(bw_array)
+    norm_bw_array = min_max_scale(bw_array)
+    plt.plot(norm_bw_array)
+    plt.show()
     
     # Initialize interpolated structure
     interpolated_structure = []
     
     # Interpolate each segment with nucleosomes
-    sign, phi = 1, 0 
+    sign, phi = 1, 0
     print('Building nucleosome structure...')
     for i in tqdm(range(len(V) - 1)):
         # Get segment endpoints
@@ -173,13 +173,18 @@ def interpolate_structure_with_nucleosomes(V, bw_array, max_Nnuc=3):
         num_nucleosomes = int(np.round(norm_bw_array[i] * max_Nnuc))
         
         # Generate helices for nucleosomes
-        helices, sign, phi = generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi, 1.6, sign)
-        
+        if num_nucleosomes>0:
+            helices, sign, phi = generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi, 1.6, sign)
+            interpolated_structure.extend(helices)
+        else:
+            helices = [[(tuple((V[i]+V[i+1])/2))]]
+            interpolated_structure.extend(helices)
         # Append helices to interpolated structure
-        interpolated_structure.extend(helices)
+       
+    # Flatten the nested list to get a list of coordinate tuples
+    flattened_coords = [coord for sublist in interpolated_structure for coord in sublist]
     print('Done! You have the whole structure with nucleosomes. ;)')
-    
-    return np.concatenate(np.array(interpolated_structure))
+    return np.array(flattened_coords)
 
 def rotate_with_matrix(V,theta,axis='x'):
     # Define rotation
@@ -205,6 +210,25 @@ def make_helix(r,theta,z0,sign):
     y = r * np.sin(theta)
     z = z0 * theta / (2 * np.pi)
     return np.vstack([x, y, z]).T
+
+def min_max_scale(array):
+    """
+    Scale the values of a NumPy array to the interval [-1, 1] using min-max normalization.
+
+    Parameters:
+    array (numpy.ndarray): Input array to be normalized.
+
+    Returns:
+    numpy.ndarray: Normalized array scaled to the interval [-1, 1].
+    """
+    # Find the minimum and maximum values of the array
+    min_val = np.min(array)
+    max_val = np.max(array)
+    
+    # Scale the array to the interval [-1, 1]
+    scaled_array = -1 + 2 * (array - min_val) / (max_val - min_val)
+    
+    return scaled_array
 
 def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,turns=1.6, sign=1):
     """
@@ -245,11 +269,13 @@ def main():
     # Example data
     V = get_coordinates_cif('/home/skorsak/Templates/MultiEM-main/test/MultiEM_minimized.cif')
     N = len(V)
+    print('N=',N)
     bw_array = import_bw('/home/skorsak/Documents/data/encode/ATAC-Seq/ENCSR637XSC_GM12878/ENCFF667MDI_pval.bigWig',N)  # Mock signal array
 
     # Interpolate structure with nucleosomes
     iV = interpolate_structure_with_nucleosomes(V, bw_array)
     points = np.arange(0,len(iV))
+    print(iV)
     print('Final Length of Nucleosome Interpolated Structure:',len(iV))
 
-    viz_structure(iV)
+    viz_structure(iV,r=0.1)
