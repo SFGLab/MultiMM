@@ -25,12 +25,12 @@ chrs = {0:'chr1',1:'chr2',2:'chr3',3:'chr4',4:'chr5',5:'chr6',6:'chr7',7:'chr8',
           15:'chr16',16:'chr17',17:'chr18',18:'chr19',19:'chr20',20:'chr21',21:'chr22',
           22:'chrX',23:'chrY'}
 
-chrom_lengths_array = [0,248387328,242696752,201105948,193574945,
+chrom_lengths_array = np.array([0,248387328,242696752,201105948,193574945,
                  182045439,172126628,160567428,146259331,
                  150617247,134758134,135127769,133324548,
                  113566686,101161492,99753195,96330374,
                  84276897,80542538,61707364,66210255,
-                 45090682,51324926,154259566,62460029]
+                 45090682,51324926,154259566,62460029])
 
 chrom_sizes = {'chr1':248387328,'chr2':242696752,'chr3':201105948,'chr4':193574945,
                'chr5':182045439,'chr6':172126628,'chr7':160567428,'chr8':146259331,
@@ -138,22 +138,25 @@ def compute_averages(arr1, N2):
 
     return averaged_arr
 
-def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path=''):
+def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path='',shuffle=False,seed=0):
     # Load compartment dataset
+    np.random.seed(seed)
     comps_df = pd.read_csv(bed_file,header=None,sep='\t')
 
     # Find maximum coordinate of each chromosome
     print('Cleaning and transforming subcompartments dataframe...')
-    chrom_ends = np.cumsum(chrom_lengths_array) if chrom==None else np.array([0,chrom_sizes[chrom]])
     if chrom!=None:
         comps_df = comps_df[(comps_df[0]==chrom)&(comps_df[1]>coords[0]) & (comps_df[2]<coords[1])].reset_index(drop=True)
     n_chroms = len(np.unique(comps_df[0].values))
+    chrom_idxs = np.arange(n_chroms).astype(int)
+    if shuffle: np.random.shuffle(chrom_idxs)
+    chrom_ends = np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0)) if chrom==None else np.array([0,chrom_sizes[chrom]])
     
     # Sum bigger chromosomes with the maximum values of previous chromosomes
     if chrom==None:
-        for i in tqdm(range(n_chroms)):
-            comps_df[1][comps_df[0]==chrs[i]]=comps_df[1][comps_df[0]==chrs[i]]+chrom_ends[i]
-            comps_df[2][comps_df[0]==chrs[i]]=comps_df[2][comps_df[0]==chrs[i]]+chrom_ends[i]
+        for count, i in enumerate(chrom_idxs):
+            comps_df[1][comps_df[0]==chrs[i]]=comps_df[1][comps_df[0]==chrs[i]]+chrom_ends[count]
+            comps_df[2][comps_df[0]==chrs[i]]=comps_df[2][comps_df[0]==chrs[i]]+chrom_ends[count]
 
     # Convert genomic coordinates to simulation beads
     resolution = chrom_ends[-1]//N_beads if chrom==None else (coords[1]-coords[0])//N_beads
@@ -179,8 +182,9 @@ def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path=''):
 
         comps_array[comps_df[1][i]:comps_df[2][i]] = val
     np.save(save_path+'compartments.npy',comps_array)
+    np.save(save_path+'chrom_idxs.npy',chrom_idxs)
     print('Done')
-    return comps_array.astype(int), chrom_ends.astype(int)
+    return comps_array.astype(int), chrom_ends.astype(int), chrom_idxs.astype(int)
 
 def align_comps(comps,ms,chrom_ends):
     for i in range(len(chrom_ends)-1):
@@ -202,12 +206,12 @@ def integers_to_hex_colors(start, end):
 
     return hex_colors
 
-def write_chrom_colors(chrom_ends,name='MultiEM_chromosome_colors.cmd'):    
+def write_chrom_colors(chrom_ends,chrom_idxs,name='MultiEM_chromosome_colors.cmd'):    
     colors = integers_to_hex_colors(0, len(chrom_ends)-1)
     
     content = ''
     for i in range(len(chrom_ends)-1):
-        content+=f'color {colors[i]} :.{chr(64+1+i)}\n'
+        content+=f'color {colors[chrom_idxs[i]]} :.{chr(64+1+i)}\n'
 
     with open(name, 'w') as f:
         f.write(content)
@@ -215,23 +219,27 @@ def write_chrom_colors(chrom_ends,name='MultiEM_chromosome_colors.cmd'):
 def min_max_trans(x):
     return (x-x.min())/(x.max()-x.min())
 
-def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,viz=False,min_loop_dist=2,path=''):
+def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,viz=False,min_loop_dist=2,path='',shuffle=False,seed=0):
     # Import loops
+    np.random.seed(seed)
     loops = pd.read_csv(bedpe_file,header=None,sep='\t')
     n_chroms = len(np.unique(loops[0].values))
-    chroms = list(chrs[i] for i in range(n_chroms)) if chrom==None else [chrom]
+    chrom_idxs = np.arange(n_chroms).astype(int)
+    if shuffle: np.random.shuffle(chrom_idxs)
+    chroms = list(chrs[i] for i in chrom_idxs) if chrom==None else [chrom]
+
     if chrom!=None:
         loops = loops[(loops[0]==chrom)&(loops[1]>coords[0])&(loops[2]<coords[1])&(loops[4]>coords[0])&(loops[5]<coords[1])].reset_index(drop=True)
-    chrom_ends = np.cumsum(chrom_lengths_array) if chrom==None else np.array([0,chrom_sizes[chrom]])
-    
+    chrom_ends = np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0)) if chrom==None else np.array([0,chrom_sizes[chrom]])
+
     print('Cleaning and transforming loops dataframe...')
     # Sum bigger chromosomes with the maximum values of previous chromosomes
     if chrom==None:
-        for i in tqdm(range(n_chroms)):
-            loops[1][loops[0]==chrs[i]]=loops[1][loops[0]==chrs[i]]+chrom_ends[i]
-            loops[2][loops[0]==chrs[i]]=loops[2][loops[0]==chrs[i]]+chrom_ends[i]
-            loops[4][loops[3]==chrs[i]]=loops[4][loops[3]==chrs[i]]+chrom_ends[i]
-            loops[5][loops[3]==chrs[i]]=loops[5][loops[3]==chrs[i]]+chrom_ends[i]
+        for count, i in enumerate(chrom_idxs):
+            loops[1][loops[0]==chrs[i]]=loops[1][loops[0]==chrs[i]]+chrom_ends[count]
+            loops[2][loops[0]==chrs[i]]=loops[2][loops[0]==chrs[i]]+chrom_ends[count]
+            loops[4][loops[3]==chrs[i]]=loops[4][loops[3]==chrs[i]]+chrom_ends[count]
+            loops[5][loops[3]==chrs[i]]=loops[5][loops[3]==chrs[i]]+chrom_ends[count]
     
     # Convert genomic coordinates to simulation beads
     resolution = int(np.max(loops[5].values))//N_beads if chrom==None else (coords[1]-coords[0])//N_beads
@@ -268,11 +276,12 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,
     ds= ds[mask]
     cs = cs[mask]
     N_loops = len(ms)
+    np.save(path+'chrom_idxs.npy',chrom_idxs)
     np.save(path+'ms.npy',ms)
     np.save(path+'ns.npy',ns)
     np.save(path+'ds.npy',ds)
     print('Done! Number of loops is ',N_loops)
-    return ms, ns, ds, chrom_ends
+    return ms.astype(int), ns.astype(int), ds, chrom_ends.astype(int), chrom_idxs.astype(int)
 
 def generate_arrays(N_loops, N, l=6):
     # Generate array ms with random integers between 0 and N (exclusive)

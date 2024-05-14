@@ -131,7 +131,7 @@ args = ListOfArgs([
     # Platform settings
     Arg('PLATFORM', help=f"name of the platform. Available choices: {' '.join(available_platforms)}", type=str, default='', val=''),
     Arg('DEVICE', help="device index for CUDA or OpenCL (count from 0)", type=str, default='', val=''),
-
+    
     # Input data
     Arg('INITIAL_STRUCTURE_PATH', help="Path to CIF file.", type=str, default='', val=''),
     Arg('BUILD_INITIAL_STRUCTURE', help="To build a new initial structure.", type=bool, default='True', val='True'),
@@ -145,6 +145,8 @@ args = ListOfArgs([
     Arg('LOC_START', help="Starting region coordinate.", type=int, default='', val=''),
     Arg('LOC_END', help="Ending region coordinate.", type=int, default='', val=''),
     Arg('CHROM', help="Chromosome that corresponds the the modelling region of interest (in case that you do not want to model the whole genome).", type=str, default='', val=''),
+    Arg('SHUFFLE_CHROMS', help="Shuffle the chromosomes.", type=bool, default='False', val='False'),
+    Arg('SHUFFLING_SEED', help="Shuffling random seed.", type=int, default='0', val='0'),
     Arg('SAVE_PLOTS', help='Save plots.', type=bool, default='True', val='True'),
     
     # Basic Polymer Bond

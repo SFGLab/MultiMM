@@ -10,7 +10,7 @@ from MultiEM_plots import *
 from tqdm import tqdm
 import torch
 
-def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path='',norm=False):
+def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path='',norm=False,shuffle=False,seed=0):
     '''
     Imports .BigWig data and outputs compartments.
 
@@ -19,9 +19,12 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
     In case that you would like to switch the sign then add flag sign=-1.
     '''
     # Open file
+    np.random.seed(seed)
     bw = pyBigWig.open(bw_path)
     chroms_set = np.fromiter(bw.chroms().keys(),dtype='S20')
     n_chroms=24 if b'chrY' in chroms_set else 23
+    chrom_idxs = np.arange(n_chroms).astype(int)
+    if shuffle: np.random.shuffle(chrom_idxs)
     print('Number of chromosomes:',n_chroms)
 
     # Compute the total length of chromosomes
@@ -29,8 +32,8 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
         chrom_length = 0
         lengths = list()
         for i in range(n_chroms):
-            chrom_length += bw.chroms(chrs[i])
-            lengths.append(bw.chroms(chrs[i]))
+            chrom_length += bw.chroms(chrs[chrom_idxs[i]])
+            lengths.append(bw.chroms(chrs[chrom_idxs[i]]))
         lengths = np.array(lengths)
         resolution = chrom_length//(2*N_beads)
         polymer_lengths = lengths//resolution
@@ -41,7 +44,7 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
     if chrom==None:
         genomewide_signal = list()
         for i in tqdm(range(n_chroms)):
-            signal = bw.values(chrs[i],0,-1, numpy=True)
+            signal = bw.values(chrs[chrom_idxs[i]],0,-1, numpy=True)
             signal = np.nan_to_num(signal, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
             genomewide_signal.append(compute_averages(signal, polymer_lengths[i]))
         genomewide_signal = np.concatenate(genomewide_signal)
@@ -144,7 +147,7 @@ def move_structure_to(struct, p1, p2, x0=np.array([None])):
                          x0[2]+p[0]*w_x[2]+p[1]*w_y[2]+p[2]*w_z[2]))
     return new_helix
 
-def interpolate_structure_with_nucleosomes(V, bw_array, max_Nnuc=3):
+def interpolate_structure_with_nucleosomes(V, bw_array, max_Nnuc=10):
     """
     Interpolate the 3D structure V with nucleosomes.
     """    
@@ -152,8 +155,6 @@ def interpolate_structure_with_nucleosomes(V, bw_array, max_Nnuc=3):
     bw_array[bw_array>np.mean(bw_array)+6*np.std(bw_array)] = np.mean(bw_array)+6*np.std(bw_array)
     bw_array[bw_array<np.mean(bw_array)-6*np.std(bw_array)] = np.mean(bw_array)-6*np.std(bw_array)
     norm_bw_array = min_max_scale(bw_array)
-    plt.plot(norm_bw_array)
-    plt.show()
     
     # Initialize interpolated structure
     interpolated_structure = []
@@ -238,9 +239,9 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,tu
     segment_vector = end_point - start_point
 
     # Calculate helix parameters
-    helix_radius = np.linalg.norm(segment_vector)/np.pi
+    helix_radius = np.linalg.norm(segment_vector)/(2*np.pi)
     helix_axis = segment_vector / np.linalg.norm(segment_vector)
-    helix_height = 0.2
+    helix_height = 0.1
 
     # Initialize helices
     theta = np.linspace(0, turns* 2 * np.pi, 10)
@@ -253,7 +254,7 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,tu
     # Generate helices for each nucleosome
     for i in range(num_nucleosomes):
         # Calculate helix angle
-        if sign==1: phi+=np.pi/3
+        if sign==1: phi+=4*np.pi/num_nucleosomes
         zigzag_displacement = sign*np.pi/6
         zz_add = np.array([zigzag_displacement*np.sin(phi),zigzag_displacement*np.cos(phi),0])
         helix = make_helix(helix_radius,theta,helix_height,sign)+zz_add

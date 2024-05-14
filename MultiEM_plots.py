@@ -7,6 +7,7 @@ from MultiEM_utils import *
 from sklearn.decomposition import PCA
 import pyvista as pv
 
+pv.set_jupyter_backend("server")
 color_dict = {-2:'#bf0020', -1:'#e36a24', 1:'#20c8e6',2:'#181385',0:'#ffffff'}
 comp_dict = {-2:'B2', -1:'B1', 1:'A2',2:'A1',0:'no compartment'}
 
@@ -90,14 +91,14 @@ def viz_structure(V, colors=None, r=0.3):
         polymer = polyline.tube(radius=r)
         polymer.plot(smooth_shading=True)
 
-def viz_chroms(cif_path,chrom_ends_path):
+def viz_chroms(cif_path,chrom_ends_path,chrom_idxs):
     chrom_ends = np.load(chrom_ends_path)
     V = get_coordinates_cif(cif_path)
     N = len(V)
     chroms = np.zeros(N)
-    for chrom, i in enumerate(range(len(chrom_ends)-1)):
+    for i in range(len(chrom_ends)-1):
         start, end = chrom_ends[i], chrom_ends[i+1]
-        chroms[start:end] = chrom
+        chroms[start:end] = chrom_idxs[i]
     viz_structure(V,chroms[:len(V)])
 
 def get_heatmap(cif_file,viz=False,th=1,save=False,save_path=None,vmax=1,vmin=0):
