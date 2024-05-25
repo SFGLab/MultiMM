@@ -227,12 +227,11 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,
     chrom_idxs = np.arange(n_chroms).astype(int)
     if shuffle: np.random.shuffle(chrom_idxs)
     chroms = list(chrs[i] for i in chrom_idxs) if chrom==None else [chrom]
-
     if chrom!=None:
         loops = loops[(loops[0]==chrom)&(loops[1]>coords[0])&(loops[2]<coords[1])&(loops[4]>coords[0])&(loops[5]<coords[1])].reset_index(drop=True)
     chrom_ends = np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0)) if chrom==None else np.array([0,chrom_sizes[chrom]])
-
     print('Cleaning and transforming loops dataframe...')
+    
     # Sum bigger chromosomes with the maximum values of previous chromosomes
     if chrom==None:
         for count, i in enumerate(chrom_idxs):

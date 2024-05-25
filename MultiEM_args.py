@@ -157,7 +157,7 @@ args = ListOfArgs([
     # Basic polymer stiffness
     Arg('POL_USE_HARMONIC_ANGLE', help="Use harmonic angle interaction.", type=bool, default='True', val='True'),
     Arg('POL_HARMONIC_ANGLE_R0', help="harmonic angle distance equilibrium constant", type=float, default=str(pi), val=str(pi)),
-    Arg('POL_HARMONIC_ANGLE_CONSTANT_K', help="harmonic angle force constant (fixed unit: kJ/mol/radian^2)", type=float, default='40.0', val='40.0'),
+    Arg('POL_HARMONIC_ANGLE_CONSTANT_K', help="harmonic angle force constant (fixed unit: kJ/mol/radian^2)", type=float, default='400.0', val='400.0'),
 
     # Long-Range loop bonds
     Arg('LE_USE_HARMONIC_BOND', help="Use harmonic bond interaction for long range loops.", type=bool, default='True', val='True'),
@@ -175,7 +175,7 @@ args = ListOfArgs([
     Arg('SC_USE_SPHERICAL_CONTAINER', help='Use Spherical container', type=bool, default='False', val='False'),
     Arg('SC_RADIUS1', help='Spherical container radius,', type=float, default='', val=''),
     Arg('SC_RADIUS2', help='Spherical container radius,', type=float, default='', val=''),
-    Arg('SC_SCALE', help='Spherical container scaling factor', type=float, default='50.0', val='50.0'),
+    Arg('SC_SCALE', help='Spherical container scaling factor', type=float, default='1000.0', val='1000.0'),
 
     # Chromosomal Blocks
     Arg('CHB_USE_CHROMOSOMAL_BLOCKS', help='Use Chromosomal Blocks.', type=bool, default='False', val='False'),
@@ -186,23 +186,23 @@ args = ListOfArgs([
     Arg('COB_USE_COMPARTMENT_BLOCKS', help='Use Compartment Blocks.', type=bool, default='False', val='False'),
     Arg('COB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
     Arg('COB_EA', help='Energy strength for A compartment.', type=float, default='1.0', val='1.0'),
-    Arg('COB_EB', help='Energy strength for B compartment.', type=float, default='2.0', val='2.0'),
+    Arg('COB_EB', help='Energy strength for B compartment.', type=float, default='4.0', val='4.0'),
     
     # Subcompartment Blocks
     Arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', help='Use Subcompartment Blocks.', type=bool, default='False', val='False'),
     Arg('SCB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
-    Arg('SCB_EA1', help='Energy strength for A1 compartment.', type=float, default='0.5', val='0.5'),
-    Arg('SCB_EA2', help='Energy strength for A2 compartment.', type=float, default='1.0', val='1.0'),
-    Arg('SCB_EB1', help='Energy strength for B1 compartment.', type=float, default='1.5', val='1.5'),
-    Arg('SCB_EB2', help='Energy strength for B2 compartment.', type=float, default='2.0', val='2.0'),
+    Arg('SCB_EA1', help='Energy strength for A1 compartment.', type=float, default='1.0', val='1.0'),
+    Arg('SCB_EA2', help='Energy strength for A2 compartment.', type=float, default='2.0', val='2.0'),
+    Arg('SCB_EB1', help='Energy strength for B1 compartment.', type=float, default='3.0', val='3.0'),
+    Arg('SCB_EB2', help='Energy strength for B2 compartment.', type=float, default='4.0', val='4.0'),
 
     # Interactions of B compartment with lamina
     Arg('IBL_USE_B_LAMINA_INTERACTION', help='Interactions of B compartment with lamina.', type=bool, default='False', val='False'),
-    Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='50.0', val='50.0'),
+    Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='500.0', val='500.0'),
     
     # Small Chromosomes Attraction to Center
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
-    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='200.0', val='200.0'),
+    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='500.0', val='500.0'),
 
     # Nucleosome interpolation
     Arg('NUC_DO_INTERPOLATION', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
@@ -210,7 +210,10 @@ args = ListOfArgs([
     # Simulation parameters
     Arg('SIM_RUN_MD', help='Do you want to run MD simulation?', type=bool, default='False', val='False'),
     Arg('SIM_N_STEPS', help='Number of steps in MD simulation', type=int, default='', val=''),
-    Arg('SIM_SAMPLING_STEP', help='It determines in t how many steps we save a structure.', type=int, default='', val=''),
+    Arg('SIM_ERROR_TOLERANCE', help='Error tolerance for variable MD simulation', type=float, default='0.01', val='0.01'),
+    Arg('SIM_AMD_ALPHA', help='Alpha of AMD simulation.', type=float, default='100.0', val='100.0'),
+    Arg('SIM_AMD_E', help='E (energy) of AMD simulation.', type=float, default='1000.0', val='1000.0'),
+    Arg('SIM_SAMPLING_STEP', help='It determines in t how many steps we save a structure.', type=int, default='100', val='100'),
     Arg('SIM_INTEGRATOR_TYPE', help='Alternative: langevin, verlet', type=str, default='langevin', val='langevin'),
     Arg('SIM_INTEGRATOR_STEP', help='The step of integrator.', type=Quantity, default='10 femtosecond', val='10 femtosecond'),
     Arg('SIM_FRICTION_COEFF', help='Friction coefficient (Used only with langevin integrator)', type=float, default='0.5', val='0.5'),
