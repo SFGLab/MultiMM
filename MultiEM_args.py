@@ -180,7 +180,7 @@ args = ListOfArgs([
     # Chromosomal Blocks
     Arg('CHB_USE_CHROMOSOMAL_BLOCKS', help='Use Chromosomal Blocks.', type=bool, default='False', val='False'),
     Arg('CHB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
-    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='0.5', val='0.5'),
+    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='1.0', val='1.0'),
     
     # Compartment Blocks
     Arg('COB_USE_COMPARTMENT_BLOCKS', help='Use Compartment Blocks.', type=bool, default='False', val='False'),
@@ -198,11 +198,11 @@ args = ListOfArgs([
 
     # Interactions of B compartment with lamina
     Arg('IBL_USE_B_LAMINA_INTERACTION', help='Interactions of B compartment with lamina.', type=bool, default='False', val='False'),
-    Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='500.0', val='500.0'),
+    Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='100.0', val='100.0'),
     
     # Small Chromosomes Attraction to Center
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
-    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='500.0', val='500.0'),
+    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='200.0', val='200.0'),
 
     # Nucleosome interpolation
     Arg('NUC_DO_INTERPOLATION', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
@@ -215,7 +215,7 @@ args = ListOfArgs([
     Arg('SIM_AMD_E', help='E (energy) of AMD simulation.', type=float, default='1000.0', val='1000.0'),
     Arg('SIM_SAMPLING_STEP', help='It determines in t how many steps we save a structure.', type=int, default='100', val='100'),
     Arg('SIM_INTEGRATOR_TYPE', help='Alternative: langevin, verlet', type=str, default='langevin', val='langevin'),
-    Arg('SIM_INTEGRATOR_STEP', help='The step of integrator.', type=Quantity, default='10 femtosecond', val='10 femtosecond'),
+    Arg('SIM_INTEGRATOR_STEP', help='The step of integrator.', type=Quantity, default='1 femtosecond', val='1 femtosecond'),
     Arg('SIM_FRICTION_COEFF', help='Friction coefficient (Used only with langevin integrator)', type=float, default='0.5', val='0.5'),
     Arg('SIM_SET_INITIAL_VELOCITIES', help='Sets initial velocities based on Boltzmann distribution', type=bool, default='False', val='False'),
     Arg('SIM_TEMPERATURE', help='Simulation temperature', type=Quantity, default='310 kelvin', val='310 kelvin'),

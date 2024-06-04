@@ -88,6 +88,7 @@ class MultiEM:
 
         self.args  = args
         coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
+        if args.LOC_START!=None: args.SHUFFLE_CHROMS = False 
         
         # Compartments
         if args.COMPARTMENT_PATH!=None:
@@ -102,7 +103,7 @@ class MultiEM:
 
         # Loops
         if args.LOOPS_PATH.lower().endswith('.bedpe'):
-            self.ms, self.ns, self.ds, self.chr_ends, self.chrom_idxs = import_mns_from_bedpe(bedpe_file = args.LOOPS_PATH,N_beads=self.args.N_BEADS,\
+            self.ms, self.ns, self.ks, self.chr_ends, self.chrom_idxs = import_mns_from_bedpe(bedpe_file = args.LOOPS_PATH,N_beads=self.args.N_BEADS,\
                                                                              coords = coords, chrom=args.CHROM,\
                                                                              viz=False, path=self.save_path,\
                                                                              shuffle=args.SHUFFLE_CHROMS,seed=args.SHUFFLING_SEED)
@@ -127,7 +128,7 @@ class MultiEM:
                 self.chrom_spin[self.chr_ends[i]:self.chr_ends[i+1]] = self.chrom_idxs[i]
 
     def add_evforce(self):
-        sigma = self.args.LE_HARMONIC_BOND_R0 if self.args.LE_FIXED_DISTANCES else np.min(self.ds)
+        sigma = self.args.LE_HARMONIC_BOND_R0
         self.ev_force = mm.CustomNonbondedForce(f'epsilon*(sigma/(r+r_small))^{self.args.EV_POWER}')
         self.ev_force.setForceGroup(1)
         self.ev_force.addGlobalParameter('epsilon', defaultValue=self.args.EV_EPSILON)
@@ -230,7 +231,7 @@ class MultiEM:
             if self.args.LE_FIXED_DISTANCES:
                 self.loop_force.addBond(m,n,self.args.LE_HARMONIC_BOND_R0,self.args.LE_HARMONIC_BOND_K)
             else:
-                self.loop_force.addBond(m,n,self.ds[counter],self.args.LE_HARMONIC_BOND_K)
+                self.loop_force.addBond(m,n,self.args.LE_HARMONIC_BOND_R0,self.ks[counter])
             counter+=1
         self.system.addForce(self.loop_force)
 
@@ -278,14 +279,14 @@ class MultiEM:
         # Add forces
         print('\nImporting forcefield...')
         if self.args.EV_USE_EXCLUDED_VOLUME: self.add_evforce()
-        if self.args.COB_USE_COMPARTMENT_BLOCKS: self.add_compartment_blocks()
-        if self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS: self.add_subcompartment_blocks()
+        if self.args.COB_USE_COMPARTMENT_BLOCKS and np.all(self.Cs!=None): self.add_compartment_blocks()
+        if self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS and np.all(self.Cs!=None): self.add_subcompartment_blocks()
         if self.args.CHB_USE_CHROMOSOMAL_BLOCKS: self.add_chromosomal_blocks()
         if self.args.SC_USE_SPHERICAL_CONTAINER: self.add_spherical_container()
         if self.args.IBL_USE_B_LAMINA_INTERACTION: self.add_Blamina_interaction()
         if self.args.CF_USE_CENTRAL_FORCE: self.add_central_force()
         if self.args.POL_USE_HARMONIC_BOND: self.add_harmonic_bonds()
-        if self.args.LE_USE_HARMONIC_BOND: self.add_loops()
+        if self.args.LE_USE_HARMONIC_BOND and np.all(self.ms!=None): self.add_loops()
         if self.args.POL_USE_HARMONIC_ANGLE: self.add_stiffness()
     
     def min_energy(self):
@@ -333,11 +334,7 @@ class MultiEM:
         elapsed = end - start
         print(f'Nucleosome interpolation finished succesfully in {elapsed//3600:.0f} hours, {elapsed%3600//60:.0f} minutes and  {elapsed%60:.0f} seconds.')
 
-    def run(self):
-        '''
-        Energy minimization for GW model.
-        '''
-        # Estimation of parameters
+    def set_radiuses(self):
         self.radius1 = 0.5*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
         self.radius2 = 4*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
         if self.args.COB_DISTANCE!=None:
@@ -347,6 +344,13 @@ class MultiEM:
         else:
             self.r_comp = (self.radius2-self.radius1)/20
         self.r_chrom = self.r_comp if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
+    
+    def run(self):
+        '''
+        Energy minimization for GW model.
+        '''
+        # Estimation of parameters
+        self.set_radiuses()
         
         # Initialize simulation
         self.initialize_simulation()
@@ -357,7 +361,7 @@ class MultiEM:
         # Run simulation / Energy minimization
         self.min_energy()
         self.save_chromosomes() 
-    
+        
         # Run molecular dynamics
         if self.args.SIM_RUN_MD: self.run_md()
         

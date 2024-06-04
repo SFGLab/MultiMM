@@ -146,7 +146,9 @@ def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path='',shuffle=Fals
     # Find maximum coordinate of each chromosome
     print('Cleaning and transforming subcompartments dataframe...')
     if chrom!=None:
-        comps_df = comps_df[(comps_df[0]==chrom)&(comps_df[1]>coords[0]) & (comps_df[2]<coords[1])].reset_index(drop=True)
+        comps_df = comps_df[(comps_df[0]==chrom)&(comps_df[2]>coords[0]) & (comps_df[1]<coords[1])].reset_index(drop=True)
+        comps_df[1][0] = coords[0]
+        comps_df[2][-1] = coords[1]
     n_chroms = len(np.unique(comps_df[0].values))
     chrom_idxs = np.arange(n_chroms).astype(int)
     if shuffle: np.random.shuffle(chrom_idxs)
@@ -207,7 +209,7 @@ def integers_to_hex_colors(start, end):
     return hex_colors
 
 def write_chrom_colors(chrom_ends,chrom_idxs,name='MultiEM_chromosome_colors.cmd'):    
-    colors = integers_to_hex_colors(0, len(chrom_ends)-1)
+    colors = integers_to_hex_colors(0, len(chrom_ends)+1)
     
     content = ''
     for i in range(len(chrom_ends)-1):
@@ -261,10 +263,10 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,
     ms, ns = mns[0,:], mns[1,:]
     ms[ms>=N_beads],ns[ns>=N_beads]=N_beads-1, N_beads-1
     ms,ns,cs = ms[ns>ms+min_loop_dist], ns[ns>ms+min_loop_dist], cs[ns>ms+min_loop_dist]
-    # zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
-    # zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
-    # ks = 1000+599000*min_max_trans(zs)
-    ds = 0.1+0.05*min_max_trans(1/cs**2/3)
+    zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
+    zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
+    ks = 100+299900*min_max_trans(zs)
+    # ds = 0.1+0.1*min_max_trans(1/cs**2/3)
 
     # Perform some data cleaning
     mask = (ns-ms)!=0
@@ -272,15 +274,15 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,
     ns = ns[mask]
     avg_ls = np.average(ns-ms)
     print('Average loop size:',avg_ls)
-    ds= ds[mask]
+    ks= ks[mask]
     cs = cs[mask]
     N_loops = len(ms)
     np.save(path+'chrom_idxs.npy',chrom_idxs)
     np.save(path+'ms.npy',ms)
     np.save(path+'ns.npy',ns)
-    np.save(path+'ds.npy',ds)
+    np.save(path+'ks.npy',ks)
     print('Done! Number of loops is ',N_loops)
-    return ms.astype(int), ns.astype(int), ds, chrom_ends.astype(int), chrom_idxs.astype(int)
+    return ms.astype(int), ns.astype(int), ks, chrom_ends.astype(int), chrom_idxs.astype(int)
 
 def generate_arrays(N_loops, N, l=6):
     # Generate array ms with random integers between 0 and N (exclusive)

@@ -253,12 +253,15 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,tu
 
     # Generate helices for each nucleosome
     for i in range(num_nucleosomes):
+        # Calculate helix angle
         if sign==1: phi+=4*np.pi/num_nucleosomes
         zigzag_displacement = sign*np.pi/6
         zz_add = np.array([zigzag_displacement*np.sin(phi),zigzag_displacement*np.cos(phi),0])
         helix = make_helix(helix_radius,theta,helix_height,sign)+zz_add
         helix = move_structure_to(helix,helix_points[i],helix_points[i+1])
-        sign*=-1   
+        sign*=-1
+
+        # Generate helix coordinates        
         helices.append(helix)
 
     return helices, sign, phi
