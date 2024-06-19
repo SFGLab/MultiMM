@@ -157,7 +157,7 @@ args = ListOfArgs([
     # Basic polymer stiffness
     Arg('POL_USE_HARMONIC_ANGLE', help="Use harmonic angle interaction.", type=bool, default='True', val='True'),
     Arg('POL_HARMONIC_ANGLE_R0', help="harmonic angle distance equilibrium constant", type=float, default=str(pi), val=str(pi)),
-    Arg('POL_HARMONIC_ANGLE_CONSTANT_K', help="harmonic angle force constant (fixed unit: kJ/mol/radian^2)", type=float, default='400.0', val='400.0'),
+    Arg('POL_HARMONIC_ANGLE_CONSTANT_K', help="harmonic angle force constant (fixed unit: kJ/mol/radian^2)", type=float, default='100.0', val='100.0'),
 
     # Long-Range loop bonds
     Arg('LE_USE_HARMONIC_BOND', help="Use harmonic bond interaction for long range loops.", type=bool, default='True', val='True'),
@@ -186,15 +186,15 @@ args = ListOfArgs([
     Arg('COB_USE_COMPARTMENT_BLOCKS', help='Use Compartment Blocks.', type=bool, default='False', val='False'),
     Arg('COB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
     Arg('COB_EA', help='Energy strength for A compartment.', type=float, default='1.0', val='1.0'),
-    Arg('COB_EB', help='Energy strength for B compartment.', type=float, default='4.0', val='4.0'),
+    Arg('COB_EB', help='Energy strength for B compartment.', type=float, default='2.0', val='2.0'),
     
     # Subcompartment Blocks
     Arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', help='Use Subcompartment Blocks.', type=bool, default='False', val='False'),
     Arg('SCB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
     Arg('SCB_EA1', help='Energy strength for A1 compartment.', type=float, default='1.0', val='1.0'),
-    Arg('SCB_EA2', help='Energy strength for A2 compartment.', type=float, default='2.0', val='2.0'),
-    Arg('SCB_EB1', help='Energy strength for B1 compartment.', type=float, default='3.0', val='3.0'),
-    Arg('SCB_EB2', help='Energy strength for B2 compartment.', type=float, default='4.0', val='4.0'),
+    Arg('SCB_EA2', help='Energy strength for A2 compartment.', type=float, default='1.33', val='1.33'),
+    Arg('SCB_EB1', help='Energy strength for B1 compartment.', type=float, default='1.66', val='1.66'),
+    Arg('SCB_EB2', help='Energy strength for B2 compartment.', type=float, default='2.0', val='2.0'),
 
     # Interactions of B compartment with lamina
     Arg('IBL_USE_B_LAMINA_INTERACTION', help='Interactions of B compartment with lamina.', type=bool, default='False', val='False'),
@@ -202,7 +202,7 @@ args = ListOfArgs([
     
     # Small Chromosomes Attraction to Center
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
-    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='200.0', val='200.0'),
+    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='1000.0', val='1000.0'),
 
     # Nucleosome interpolation
     Arg('NUC_DO_INTERPOLATION', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),

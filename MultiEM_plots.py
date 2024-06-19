@@ -76,22 +76,22 @@ def polyline_from_points(points):
     poly.lines = the_cell
     return poly
 
-def viz_structure(V, colors=None, r=0.3):
+def viz_structure(V, colors=None, r=0.3, cmap='coolwarm'):
     polyline = polyline_from_points(V)
     polyline["scalars"] = np.arange(polyline.n_points)
 
     if colors is not None:
-        cmap = "coolwarm"
         colors = colors[:len(V)]
         color_values = (colors - np.min(colors)) / (np.max(colors) - np.min(colors))  # Normalize colors
         polyline["colors"] = color_values  # Set colors as point scalars
         polymer = polyline.tube(radius=r)
-        polymer.plot(smooth_shading=True, cmap=cmap, scalars="colors")
+        polymer.plot(smooth_shading=True, cmap=cmap, scalars="colors", show_scalar_bar=False)
     else:
         polymer = polyline.tube(radius=r)
-        polymer.plot(smooth_shading=True)
+        polymer.plot(smooth_shading=True, show_scalar_bar=False)
 
-def viz_chroms(cif_path,chrom_ends_path,chrom_idxs):
+def viz_chroms(cif_path,chrom_ends_path,chrom_idxs_path):
+    chrom_idxs = np.load(chrom_idxs_path)
     chrom_ends = np.load(chrom_ends_path)
     V = get_coordinates_cif(cif_path)
     N = len(V)
@@ -99,7 +99,7 @@ def viz_chroms(cif_path,chrom_ends_path,chrom_idxs):
     for i in range(len(chrom_ends)-1):
         start, end = chrom_ends[i], chrom_ends[i+1]
         chroms[start:end] = chrom_idxs[i]
-    viz_structure(V,chroms[:len(V)])
+    viz_structure(V,chroms[:len(V)],cmap='rainbow')
 
 def get_heatmap(cif_file,viz=False,th=1,save=False,save_path=None,vmax=1,vmin=0):
     '''

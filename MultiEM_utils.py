@@ -146,10 +146,9 @@ def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path='',shuffle=Fals
     # Find maximum coordinate of each chromosome
     print('Cleaning and transforming subcompartments dataframe...')
     if chrom!=None:
-        comps_df = comps_df[(comps_df[0]==chrom)&(comps_df[2]>coords[0]) & (comps_df[1]<coords[1])].reset_index(drop=True)
-        comps_df[1][0] = coords[0]
-        comps_df[2][-1] = coords[1]
-    n_chroms = len(np.unique(comps_df[0].values))
+        comps_df = comps_df[(comps_df[0]==chrom)&(comps_df[1]>coords[0]) & (comps_df[2]<coords[1])].reset_index(drop=True)
+    n_chroms = 22
+    # n_chroms = len(np.unique(comps_df[0].values))
     chrom_idxs = np.arange(n_chroms).astype(int)
     if shuffle: np.random.shuffle(chrom_idxs)
     chrom_ends = np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0)) if chrom==None else np.array([0,chrom_sizes[chrom]])
@@ -225,7 +224,8 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,
     # Import loops
     np.random.seed(seed)
     loops = pd.read_csv(bedpe_file,header=None,sep='\t')
-    n_chroms = len(np.unique(loops[0].values))
+    # n_chroms = len(np.unique(loops[0].values))
+    n_chroms=22
     chrom_idxs = np.arange(n_chroms).astype(int)
     if shuffle: np.random.shuffle(chrom_idxs)
     chroms = list(chrs[i] for i in chrom_idxs) if chrom==None else [chrom]
@@ -265,7 +265,7 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,
     ms,ns,cs = ms[ns>ms+min_loop_dist], ns[ns>ms+min_loop_dist], cs[ns>ms+min_loop_dist]
     zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
     zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
-    ks = 100+299900*min_max_trans(zs)
+    ks = 100+2900*min_max_trans(zs)
     # ds = 0.1+0.1*min_max_trans(1/cs**2/3)
 
     # Perform some data cleaning

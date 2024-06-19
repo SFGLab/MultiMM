@@ -15,7 +15,7 @@ from sys import stdout
 import openmm as mm
 from openmm import Vec3
 from openmm.app import PDBFile, PDBxFile, ForceField, Simulation, PDBReporter, PDBxReporter, DCDReporter, StateDataReporter, CharmmPsfFile
-from openmmtools.integrators import MTSIntegrator
+# from openmmtools.integrators import MTSIntegrator
 from MultiEM_init_tools import *
 from MultiEM_utils import *
 from MultiEM_plots import *
@@ -88,7 +88,6 @@ class MultiEM:
 
         self.args  = args
         coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
-        if args.LOC_START!=None: args.SHUFFLE_CHROMS = False 
         
         # Compartments
         if args.COMPARTMENT_PATH!=None:
@@ -117,7 +116,7 @@ class MultiEM:
             else:
                 raise InterruptedError('ATAC-Seq file should be in .bw or .BigWig format.')
         
-        write_chrom_colors(self.chr_ends,self.chrom_idxs,name=self.save_path+'MultiEM_chromosome_colors.cmd')
+        if self.args.CHROM=='': write_chrom_colors(self.chr_ends,self.chrom_idxs,name=self.save_path+'MultiEM_chromosome_colors.cmd')
         
         # if np.all(args.COMPARTMENT_PATH!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
         
@@ -269,8 +268,8 @@ class MultiEM:
                 self.integrator = mm.amd.AMDIntegrator(self.args.SIM_INTEGRATOR_STEP, self.args.SIM_AMD_ALPHA, self.args.SIM_AMD_E)
             case 'brownian':
                 self.integrator = mm.BrownianIntegrator(self.args.SIM_TEMPERATURE, self.args.SIM_FRICTION_COEFF, self.args.SIM_INTEGRATOR_STEP)
-            case 'mts':
-                self.integrator = MTSIntegrator(self.args.SIM_INTEGRATOR_STEP,[(1,self.args.SIM_SAMPLING_STEP),(2,self.args.SIM_SAMPLING_STEP)])
+            # case 'mts':
+            #     self.integrator = MTSIntegrator(self.args.SIM_INTEGRATOR_STEP,[(1,self.args.SIM_SAMPLING_STEP),(2,self.args.SIM_SAMPLING_STEP)])
 
     def add_forcefield(self):
         '''
@@ -279,14 +278,14 @@ class MultiEM:
         # Add forces
         print('\nImporting forcefield...')
         if self.args.EV_USE_EXCLUDED_VOLUME: self.add_evforce()
-        if self.args.COB_USE_COMPARTMENT_BLOCKS and np.all(self.Cs!=None): self.add_compartment_blocks()
-        if self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS and np.all(self.Cs!=None): self.add_subcompartment_blocks()
+        if self.args.COB_USE_COMPARTMENT_BLOCKS: self.add_compartment_blocks()
+        if self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS: self.add_subcompartment_blocks()
         if self.args.CHB_USE_CHROMOSOMAL_BLOCKS: self.add_chromosomal_blocks()
         if self.args.SC_USE_SPHERICAL_CONTAINER: self.add_spherical_container()
         if self.args.IBL_USE_B_LAMINA_INTERACTION: self.add_Blamina_interaction()
         if self.args.CF_USE_CENTRAL_FORCE: self.add_central_force()
         if self.args.POL_USE_HARMONIC_BOND: self.add_harmonic_bonds()
-        if self.args.LE_USE_HARMONIC_BOND and np.all(self.ms!=None): self.add_loops()
+        if self.args.LE_USE_HARMONIC_BOND: self.add_loops()
         if self.args.POL_USE_HARMONIC_ANGLE: self.add_stiffness()
     
     def min_energy(self):
@@ -327,7 +326,7 @@ class MultiEM:
 
     def nuc_interpolation(self):
         print('Running nucleosome interpolation...')
-        start_time = time.time()
+        start = time.time()
         Vnuc = interpolate_structure_with_nucleosomes(get_coordinates_mm(self.state.getPositions()), self.atacseq)
         write_mmcif_chrom(Vnuc,path=self.save_path+f'MultiEM_minimized_with_nucs.cif')
         end = time.time()

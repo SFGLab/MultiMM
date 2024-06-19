@@ -239,12 +239,12 @@ def generate_nucleosome_helices(start_point, end_point, num_nucleosomes, phi ,tu
     segment_vector = end_point - start_point
 
     # Calculate helix parameters
-    helix_radius = np.linalg.norm(segment_vector)/(2*np.pi)
+    helix_radius = np.linalg.norm(segment_vector)/np.pi
     helix_axis = segment_vector / np.linalg.norm(segment_vector)
-    helix_height = 0.1
+    helix_height = 0.05
 
     # Initialize helices
-    theta = np.linspace(0, turns* 2 * np.pi, 10)
+    theta = np.linspace(0, turns* 2 * np.pi, 20)
     helices = list()
 
     helix_points = [start_point]
