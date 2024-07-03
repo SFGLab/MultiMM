@@ -8,14 +8,10 @@ import numpy as np
 import os
 import argparse
 import configparser
-from mdtraj.reporters import HDF5Reporter
-from scipy import ndimage
 from typing import List
 from sys import stdout
 import openmm as mm
-from openmm import Vec3
-from openmm.app import PDBFile, PDBxFile, ForceField, Simulation, PDBReporter, PDBxReporter, DCDReporter, StateDataReporter, CharmmPsfFile
-# from openmmtools.integrators import MTSIntegrator
+from openmm.app import PDBxFile, ForceField, Simulation, DCDReporter, StateDataReporter
 from MultiEM_init_tools import *
 from MultiEM_utils import *
 from MultiEM_plots import *
@@ -327,7 +323,8 @@ class MultiEM:
     def nuc_interpolation(self):
         print('Running nucleosome interpolation...')
         start = time.time()
-        Vnuc = interpolate_structure_with_nucleosomes(get_coordinates_mm(self.state.getPositions()), self.atacseq)
+        nuc_interpol = NucleosomeInterpolation(get_coordinates_mm(self.state.getPositions()),self.atacseq)
+        Vnuc = nuc_interpol.interpolate_structure_with_nucleosomes()
         write_mmcif_chrom(Vnuc,path=self.save_path+f'MultiEM_minimized_with_nucs.cif')
         end = time.time()
         elapsed = end - start
