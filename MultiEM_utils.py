@@ -309,3 +309,80 @@ def shuffle_blocks(array):
     shuffled_array = [elem for block in unique_blocks for elem in block]
 
     return shuffled_array
+
+def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path='',norm=False,shuffle=False,seed=0):
+    '''
+    Imports .BigWig data and outputs compartments.
+
+    It assumes that higher signal coresponds to B compartment.
+
+    In case that you would like to switch the sign then add flag sign=-1.
+    '''
+    # Open file
+    np.random.seed(seed)
+    bw = pyBigWig.open(bw_path)
+    chroms_set = np.fromiter(bw.chroms().keys(),dtype='S20')
+    n_chroms=24 if b'chrY' in chroms_set else 23
+    chrom_idxs = np.arange(n_chroms).astype(int)
+    if shuffle: np.random.shuffle(chrom_idxs)
+    print('Number of chromosomes:',n_chroms)
+
+    # Compute the total length of chromosomes
+    if chrom==None:
+        chrom_length = 0
+        lengths = list()
+        for i in range(n_chroms):
+            chrom_length += bw.chroms(chrs[chrom_idxs[i]])
+            lengths.append(bw.chroms(chrs[chrom_idxs[i]]))
+        lengths = np.array(lengths)
+        resolution = chrom_length//(2*N_beads)
+        polymer_lengths = lengths//resolution
+        np.save(path+'chrom_lengths.npy',polymer_lengths)
+
+    # Import the downgraded signal
+    print('Importing bw signal...')
+    if chrom==None:
+        genomewide_signal = list()
+        for i in tqdm(range(n_chroms)):
+            signal = bw.values(chrs[chrom_idxs[i]],0,-1, numpy=True)
+            signal = np.nan_to_num(signal, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
+            genomewide_signal.append(compute_averages(signal, polymer_lengths[i]))
+        genomewide_signal = np.concatenate(genomewide_signal)
+    else:
+        genomewide_signal = bw.values(chrom,coords[0],coords[1], numpy=True)
+    bw.close()
+
+    genomewide_signal = compute_averages(genomewide_signal,N_beads)
+    if norm: genomewide_signal = (genomewide_signal-np.mean(genomewide_signal)+3*np.std(genomewide_signal))/np.std(genomewide_signal)
+    
+    # Transform signal to binary or adjuct it to have zero mean
+    if binary:
+        genomewide_signal[genomewide_signal>0] = -1
+        genomewide_signal[genomewide_signal<=0] = 1
+        
+        # Subtitute zeros with random spin states
+        mask = genomewide_signal==0
+        n_zeros = np.count_nonzero(mask)
+        nums = np.array(rd.choices([-1,1],k=n_zeros))
+        genomewide_signal[mask] = nums
+    
+    print('Done!\n')
+
+    # Plotting
+    if viz:
+        figure(figsize=(25, 5), dpi=100)
+        xax = np.arange(len(genomewide_signal))
+        plt.fill_between(xax,genomewide_signal, where=(genomewide_signal>np.mean(genomewide_signal)),alpha=0.50,color='purple')
+        plt.fill_between(xax,genomewide_signal, where=(genomewide_signal<np.mean(genomewide_signal)),alpha=0.50,color='orange')
+        lines = np.cumsum(polymer_lengths//2)
+        for i in range(n_chroms):
+            plt.axvline(x=lines[i], color='b')
+        plt.xlabel('Genomic Distance',fontsize=16)
+        plt.ylabel('BW signal renormalized',fontsize=16)
+        plt.ylim((np.mean(genomewide_signal)-np.std(genomewide_signal),np.mean(genomewide_signal)+np.std(genomewide_signal)))
+        plt.grid()
+        plt.show()
+
+    np.save(path+'signal.npy',genomewide_signal)
+    
+    return genomewide_signal
