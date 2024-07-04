@@ -83,7 +83,6 @@ class NucleosomeInterpolation:
         interpolated_structure = []
         
         # Interpolate each segment with nucleosomes
-        self.sign, self.phi = 1, 0
         print('Building nucleosome structure...')
         prev_zigzag = None
         for i in tqdm(range(len(self.V) - 1)):
@@ -101,8 +100,6 @@ class NucleosomeInterpolation:
                                                                      prev_zigzag_vec=prev_zigzag)
                 interpolated_structure.extend(helices)
             else:
-                helices = [[(tuple((self.V[i]+self.V[i+1])/2))]]
-                interpolated_structure.extend(helices)
                 prev_zigzag = None
         interpolated_structure.append([self.V[-1]])
 
