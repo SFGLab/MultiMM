@@ -10,8 +10,22 @@ from MultiEM_plots import *
 from tqdm import tqdm
 import torch
 
+
+def makeUnit(x):
+    """Normalize vector to norm 1"""
+    return x / np.linalg.norm(x)
+
+
+def get_perpendicular(vec):
+    """Get random perpendicular vector to vec"""
+    if vec[0] != 0 or vec[1] != 0:
+        return np.array([vec[1], -vec[0], 0])
+    else:
+        return np.array([vec[2], 0, -vec[0]])
+
+
 class NucleosomeInterpolation:
-    def __init__(self,V,bw,max_nucs_per_bead=4,zig_zag_displacement=np.pi/6,points_per_nuc=20,phi_norm=np.pi):
+    def __init__(self,V,bw,max_nucs_per_bead=4,zig_zag_displacement=0.2,points_per_nuc=20,phi_norm=np.pi/5):
         self.V, self.bw = V, bw
         self.max_nucs_per_bead, self.nuc_points = max_nucs_per_bead, points_per_nuc
         self.zigzag_d, self.phi_norm = zig_zag_displacement, phi_norm
@@ -19,10 +33,10 @@ class NucleosomeInterpolation:
     def amplify(self,structure, scale=10):
         return [(s[0]*scale, s[1]*scale, s[2]*scale) for s in structure]
     
-    def make_helix(self,r,theta,z0):
-        x = r * (np.cos(theta)-1)*self.sign
+    def make_helix(self, r, theta, z0):
+        x = r * (-np.cos(theta)+1)
         y = r * np.sin(theta)
-        z = z0 * theta / (2 * np.pi)
+        z = z0 * theta / theta[-1]
         return np.vstack([x, y, z]).T
     
     def min_max_scale(self,array):
@@ -34,46 +48,22 @@ class NucleosomeInterpolation:
         scaled_array = (array - min_val) / (max_val - min_val)
         return scaled_array
 
-    def orthonormalize(self,vectors):
+    def move_structure_to(self, struct, p0, p1, p2, x0=np.array([None])):
         """
-            Orthonormalizes the vectors using gram schmidt procedure.
-
-            Parameters:
-                vectors: torch tensor, size (dimension, n_vectors)
-                        they must be linearly independant
-            Returns:
-                orthonormalized_vectors: torch tensor, size (dimension, n_vectors)
+        The structure will be placed assuming new X-axis would be defined by vector p2-p1.
+        New Y-axis would be defined by part of p0-p1 vector orthogonal to p2-p1.
         """
-        assert (vectors.size(1) <= vectors.size(0)), 'number of vectors must be smaller or equal to the dimension'
-        orthonormalized_vectors = torch.zeros_like(vectors)
-        orthonormalized_vectors[:, 0] = vectors[:, 0] / torch.norm(vectors[:, 0], p=2)
-
-        for i in range(1, orthonormalized_vectors.size(1)):
-            vector = vectors[:, i]
-            V = orthonormalized_vectors[:, :i]
-            PV_vector= torch.mv(V, torch.mv(V.t(), vector))
-            orthonormalized_vectors[:, i] = (vector - PV_vector) / torch.norm(vector - PV_vector, p=2)
-
-        return orthonormalized_vectors
-
-    def move_structure_to(self, struct, p1, p2, x0=np.array([None])):
         if p1[0]==p2[0] and p1[1]==p2[1] and p1[2]==p2[2]:
             raise(Exception("Starting point and the ending points must be different!"))
-        w_z = [p2[0]-p1[0], p2[1]-p1[1], p2[2]-p1[2]]
-        if w_z[0] != 0:
-            w_x = [-w_z[1]/w_z[0], 1, 0]
-            w_y = [-w_z[2]/w_z[0], 0, 1]
-        elif w_z[1] != 0:
-            w_x = [1, -w_z[0]/w_z[1], 0]
-            w_y = [0, -w_z[2]/w_z[1], 1]
-        else:
-            w_x = [1, 0, -w_z[0]/w_z[2]]
-            w_y = [0, 1, -w_z[1]/w_z[2]]
-        A = torch.transpose(torch.tensor([w_z, w_x, w_y]),0,1)
-        A_norm = np.array(self.orthonormalize(A))
-        w_x = list(A_norm[:,1])
-        w_y = list(A_norm[:,2])
-        w_z = list(A_norm[:,0])
+        w_x = p2 - p1
+        v_01 = p1 - p0
+        w_y = v_01 - np.dot(w_x, v_01)/np.linalg.norm(w_x)**2 * w_x
+        w_z = np.cross(w_x, w_y)
+
+        w_x = makeUnit(w_x) if np.linalg.norm(w_x)>0 else w_x
+        w_y = makeUnit(w_y) if np.linalg.norm(w_y)>0 else w_y
+        w_z = makeUnit(w_z) if np.linalg.norm(w_z)>0 else w_z
+
         if x0.all()==None: x0=p1
         new_helix = []
         for p in struct:
@@ -108,13 +98,15 @@ class NucleosomeInterpolation:
             num_nucleosomes = int(np.round(norm_bw_array[i] * self.max_nucs_per_bead))
             
             # Generate helices that represent nucleosomes
+            interpolated_structure.append([start_point])
             if num_nucleosomes>0:
                 helices = self.single_bead_nucgenerator(start_point, end_point, num_nucleosomes)
                 interpolated_structure.extend(helices)
             else:
                 helices = [[(tuple((self.V[i]+self.V[i+1])/2))]]
                 interpolated_structure.extend(helices)
-        
+        interpolated_structure.append([self.V[-1]])
+
         # Flatten the nested list to get a list of coordinate tuples
         flattened_coords = [coord for sublist in interpolated_structure for coord in sublist]
         print('Done! You have the whole structure with nucleosomes. ;)')
@@ -128,31 +120,28 @@ class NucleosomeInterpolation:
         segment_vector = end_point - start_point
 
         # Calculate helix parameters
-        helix_radius = np.linalg.norm(segment_vector)/np.pi
-        helix_axis = segment_vector / np.linalg.norm(segment_vector)
+        helix_radius = 0.1 # np.linalg.norm(segment_vector)/np.pi
+        helix_axis = makeUnit(segment_vector)
         helix_height = helix_radius/0.965
 
         # Initialize helices
         theta = np.linspace(0, turns* 2 * np.pi, self.nuc_points)
         helices = list()
-
-        helix_points = [start_point]
-        for i in range(num_nucleosomes):
-            helix_points.append(start_point +  (i + 1.0/num_nucleosomes) * helix_axis* helix_height)
-
+        
         # Generate helices for each nucleosome
+        zigzag_vec1 = makeUnit(get_perpendicular(segment_vector))
+        zigzag_vec2 = makeUnit(np.cross(zigzag_vec1, segment_vector))
+        phi = 0
         for i in range(num_nucleosomes):
-            if self.sign==1: 
-                self.phi+=(self.phi_norm/num_nucleosomes)
-                self.phi = self.phi%(np.pi/2)
-            zigzag_displacement = -self.sign*self.zigzag_d
-            add_vec = [zigzag_displacement*np.cos(self.phi),zigzag_displacement*np.sin(self.phi),0]
-            h = self.make_helix(helix_radius, theta, helix_height)+add_vec
-            helix = self.move_structure_to(h,helix_points[i],helix_points[i+1])
-            self.sign*=-1
-
-            # Generate helix coordinates     
+            helix_point = start_point + (i+1)/(num_nucleosomes+1)*segment_vector
+            zigzag_vec = self.zigzag_d*(np.cos(phi)*zigzag_vec1 + np.sin(phi)*zigzag_vec2)
+            p1 = helix_point + zigzag_vec - helix_radius/2*helix_axis
+            p2 = helix_point + zigzag_vec + helix_radius/2*helix_axis
+            h = self.make_helix(helix_radius, theta, helix_height)
+            helix = self.move_structure_to(h, helix_point, p1, p2)
+            
             helices.append(helix)
+            phi += np.pi if i%2 == 0 else np.pi + self.phi_norm
 
         return helices
     
