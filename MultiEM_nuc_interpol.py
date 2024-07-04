@@ -125,6 +125,7 @@ class NucleosomeInterpolation:
 
         # Initialize helices
         theta = np.linspace(0, turns* 2 * np.pi, self.nuc_points)
+        nucleosome = self.make_helix(self.nuc_r, theta, nuc_height)
         helices = list()
         
         # Generate helices for each nucleosome
@@ -141,8 +142,7 @@ class NucleosomeInterpolation:
             zigzag_vec = linker_len/2*(np.cos(phi)*zigzag_vec1 + np.sin(phi)*zigzag_vec2)
             p1 = helix_point + zigzag_vec - nuc_height/2*segment_vector_norm
             p2 = helix_point + zigzag_vec + nuc_height/2*segment_vector_norm
-            h = self.make_helix(self.nuc_r, theta, nuc_height)
-            helix = self.move_structure_to(h, helix_point, p1, p2)
+            helix = self.move_structure_to(nucleosome, helix_point, p1, p2)
             helices.append(helix)
             phi += np.pi if i%2 == 0 else np.pi + self.phi_norm
 
