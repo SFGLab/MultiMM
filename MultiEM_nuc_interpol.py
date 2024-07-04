@@ -49,26 +49,25 @@ class NucleosomeInterpolation:
         scaled_array = (array - min_val) / (max_val - min_val)
         return scaled_array
 
-    def move_structure_to(self, struct, p0, p1, p2, x0=np.array([None])):
+    def move_structure_to(self, struct, p0, p1, p2):
         """
         The structure will be placed assuming new X-axis would be defined by vector p2-p1.
         New Y-axis would be defined by part of p0-p1 vector orthogonal to p2-p1.
         """
         if p1[0]==p2[0] and p1[1]==p2[1] and p1[2]==p2[2]:
-            raise(Exception("Starting point and the ending points must be different!"))
+            raise(Exception("Starting point and the ending point must be different!"))
+        if p1[0]==p0[0] and p1[1]==p0[1] and p1[2]==p0[2]:
+            raise(Exception("Starting point and the reference point must be different!"))
+        
         w_x = p2 - p1
-        v_01 = p1 - p0
-        w_y = get_perp_component(v_01, w_x)
+        w_y = get_perp_component(p1 - p0, w_x)
         w_z = np.cross(w_x, w_y)
 
-        w_x = makeUnit(w_x) if np.linalg.norm(w_x)>0 else w_x
-        w_y = makeUnit(w_y) if np.linalg.norm(w_y)>0 else w_y
-        w_z = makeUnit(w_z) if np.linalg.norm(w_z)>0 else w_z
+        w_x = makeUnit(w_x)
+        w_y = makeUnit(w_y)
+        w_z = makeUnit(w_z)
 
-        if x0.all() == None: x0 = p1
-        new_helix = []
-        for p in struct:
-            new_helix.append(x0 + p[0]*w_x + p[1]*w_y + p[2]*w_z)
+        new_helix = [p1 + p[0]*w_x + p[1]*w_y + p[2]*w_z for p in struct]
         return new_helix
 
     def interpolate_structure_with_nucleosomes(self):
