@@ -76,8 +76,7 @@ class NucleosomeInterpolation:
         Interpolate the 3D structure V with nucleosomes.
         """    
         # Normalize bw_array
-        self.bw[self.bw>np.mean(self.bw)+6*np.std(self.bw)] = np.mean(self.bw)+6*np.std(self.bw)
-        norm_bw_array = self.min_max_scale(self.bw)
+        bw_signal = self.min_max_scale(-np.log(self.bw))
         
         # Initialize interpolated structure
         interpolated_structure = []
@@ -91,7 +90,7 @@ class NucleosomeInterpolation:
             end_point = self.V[i + 1]
             
             # Calculate number of nucleosomes in segment
-            num_nucleosomes = int(np.round(norm_bw_array[i] * self.max_nucs_per_bead))
+            num_nucleosomes = int(np.round(bw_signal[i] * self.max_nucs_per_bead))
             
             # Generate helices that represent nucleosomes
             interpolated_structure.append([start_point])
