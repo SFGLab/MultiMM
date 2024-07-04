@@ -60,12 +60,10 @@ class NucleosomeInterpolation:
         w_y = makeUnit(w_y) if np.linalg.norm(w_y)>0 else w_y
         w_z = makeUnit(w_z) if np.linalg.norm(w_z)>0 else w_z
 
-        if x0.all()==None: x0=p1
+        if x0.all() == None: x0 = p1
         new_helix = []
         for p in struct:
-            new_helix.append((x0[0]+p[0]*w_x[0]+p[1]*w_y[0]+p[2]*w_z[0],
-                            x0[1]+p[0]*w_x[1]+p[1]*w_y[1]+p[2]*w_z[1],
-                            x0[2]+p[0]*w_x[2]+p[1]*w_y[2]+p[2]*w_z[2]))
+            new_helix.append(x0 + p[0]*w_x + p[1]*w_y + p[2]*w_z)
         return new_helix
 
     def interpolate_structure_with_nucleosomes(self):
