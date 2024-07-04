@@ -131,7 +131,7 @@ class NucleosomeInterpolation:
         if prev_zigzag_vec is None:
             zigzag_vec1 = makeUnit(get_perpendicular(segment_vector))
         else:
-            zigzag_vec1 = get_perp_component(prev_zigzag_vec, segment_vector)
+            zigzag_vec1 = makeUnit(get_perp_component(prev_zigzag_vec, segment_vector))
             if all(v==0 for v in zigzag_vec1):
                 zigzag_vec1 = makeUnit(get_perpendicular(segment_vector))
         zigzag_vec2 = makeUnit(np.cross(zigzag_vec1, segment_vector))
