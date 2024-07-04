@@ -13,4 +13,3 @@ hilbertcurve==2.0.5
 pandas==2.0.3
 tqdm==4.65.2
 pyvista[all]
-torch

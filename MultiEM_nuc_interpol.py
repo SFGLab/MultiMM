@@ -8,7 +8,6 @@ from MultiEM_utils import *
 from MultiEM_init_tools import *
 from MultiEM_plots import *
 from tqdm import tqdm
-import torch
 
 
 def makeUnit(x):
