@@ -59,13 +59,9 @@ class NucleosomeInterpolation:
         if p1[0]==p0[0] and p1[1]==p0[1] and p1[2]==p0[2]:
             raise(Exception("Starting point and the reference point must be different!"))
         
-        w_x = p2 - p1
-        w_y = get_perp_component(p1 - p0, w_x)
-        w_z = np.cross(w_x, w_y)
-
-        w_x = makeUnit(w_x)
-        w_y = makeUnit(w_y)
-        w_z = makeUnit(w_z)
+        w_x = makeUnit(p2 - p1)
+        w_y = makeUnit(get_perp_component(p1 - p0, w_x))
+        w_z = makeUnit(np.cross(w_x, w_y))
 
         new_helix = [p1 + p[0]*w_x + p[1]*w_y + p[2]*w_z for p in struct]
         return new_helix
