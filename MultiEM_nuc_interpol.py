@@ -23,6 +23,11 @@ def get_perpendicular(vec):
         return np.array([vec[2], 0, -vec[0]])
 
 
+def get_perp_component(x, v):
+    """Component of x orthogonal to v. Result is perpendicular to v"""
+    return x - np.dot(x, v) / np.dot(v, v) * v
+
+
 class NucleosomeInterpolation:
     def __init__(self, V, bw, max_nucs_per_bead=4, nuc_radius=0.1, points_per_nuc=20, phi_norm=np.pi/5):
         self.V, self.bw = V, bw
@@ -53,7 +58,7 @@ class NucleosomeInterpolation:
             raise(Exception("Starting point and the ending points must be different!"))
         w_x = p2 - p1
         v_01 = p1 - p0
-        w_y = v_01 - np.dot(w_x, v_01)/np.linalg.norm(w_x)**2 * w_x
+        w_y = get_perp_component(v_01, w_x)
         w_z = np.cross(w_x, w_y)
 
         w_x = makeUnit(w_x) if np.linalg.norm(w_x)>0 else w_x
@@ -80,6 +85,7 @@ class NucleosomeInterpolation:
         # Interpolate each segment with nucleosomes
         self.sign, self.phi = 1, 0
         print('Building nucleosome structure...')
+        prev_zigzag = None
         for i in tqdm(range(len(self.V) - 1)):
             # Get segment endpoints
             start_point = self.V[i]
@@ -90,12 +96,14 @@ class NucleosomeInterpolation:
             
             # Generate helices that represent nucleosomes
             interpolated_structure.append([start_point])
-            if num_nucleosomes>0:
-                helices = self.single_bead_nucgenerator(start_point, end_point, num_nucleosomes)
+            if num_nucleosomes > 0:
+                helices, prev_zigzag = self.single_bead_nucgenerator(start_point, end_point, num_nucleosomes, 
+                                                                     prev_zigzag_vec=prev_zigzag)
                 interpolated_structure.extend(helices)
             else:
                 helices = [[(tuple((self.V[i]+self.V[i+1])/2))]]
                 interpolated_structure.extend(helices)
+                prev_zigzag = None
         interpolated_structure.append([self.V[-1]])
 
         # Flatten the nested list to get a list of coordinate tuples
@@ -103,7 +111,7 @@ class NucleosomeInterpolation:
         print('Done! You have the whole structure with nucleosomes. ;)')
         return np.array(flattened_coords)
 
-    def single_bead_nucgenerator(self, start_point, end_point, num_nucleosomes ,turns=1.6):
+    def single_bead_nucgenerator(self, start_point, end_point, num_nucleosomes, prev_zigzag_vec=None, turns=1.6):
         """
         Generate helices for nucleosomes in a segment.
         """
@@ -113,14 +121,19 @@ class NucleosomeInterpolation:
 
         # Calculate nucleosome and linker parameters
         linker_len = self.nuc_r * 3.45
-        nuc_height = self.nuc_r/0.965
+        nuc_height = self.nuc_r / 0.965
 
         # Initialize helices
         theta = np.linspace(0, turns* 2 * np.pi, self.nuc_points)
         helices = list()
         
         # Generate helices for each nucleosome
-        zigzag_vec1 = makeUnit(get_perpendicular(segment_vector))
+        if prev_zigzag_vec is None:
+            zigzag_vec1 = makeUnit(get_perpendicular(segment_vector))
+        else:
+            zigzag_vec1 = get_perp_component(prev_zigzag_vec, segment_vector)
+            if all(v==0 for v in zigzag_vec1):
+                zigzag_vec1 = makeUnit(get_perpendicular(segment_vector))
         zigzag_vec2 = makeUnit(np.cross(zigzag_vec1, segment_vector))
         phi = 0
         for i in range(num_nucleosomes):
@@ -133,16 +146,19 @@ class NucleosomeInterpolation:
             helices.append(helix)
             phi += np.pi if i%2 == 0 else np.pi + self.phi_norm
 
-        return helices
+        # zigzag vec for another segment
+        zigzag_vec = np.cos(phi)*zigzag_vec1 + np.sin(phi)*zigzag_vec2
+
+        return helices, zigzag_vec
     
 def main():
     # Example data
     V = get_coordinates_cif('/home/skorsak/Data/simulation_results/GM12878_GW/MultiEM_minimized.cif')
-    print('Initial granularity of structure =',len(V))
-    bw = import_bw('/home/skorsak/Data/encode/ATAC-Seq/ENCSR637XSC_GM12878/ENCFF667MDI_pval.bigWig',len(V))  # Mock self.signal array
+    print('Initial granularity of structure =', len(V))
+    bw = import_bw('/home/skorsak/Data/encode/ATAC-Seq/ENCSR637XSC_GM12878/ENCFF667MDI_pval.bigWig', len(V))  # Mock self.signal array
 
     # Interpolate structure with nucleosomes
-    nuc_interpol = NucleosomeInterpolation(V[:1000],bw[:1000])
+    nuc_interpol = NucleosomeInterpolation(V[:1000], bw[:1000])
     iV = nuc_interpol.interpolate_structure_with_nucleosomes()
-    print('Final Length of Nucleosome Interpolated Structure:',len(iV))
-    viz_structure(iV,r=0.1)
+    print('Final Length of Nucleosome Interpolated Structure:', len(iV))
+    viz_structure(iV, r=0.1)
