@@ -24,10 +24,10 @@ def get_perpendicular(vec):
 
 
 class NucleosomeInterpolation:
-    def __init__(self, V, bw, max_nucs_per_bead=4, zig_zag_displacement=0.2, points_per_nuc=20, phi_norm=np.pi/5):
+    def __init__(self, V, bw, max_nucs_per_bead=4, nuc_radius=0.1, points_per_nuc=20, phi_norm=np.pi/5):
         self.V, self.bw = V, bw
         self.max_nucs_per_bead, self.nuc_points = max_nucs_per_bead, points_per_nuc
-        self.zigzag_d, self.phi_norm = zig_zag_displacement, phi_norm
+        self.nuc_r, self.phi_norm = nuc_radius, phi_norm
     
     def make_helix(self, r, theta, z0):
         x = r * (-np.cos(theta)+1)
@@ -85,9 +85,6 @@ class NucleosomeInterpolation:
             start_point = self.V[i]
             end_point = self.V[i + 1]
             
-            # Calculate segment length
-            segment_length = np.linalg.norm(end_point - start_point)
-            
             # Calculate number of nucleosomes in segment
             num_nucleosomes = int(np.round(norm_bw_array[i] * self.max_nucs_per_bead))
             
@@ -112,11 +109,11 @@ class NucleosomeInterpolation:
         """
         # Calculate segment vector
         segment_vector = end_point - start_point
+        segment_vector_norm = makeUnit(segment_vector)
 
-        # Calculate helix parameters
-        helix_radius = 0.1 # np.linalg.norm(segment_vector)/np.pi
-        helix_axis = makeUnit(segment_vector)
-        helix_height = helix_radius/0.965
+        # Calculate nucleosome and linker parameters
+        linker_len = self.nuc_r * 3.45
+        nuc_height = self.nuc_r/0.965
 
         # Initialize helices
         theta = np.linspace(0, turns* 2 * np.pi, self.nuc_points)
@@ -128,12 +125,11 @@ class NucleosomeInterpolation:
         phi = 0
         for i in range(num_nucleosomes):
             helix_point = start_point + (i+1)/(num_nucleosomes+1)*segment_vector
-            zigzag_vec = self.zigzag_d*(np.cos(phi)*zigzag_vec1 + np.sin(phi)*zigzag_vec2)
-            p1 = helix_point + zigzag_vec - helix_radius/2*helix_axis
-            p2 = helix_point + zigzag_vec + helix_radius/2*helix_axis
-            h = self.make_helix(helix_radius, theta, helix_height)
+            zigzag_vec = linker_len/2*(np.cos(phi)*zigzag_vec1 + np.sin(phi)*zigzag_vec2)
+            p1 = helix_point + zigzag_vec - nuc_height/2*segment_vector_norm
+            p2 = helix_point + zigzag_vec + nuc_height/2*segment_vector_norm
+            h = self.make_helix(self.nuc_r, theta, nuc_height)
             helix = self.move_structure_to(h, helix_point, p1, p2)
-            
             helices.append(helix)
             phi += np.pi if i%2 == 0 else np.pi + self.phi_norm
 
