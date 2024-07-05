@@ -113,9 +113,7 @@ class MultiEM:
                 raise InterruptedError('ATAC-Seq file should be in .bw or .BigWig format.')
         
         if self.args.CHROM=='': write_chrom_colors(self.chr_ends,self.chrom_idxs,name=self.save_path+'MultiEM_chromosome_colors.cmd')
-        
-        # if np.all(args.COMPARTMENT_PATH!=None): self.Cs = align_comps(self.Cs,self.ms,self.chr_ends)
-        
+
         # Chromosomes
         self.chrom_spin = np.zeros(self.args.N_BEADS)
         if self.args.CHROM==None or self.args.CHROM=='':
@@ -156,11 +154,11 @@ class MultiEM:
         for i in range(self.system.getNumParticles()):
             self.scomp_force.addParticle([self.Cs[i]])
         self.system.addForce(self.scomp_force)
-
+    
     def add_chromosomal_blocks(self):
-        self.chrom_block_force = mm.CustomNonbondedForce('-E*exp(-r^2/(2*r_C^2)); E=dE*delta(chrom1-chrom2)')
+        self.chrom_block_force = mm.CustomNonbondedForce('E*(k_C*r^4-r^3+r^2); E=dE*delta(chrom1-chrom2)')
         self.chrom_block_force.setForceGroup(2)
-        self.chrom_block_force.addGlobalParameter('r_C',defaultValue=self.r_chrom)
+        self.chrom_block_force.addGlobalParameter('k_C',defaultValue=self.args.CHB_KC)
         self.chrom_block_force.addGlobalParameter('dE',defaultValue=self.args.CHB_DE)
         self.chrom_block_force.addPerParticleParameter('chrom')
         for i in range(self.system.getNumParticles()):
@@ -199,7 +197,7 @@ class MultiEM:
         self.system.addForce(self.Blamina_force)
     
     def add_central_force(self):
-        self.central_force = mm.CustomExternalForce('G*chrom/23*(-1/(r-R1+1)+1/(r-R1+1)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+        self.central_force = mm.CustomExternalForce('G*chrom/23*(sin(r-R1)+(r-R1)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
         self.central_force.setForceGroup(2)
         self.central_force.addGlobalParameter('G',defaultValue=self.args.CF_STRENGTH)
         self.central_force.addGlobalParameter('R1',defaultValue=self.radius1)
@@ -264,9 +262,7 @@ class MultiEM:
                 self.integrator = mm.amd.AMDIntegrator(self.args.SIM_INTEGRATOR_STEP, self.args.SIM_AMD_ALPHA, self.args.SIM_AMD_E)
             case 'brownian':
                 self.integrator = mm.BrownianIntegrator(self.args.SIM_TEMPERATURE, self.args.SIM_FRICTION_COEFF, self.args.SIM_INTEGRATOR_STEP)
-            # case 'mts':
-            #     self.integrator = MTSIntegrator(self.args.SIM_INTEGRATOR_STEP,[(1,self.args.SIM_SAMPLING_STEP),(2,self.args.SIM_SAMPLING_STEP)])
-
+            
     def add_forcefield(self):
         '''
         Here we define the forcefield of MultiEM.
@@ -339,7 +335,6 @@ class MultiEM:
             self.r_comp = self.args.SCB_DISTANCE
         else:
             self.r_comp = (self.radius2-self.radius1)/20
-        self.r_chrom = self.r_comp if self.args.CHB_DISTANCE==None else self.args.CHB_DISTANCE
     
     def run(self):
         '''

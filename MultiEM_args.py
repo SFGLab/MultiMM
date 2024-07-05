@@ -179,8 +179,8 @@ args = ListOfArgs([
 
     # Chromosomal Blocks
     Arg('CHB_USE_CHROMOSOMAL_BLOCKS', help='Use Chromosomal Blocks.', type=bool, default='False', val='False'),
-    Arg('CHB_DISTANCE', help='Block copolymer equilibrium distance for chromosomal blocks.', type=float, default='', val=''),
-    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='1.0', val='1.0'),
+    Arg('CHB_KC', help='Block copolymer width parameter.', type=float, default='0.3', val='0.3'),
+    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='1e-2', val='1e-2'),
     
     # Compartment Blocks
     Arg('COB_USE_COMPARTMENT_BLOCKS', help='Use Compartment Blocks.', type=bool, default='False', val='False'),
@@ -200,9 +200,9 @@ args = ListOfArgs([
     Arg('IBL_USE_B_LAMINA_INTERACTION', help='Interactions of B compartment with lamina.', type=bool, default='False', val='False'),
     Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='100.0', val='100.0'),
     
-    # Small Chromosomes Attraction to Center
+    # Central Force for Smaller Chromosomes Attraction to the Nucleolus
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
-    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='1000.0', val='1000.0'),
+    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='100.0', val='100.0'),
 
     # Nucleosome interpolation
     Arg('NUC_DO_INTERPOLATION', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
