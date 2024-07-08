@@ -5,14 +5,11 @@
 from matplotlib.pyplot import figure
 from matplotlib.colors import to_hex
 import matplotlib.pyplot as plt
-import os
 import pandas as pd
 import numpy as np
-from scipy.sparse import coo_matrix
 from scipy.spatial import distance
 from tqdm import tqdm
 import pyBigWig
-from scipy import stats
 import random as rd
 from itertools import groupby
 import warnings
@@ -138,7 +135,7 @@ def compute_averages(arr1, N2):
 
     return averaged_arr
 
-def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path='',shuffle=False,seed=0):
+def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path='',shuffle=False,seed=0,n_chroms = 22):
     # Load compartment dataset
     np.random.seed(seed)
     comps_df = pd.read_csv(bed_file,header=None,sep='\t')
@@ -147,8 +144,6 @@ def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path='',shuffle=Fals
     print('Cleaning and transforming subcompartments dataframe...')
     if chrom!=None:
         comps_df = comps_df[(comps_df[0]==chrom)&(comps_df[1]>coords[0]) & (comps_df[2]<coords[1])].reset_index(drop=True)
-    n_chroms = 22
-    # n_chroms = len(np.unique(comps_df[0].values))
     chrom_idxs = np.arange(n_chroms).astype(int)
     if shuffle: np.random.shuffle(chrom_idxs)
     chrom_ends = np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0)) if chrom==None else np.array([0,chrom_sizes[chrom]])
@@ -220,15 +215,12 @@ def write_chrom_colors(chrom_ends,chrom_idxs,name='MultiEM_chromosome_colors.cmd
 def min_max_trans(x):
     return (x-x.min())/(x.max()-x.min())
 
-def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,viz=False,min_loop_dist=2,path='',shuffle=False,seed=0):
+def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,viz=False,min_loop_dist=2,path='',shuffle=False,seed=0,n_chroms=22):
     # Import loops
     np.random.seed(seed)
     loops = pd.read_csv(bedpe_file,header=None,sep='\t')
-    # n_chroms = len(np.unique(loops[0].values))
-    n_chroms=22
     chrom_idxs = np.arange(n_chroms).astype(int)
     if shuffle: np.random.shuffle(chrom_idxs)
-    chroms = list(chrs[i] for i in chrom_idxs) if chrom==None else [chrom]
     if chrom!=None:
         loops = loops[(loops[0]==chrom)&(loops[1]>coords[0])&(loops[2]<coords[1])&(loops[4]>coords[0])&(loops[5]<coords[1])].reset_index(drop=True)
     chrom_ends = np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0)) if chrom==None else np.array([0,chrom_sizes[chrom]])
@@ -266,7 +258,6 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,
     zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
     zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
     ks = 100+2900*min_max_trans(zs)
-    # ds = 0.1+0.1*min_max_trans(1/cs**2/3)
 
     # Perform some data cleaning
     mask = (ns-ms)!=0
@@ -310,7 +301,7 @@ def shuffle_blocks(array):
 
     return shuffled_array
 
-def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path='',norm=False,shuffle=False,seed=0):
+def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path='',norm=False,shuffle=False,seed=0,n_chroms=22):
     '''
     Imports .BigWig data and outputs compartments.
 
@@ -321,8 +312,6 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
     # Open file
     np.random.seed(seed)
     bw = pyBigWig.open(bw_path)
-    chroms_set = np.fromiter(bw.chroms().keys(),dtype='S20')
-    n_chroms=24 if b'chrY' in chroms_set else 23
     chrom_idxs = np.arange(n_chroms).astype(int)
     if shuffle: np.random.shuffle(chrom_idxs)
     print('Number of chromosomes:',n_chroms)
@@ -350,6 +339,7 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
         genomewide_signal = np.concatenate(genomewide_signal)
     else:
         genomewide_signal = bw.values(chrom,coords[0],coords[1], numpy=True)
+        genomewide_signal = np.nan_to_num(genomewide_signal, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
     bw.close()
 
     genomewide_signal = compute_averages(genomewide_signal,N_beads)

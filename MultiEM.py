@@ -1,9 +1,6 @@
 #########################################################################
 ########### CREATOR: SEBASTIAN KORSAK, WARSAW 2024 ######################
 #########################################################################
-
-import random as rd
-import matplotlib.pyplot as plt
 import numpy as np
 import os
 import argparse
@@ -99,9 +96,9 @@ class MultiEM:
         # Loops
         if args.LOOPS_PATH.lower().endswith('.bedpe'):
             self.ms, self.ns, self.ks, self.chr_ends, self.chrom_idxs = import_mns_from_bedpe(bedpe_file = args.LOOPS_PATH,N_beads=self.args.N_BEADS,\
-                                                                             coords = coords, chrom=args.CHROM,\
-                                                                             viz=False, path=self.save_path,\
-                                                                             shuffle=args.SHUFFLE_CHROMS,seed=args.SHUFFLING_SEED)
+                                                                            coords = coords, chrom=args.CHROM,\
+                                                                            viz=False, path=self.save_path,\
+                                                                            shuffle=args.SHUFFLE_CHROMS,seed=args.SHUFFLING_SEED)
         else:
             raise InterruptedError('You did not provide appropriate loop file. Loop .bedpe file is obligatory.')
 
@@ -197,7 +194,7 @@ class MultiEM:
         self.system.addForce(self.Blamina_force)
     
     def add_central_force(self):
-        self.central_force = mm.CustomExternalForce('G*chrom/23*(sin(r-R1)+(r-R1)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+        self.central_force = mm.CustomExternalForce('G*chrom/23*(sin(r-3*R1/2)+(r-3*R1/2)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)')
         self.central_force.setForceGroup(2)
         self.central_force.addGlobalParameter('G',defaultValue=self.args.CF_STRENGTH)
         self.central_force.addGlobalParameter('R1',defaultValue=self.radius1)
@@ -363,7 +360,8 @@ class MultiEM:
             print('Done! :)\n')
         
         # Run nucleosome interpolation
-        if self.args.NUC_DO_INTERPOLATION: self.nuc_interpolation()
+        if self.args.NUC_DO_INTERPOLATION:
+            self.nuc_interpolation()
             
 
 def main():

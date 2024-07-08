@@ -1,5 +1,6 @@
 #########################################################
-######## KRZYSZTOF BANECKI, WARSAW 2024 ##################
+######## SEBASTIAN KORSAK, WARSAW 2024 ##################
+######## SPECIAL THANKS TO KRZYSTOF BANECKI #############
 #########################################################
 
 import numpy as np
@@ -65,7 +66,7 @@ class NucleosomeInterpolation:
         new_helix = [p1 + p[0]*w_x + p[1]*w_y + p[2]*w_z for p in struct]
         return new_helix
 
-    def interpolate_structure_with_nucleosomes(self, mode="random"):
+    def interpolate_structure_with_nucleosomes(self):
         """
         Interpolate the 3D structure V with nucleosomes.
         """    
@@ -90,7 +91,7 @@ class NucleosomeInterpolation:
             interpolated_structure.append([start_point])
             if num_nucleosomes > 0:
                 helices, prev_zigzag = self.single_bead_nucgenerator(start_point, end_point, num_nucleosomes, 
-                                                                     prev_zigzag_vec=prev_zigzag, mode=mode)
+                                                                     prev_zigzag_vec=prev_zigzag)
                 interpolated_structure.extend(helices)
             else:
                 prev_zigzag = None
@@ -101,7 +102,7 @@ class NucleosomeInterpolation:
         print('Done! You have the whole structure with nucleosomes. ;)')
         return np.array(flattened_coords)
 
-    def single_bead_nucgenerator(self, start_point, end_point, num_nucleosomes, prev_zigzag_vec=None, turns=1.6, mode="random"):
+    def single_bead_nucgenerator(self, start_point, end_point, num_nucleosomes, prev_zigzag_vec=None, turns=1.6):
         """
         Generate helices for nucleosomes in a segment.
         """
@@ -114,7 +115,7 @@ class NucleosomeInterpolation:
         nuc_height = self.nuc_r / 0.965
 
         # Initialize helices
-        theta = np.linspace(0, turns * 2 * np.pi, self.nuc_points)
+        theta = np.linspace(0, turns* 2 * np.pi, self.nuc_points)
         nucleosome = self.make_helix(self.nuc_r, theta, nuc_height)
         helices = list()
         
@@ -130,15 +131,11 @@ class NucleosomeInterpolation:
         for i in range(num_nucleosomes):
             helix_point = start_point + (i+1)/(num_nucleosomes+1)*segment_vector
             zigzag_vec = linker_len/2*(np.cos(phi)*zigzag_vec1 + np.sin(phi)*zigzag_vec2)
-            if mode == "random": zigzag_vec *= np.random.uniform(0.5, 1.5)
             p1 = helix_point + zigzag_vec - nuc_height/2*segment_vector_norm
             p2 = helix_point + zigzag_vec + nuc_height/2*segment_vector_norm
             helix = self.move_structure_to(nucleosome, helix_point, p1, p2)
             helices.append(helix)
-            if mode == "random":
-                phi += np.pi + np.random.uniform(self.phi_norm, 2*self.phi_norm)*(np.random.randint(2)*2-1)
-            else:
-                phi += np.pi if i%2 == 0 else np.pi + self.phi_norm
+            phi += np.pi if i%2 == 0 else np.pi + self.phi_norm
 
         # zigzag vec for another segment
         zigzag_vec = np.cos(phi)*zigzag_vec1 + np.sin(phi)*zigzag_vec2
@@ -152,7 +149,7 @@ def main():
     bw = import_bw('/home/skorsak/Data/encode/ATAC-Seq/ENCSR637XSC_GM12878/ENCFF667MDI_pval.bigWig', len(V))  # Mock self.signal array
 
     # Interpolate structure with nucleosomes
-    nuc_interpol = NucleosomeInterpolation(V[:1000], bw[:1000])
-    iV = nuc_interpol.interpolate_structure_with_nucleosomes(mode="random")
+    nuc_interpol = NucleosomeInterpolation(V, bw)
+    iV = nuc_interpol.interpolate_structure_with_nucleosomes()
     print('Final Length of Nucleosome Interpolated Structure:', len(iV))
     viz_structure(iV, r=0.1)
