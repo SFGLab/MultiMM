@@ -108,7 +108,7 @@ class NucleosomeInterpolation:
         print('Done! You have the whole structure with nucleosomes. ;)')
         return np.array(flattened_coords)
 
-    def single_bead_nucgenerator(self, start_point, end_point, num_nucleosomes, prev_zigzag_vec=None, turns=1.6):
+    def single_bead_nucgenerator(self, start_point, end_point, num_nucleosomes, prev_zigzag_vec=None, turns=1.65):
         """
         Generate helices for nucleosomes in a segment.
         """
@@ -118,7 +118,7 @@ class NucleosomeInterpolation:
 
         # Calculate nucleosome and linker parameters
         linker_len = self.nuc_r * 3.45
-        nuc_height = self.nuc_r / 0.965
+        nuc_height = self.nuc_r * 1
 
         # Initialize helices
         theta = np.linspace(0, turns* 2 * np.pi, self.nuc_points)
