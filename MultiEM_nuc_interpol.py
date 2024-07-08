@@ -72,7 +72,7 @@ class NucleosomeInterpolation:
         """    
         # Normalize bw_array
         bw_signal = np.log(self.bw + 1e-6)
-        if np.all(bw_signal == bw_signal[0]):
+        if np.all(bw_signal != bw_signal[0]):
             bw_signal = self.min_max_scale(bw_signal)
         elif self.bw[0] == 0:
             bw_signal = np.zeros(bw_signal.shape)
