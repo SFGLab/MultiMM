@@ -90,7 +90,10 @@ def viz_structure(V, colors=None, r=0.3, cmap='coolwarm'):
         polymer = polyline.tube(radius=r)
         polymer.plot(smooth_shading=True, show_scalar_bar=False)
 
-def viz_chroms(cif_path,chrom_ends_path,chrom_idxs_path):
+def viz_chroms(sim_path):
+    cif_path = sim_path + '/MultiEM_minimized.cif'
+    chrom_idxs_path = sim_path + '/chrom_idxs.npy'
+    chrom_ends_path = sim_path + '/chrom_lengths.npy'
     chrom_idxs = np.load(chrom_idxs_path)
     chrom_ends = np.load(chrom_ends_path)
     V = get_coordinates_cif(cif_path)

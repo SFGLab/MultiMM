@@ -105,7 +105,8 @@ class MultiEM:
         # Nucleosomes
         if args.NUC_DO_INTERPOLATION:
             if args.ATACSEQ_PATH.lower().endswith('.bw') or args.ATACSEQ_PATH.lower().endswith('.bigwig'):
-                self.atacseq = import_bw(args.ATACSEQ_PATH,self.args.N_BEADS,chrom=self.args.CHROM,coords=coords,shuffle=args.SHUFFLE_CHROMS,seed=args.SHUFFLING_SEED)
+                self.atacseq = import_bw(args.ATACSEQ_PATH,self.args.N_BEADS,chrom=self.args.CHROM,coords=coords,\
+                                         shuffle=args.SHUFFLE_CHROMS,seed=args.SHUFFLING_SEED)
             else:
                 raise InterruptedError('ATAC-Seq file should be in .bw or .BigWig format.')
         

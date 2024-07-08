@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass
 from math import pi
 from typing import Union
-
+import argparse
 import openmm as mm
 from openmm.unit import Quantity
 
@@ -180,7 +180,7 @@ args = ListOfArgs([
     # Chromosomal Blocks
     Arg('CHB_USE_CHROMOSOMAL_BLOCKS', help='Use Chromosomal Blocks.', type=bool, default='False', val='False'),
     Arg('CHB_KC', help='Block copolymer width parameter.', type=float, default='0.3', val='0.3'),
-    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='1e-2', val='1e-2'),
+    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='5e-2', val='5e-2'),
     
     # Compartment Blocks
     Arg('COB_USE_COMPARTMENT_BLOCKS', help='Use Compartment Blocks.', type=bool, default='False', val='False'),
