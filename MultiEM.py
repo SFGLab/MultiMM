@@ -317,7 +317,8 @@ class MultiEM:
     def nuc_interpolation(self):
         print('Running nucleosome interpolation...')
         start = time.time()
-        nuc_interpol = NucleosomeInterpolation(get_coordinates_mm(self.state.getPositions()),self.atacseq)
+        nuc_interpol = NucleosomeInterpolation(get_coordinates_cif(self.save_path+'MultiEM_minimized.cif'),self.atacseq,\
+                    self.args.MAX_NUCS_PER_BEAD, self.args.NUC_RADIUS, self.args.POINTS_PER_NUC, self.args.PHI_NORM)
         Vnuc = nuc_interpol.interpolate_structure_with_nucleosomes()
         write_mmcif_chrom(Vnuc,path=self.save_path+f'MultiEM_minimized_with_nucs.cif')
         end = time.time()

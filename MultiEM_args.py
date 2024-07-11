@@ -122,11 +122,6 @@ class ListOfArgs(list):
 
 available_platforms = [mm.Platform.getPlatform(i).getName() for i in range(mm.Platform.getNumPlatforms())]
 
-# Every single arguments must be listed here.
-# Not all of them must be provided by user.
-# Invalid arguments should rise ValueError.
-# Default args are overwritten by config.ini, and then they are overwritten by command line.
-# Defaults value must be strings. They will be converted to python object later when ListOfArgs.to_python() will be called
 args = ListOfArgs([
     # Platform settings
     Arg('PLATFORM', help=f"name of the platform. Available choices: {' '.join(available_platforms)}", type=str, default='', val=''),
@@ -163,7 +158,7 @@ args = ListOfArgs([
     Arg('LE_USE_HARMONIC_BOND', help="Use harmonic bond interaction for long range loops.", type=bool, default='True', val='True'),
     Arg('LE_FIXED_DISTANCES', help="For fixed distances between loops. False if you want to correlate with the hatmap strength.", type=bool, default='False', val='False'),
     Arg('LE_HARMONIC_BOND_R0', help="harmonic bond distance equilibrium constant", type=float, default='0.1', val='0.1'),
-    Arg('LE_HARMONIC_BOND_K', help="harmonic bond force constant (fixed unit: kJ/mol/nm^2)", type=float, default='300000.0', val='300000.0'),
+    Arg('LE_HARMONIC_BOND_K', help="harmonic bond force constant (fixed unit: kJ/mol/nm^2)", type=float, default='30000.0', val='30000.0'),
 
     # Excluded Volume
     Arg('EV_USE_EXCLUDED_VOLUME', help="Use excluded volume.", type=bool, default='True', val='True'),
@@ -180,7 +175,7 @@ args = ListOfArgs([
     # Chromosomal Blocks
     Arg('CHB_USE_CHROMOSOMAL_BLOCKS', help='Use Chromosomal Blocks.', type=bool, default='False', val='False'),
     Arg('CHB_KC', help='Block copolymer width parameter.', type=float, default='0.3', val='0.3'),
-    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='5e-2', val='5e-2'),
+    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='1e-3', val='1e-3'),
     
     # Compartment Blocks
     Arg('COB_USE_COMPARTMENT_BLOCKS', help='Use Compartment Blocks.', type=bool, default='False', val='False'),
@@ -206,6 +201,10 @@ args = ListOfArgs([
 
     # Nucleosome interpolation
     Arg('NUC_DO_INTERPOLATION', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
+    Arg('MAX_NUCS_PER_BEAD', help='Maximum amount of nucleosomes per single bead.', type=int, default='4', val='4'),
+    Arg('NUC_RADIUS', help='The radius of the single nucleosome helix.', type=float, default='0.1', val='0.1'),
+    Arg('POINTS_PER_NUC', help='The number of points that consist a nucleosome helix.', type=int, default='20', val='20'),
+    Arg('PHI_NORM', help='Zig zag angle. ', type=float, default=str(pi/5), val=str(pi/5)),
     
     # Simulation parameters
     Arg('SIM_RUN_MD', help='Do you want to run MD simulation?', type=bool, default='False', val='False'),

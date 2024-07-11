@@ -257,7 +257,7 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,
     ms,ns,cs = ms[ns>ms+min_loop_dist], ns[ns>ms+min_loop_dist], cs[ns>ms+min_loop_dist]
     zs = np.abs(np.log10(np.abs((cs-np.mean(cs)))/np.std(cs)))
     zs[zs>np.mean(zs)+np.std(zs)] = np.mean(zs)+np.std(zs)
-    ks = 100+2900*min_max_trans(zs)
+    ks = 3000+27000*min_max_trans(zs)
 
     # Perform some data cleaning
     mask = (ns-ms)!=0
