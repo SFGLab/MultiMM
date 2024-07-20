@@ -59,7 +59,7 @@ def get_config() -> ListOfArgs:
     args.write_config_file()
     return args
 
-class MultiEM:
+class MultiMM:
     def __init__(self,args):
         '''
         Input data:
@@ -110,7 +110,7 @@ class MultiEM:
             else:
                 raise InterruptedError('ATAC-Seq file should be in .bw or .BigWig format.')
         
-        if self.args.CHROM=='': write_chrom_colors(self.chr_ends,self.chrom_idxs,name=self.save_path+'MultiEM_chromosome_colors.cmd')
+        if self.args.CHROM=='': write_chrom_colors(self.chr_ends,self.chrom_idxs,name=self.save_path+'MultiMM_chromosome_colors.cmd')
 
         # Chromosomes
         self.chrom_spin, self.chrom_strength = np.zeros(self.args.N_BEADS), np.zeros(self.args.N_BEADS)
@@ -239,11 +239,11 @@ class MultiEM:
         if self.args.BUILD_INITIAL_STRUCTURE:
             print('\nCreating initial structure...')
             comp_mode = 'compartments' if np.all(self.Cs!=None) and len(np.unique(self.Cs))<=3 else 'subcompartments'
-            if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'MultiEM_compartment_colors.cmd')
+            if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'MultiMM_compartment_colors.cmd')
             pdb_content = build_init_mmcif(n_dna=self.args.N_BEADS,chrom_ends=self.chr_ends,\
                                            path=self.save_path,curve=self.args.INITIAL_STRUCTURE_TYPE,scale=(self.radius1+self.radius2)/2)
             print('---Done!---')
-        self.pdb = PDBxFile(self.save_path+'MultiEM_init.cif') if self.args.INITIAL_STRUCTURE_path==None or build_init_mmcif else PDBxFile(self.args.INITIAL_STRUCTURE_PATH)
+        self.pdb = PDBxFile(self.save_path+'MultiMM_init.cif') if self.args.INITIAL_STRUCTURE_path==None or build_init_mmcif else PDBxFile(self.args.INITIAL_STRUCTURE_PATH)
         self.mass_center = np.average(get_coordinates_mm(self.pdb.positions),axis=0)
         forcefield = ForceField(self.args.FORCEFIELD_PATH)
         self.system = forcefield.createSystem(self.pdb.topology)
@@ -264,7 +264,7 @@ class MultiEM:
             
     def add_forcefield(self):
         '''
-        Here we define the forcefield of MultiEM.
+        Here we define the forcefield of MultiMM.
         '''
         # Add forces
         print('\nImporting forcefield...')
@@ -290,7 +290,7 @@ class MultiEM:
         start_time = time.time()
         self.simulation.minimizeEnergy()
         self.state = self.simulation.context.getState(getPositions=True)
-        PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+'MultiEM_minimized.cif', 'w'))
+        PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+'MultiMM_minimized.cif', 'w'))
         print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)//3600:.0f} hours, {(time.time() - start_time)%3600//60:.0f} minutes and  {(time.time() - start_time)%60:.0f} seconds. :D ---\n")
         print('---Done!---')
 
@@ -298,11 +298,11 @@ class MultiEM:
         V = get_coordinates_mm(self.state.getPositions())
         for i in range(len(self.chr_ends)-1):
             write_mmcif_chrom(coords=10*V[self.chr_ends[i]:self.chr_ends[i+1]],\
-                        path=self.save_path+f'chromosomes/MultiEM_minimized_{chrs[self.chrom_idxs[i]]}.cif')
+                        path=self.save_path+f'chromosomes/MultiMM_minimized_{chrs[self.chrom_idxs[i]]}.cif')
 
     def run_md(self):
         self.simulation.reporters.append(StateDataReporter(stdout, self.args.SIM_SAMPLING_STEP, step=True, totalEnergy=True, kineticEnergy=True ,potentialEnergy=True, temperature=True, separator='\t'))
-        self.simulation.reporters.append(DCDReporter(self.save_path+'MultiEM_annealing.dcd', self.args.SIM_N_STEPS//self.args.TRJ_FRAMES))
+        self.simulation.reporters.append(DCDReporter(self.save_path+'MultiMM_annealing.dcd', self.args.SIM_N_STEPS//self.args.TRJ_FRAMES))
         print('Running relaxation...')
         start = time.time()
         for i in range(self.args.SIM_N_STEPS//self.args.SIM_SAMPLING_STEP):
@@ -312,16 +312,16 @@ class MultiEM:
         end = time.time()
         elapsed = end - start
         self.state = self.simulation.context.getState(getPositions=True)
-        PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+'MultiEM_afterMD.cif', 'w'))
+        PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+'MultiMM_afterMD.cif', 'w'))
         print(f'Everything is done! Simulation finished succesfully!\nMD finished in {elapsed//3600:.0f} hours, {elapsed%3600//60:.0f} minutes and  {elapsed%60:.0f} seconds. ---\n')
 
     def nuc_interpolation(self):
         print('Running nucleosome interpolation...')
         start = time.time()
-        nuc_interpol = NucleosomeInterpolation(get_coordinates_cif(self.save_path+'MultiEM_minimized.cif'),self.atacseq,\
+        nuc_interpol = NucleosomeInterpolation(get_coordinates_cif(self.save_path+'MultiMM_minimized.cif'),self.atacseq,\
                     self.args.MAX_NUCS_PER_BEAD, self.args.NUC_RADIUS, self.args.POINTS_PER_NUC, self.args.PHI_NORM)
         Vnuc = nuc_interpol.interpolate_structure_with_nucleosomes()
-        write_mmcif_chrom(Vnuc,path=self.save_path+f'MultiEM_minimized_with_nucs.cif')
+        write_mmcif_chrom(Vnuc,path=self.save_path+f'MultiMM_minimized_with_nucs.cif')
         end = time.time()
         elapsed = end - start
         print(f'Nucleosome interpolation finished succesfully in {elapsed//3600:.0f} hours, {elapsed%3600//60:.0f} minutes and  {elapsed%60:.0f} seconds.')
@@ -372,7 +372,7 @@ def main():
     args = get_config()
     
     # Run simulation
-    md = MultiEM(args)
+    md = MultiMM(args)
     md.run()
 
 if __name__=='__main__':
