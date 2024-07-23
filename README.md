@@ -1,6 +1,9 @@
 # MultiEM: An OpenMM-based software for the whole genome 3D structure reconstruction
+MultiMM is an OpenMM model for the modelling of the whole genome structure. What makes it different from other models is that it is multiscale, which means that it aims to model different scales of chromatin starting from smaller scales (nucleosomes) to the scale of chromosomal territories. The algorithm is fast and accurate. Key point for the fast modelling is the GPU parallelization of the OpenMM and smart assumptions that assist the optimizer to find the global minimum. The most fundamental of these assumptions, is the assumption of Hilbert curve as an initial structure. This helps MultiMM to minimize faster because the initial structure is already highly compacted.
 
-![nucleosomes](https://github.com/SFGLab/MultiEM/assets/49608786/8038e269-d95f-4b59-813a-84b30053bcb7)
+![GW_em_lowres](https://github.com/user-attachments/assets/13a432e7-8412-420b-bdfb-c3eef1410e9b)
+
+Having run MultiMM model, the user obtains a genomewide structure. The user can color different chromosomes, or different compartments, or they can even vizualize seprately chromosomes. The usage of MultiEM is very simple since it is based on a single configuration file. In this documentation we show examples of its usage.
 
 ## Installation
 Create a python 3.10 environment and type,
