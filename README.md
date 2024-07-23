@@ -5,6 +5,18 @@ MultiMM is an OpenMM model for the modelling of the whole genome structure. What
 
 Having run MultiMM model, the user obtains a genomewide structure. The user can color different chromosomes, or different compartments, or they can even vizualize seprately chromosomes. The usage of MultiEM is very simple since it is based on a single configuration file. In this documentation we show examples of its usage.
 
+## Required datasets
+
+MultiMM model relies on three types of datasets:
+
+* Loop interactions in `bedpe` format (mandatory).
+* Compartmentalization data in `bed` format (optional).
+* ATAC-Seq p-value data in `.BigWig ` format (optional).
+
+## About Operating System
+
+MultiMM is tested mainly in Linux-based operating systems. It has been tested succesfully in Ubuntu, Debian and Red-Hat based distributions. It is possible also to run it on MacOS, but without CUDA support, which is very helpful for the acceleration of the computations. We suggest the user to not run MultiMM on Windows computers.
+
 ## Installation
 Create a python 3.10 environment and type,
 
