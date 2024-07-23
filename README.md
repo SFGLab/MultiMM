@@ -13,6 +13,8 @@ MultiMM model relies on three types of datasets:
 * Compartmentalization data in `bed` format (optional).
 * ATAC-Seq p-value data in `.BigWig ` format (optional).
 
+For calling subcompartments, we suggest our users to use Calder software: https://github.com/CSOgroup/CALDER2.
+
 ## About Operating System
 
 MultiMM is tested mainly in Linux-based operating systems. It has been tested succesfully in Ubuntu, Debian and Red-Hat based distributions. It is possible also to run it on MacOS, but without CUDA support, which is very helpful for the acceleration of the computations. We suggest the user to not run MultiMM on Windows computers.
@@ -54,14 +56,10 @@ CF_USE_CENTRAL_FORCE = True
 Having specified the paramameters that you would like to use, you can run on terminal the following command,
 
 ```
-python MultiEM.py -c config.ini
+python run.py -c config.ini
 ```
 
 The sotware will return you a folder with the resulting structure, and some plots that show how compartments are distributed.
-
-
-## Input Data
-For input data you should use 2D contracts in `.bedpe` file format, for the modelling of chromatin loops. This file is necessary to make simulation running. Furthermore, you can optionally add compartments in `.BigWig` format or subcompartments predicted with software Calder.
 
 ## Copyrights
 Please cite our article if you would like to base your research in this software.
