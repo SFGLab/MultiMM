@@ -70,78 +70,80 @@ python run.py -c config.ini
 The sotware will return you a folder with the resulting structure, and some plots that show how compartments are distributed.
 
 ## The long table of simulation arguments
-There is a big amount of parameters defined in the aguments of MultiMM. Here we provide the default values and a description of each one of them. The default values are tested to work with the genome-wide simulation, and they can be changes in the configuration file, if they do not satisfy user's need.
+There is a big amount of parameters defined in the aguments of MultiMM. Here we provide the default values and a description of each one of them. The default values are tested to work with the genome-wide simulation, and they can be changes in the configuration file, if they do not satisfy user's need. In general it is not needed to specify the units, but it is important to know what kind of OpenMM units are assumed.
+
+Note that despite the fact that (sub)compartment forcefields are by default disabled, they should be enabled in the configuration file, in case that compartmentalization data would be provided. Similarly, for 
 
 | Argument Name                | Type         | Value       | Units         | Description |
 |------------------------------|--------------|-------------|---------------|-------------|
-| PLATFORM                     | str          | None        | None          | name of the platform. Available choices: {' '.join(available_platforms)} |
+| PLATFORM                     | str          | None        | None          | name of the platform. Available choices: CPU, OpenCL, CUDA. |
 | DEVICE                       | str          | None        | None          | device index for CUDA or OpenCL (count from 0) |
 | INITIAL_STRUCTURE_PATH       | str          | None        | None          | Path to CIF file. |
 | BUILD_INITIAL_STRUCTURE      | bool         | True        | None          | To build a new initial structure. |
 | INITIAL_STRUCTURE_TYPE       | str          | hilbert     | None          | you can choose between: hilbert, circle. |
 | FORCEFIELD_PATH              | str          | None        | None          | Path to XML file with forcefield. |
 | N_BEADS                      | int          | 50000       | None          | Number of Simulation Beads. |
-| COMPARTMENT_PATH             | str          | None        | None          | It can be either .bed file with subcompartments from Calder or .BigWig signal. |
-| LOOPS_PATH                   | str          | None        | None          | A .bedpe file path with loops. It is required. |
-| ATACSEQ_PATH                 | str          | None        | None          | A .bw or .BigWig file path with atacseq data. It is not required. |
+| COMPARTMENT_PATH             | str          | None        | None          | It should be  a `.bed` file with subcompartments from Calder. |
+| LOOPS_PATH                   | str          | None        | None          | A `.bedpe` file path with loops. It is required. |
+| ATACSEQ_PATH                 | str          | None        | None          | A `.bw` or `.BigWig` file path with atacseq data for nucleosome interpolation. It is not required. |
 | OUT_PATH                     | str          | results     | None          | Output folder name. |
-| LOC_START                    | int          | None        | None          | Starting region coordinate. |
-| LOC_END                      | int          | None        | None          | Ending region coordinate. |
-| CHROM                        | str          | None        | None          | Chromosome that corresponds the the modelling region of interest (in case that you do not want to model the whole genome). |
+| LOC_START                    | int          | None        | None          | Starting region coordinate (*in case that you do not want to model the whole genome*). |
+| LOC_END                      | int          | None        | None          | Ending region coordinate (*in case that you do not want to model the whole genome*). |
+| CHROM                        | str          | None        | None          | Chromosome that corresponds the the modelling region of interest (*in case that you do not want to model the whole genome*). |
 | SHUFFLE_CHROMS               | bool         | False       | None          | Shuffle the chromosomes. |
 | SHUFFLING_SEED               | int          | 0           | None          | Shuffling random seed. |
 | SAVE_PLOTS                   | bool         | True        | None          | Save plots. |
-| POL_USE_HARMONIC_BOND        | bool         | True        | None          | Use harmonic bond interaction. |
-| POL_HARMONIC_BOND_R0         | float        | 0.1         | None          | harmonic bond distance equilibrium constant |
+| POL_USE_HARMONIC_BOND        | bool         | True        | None          | Use harmonic bond interaction for consecutive beads ($i,i\pm 1$). |
+| POL_HARMONIC_BOND_R0         | float        | 0.1         | nm          | Harmonic bond distance equilibrium constant. |
 | POL_HARMONIC_BOND_K          | float        | 300000.0    | kJ/mol/nm^2   | harmonic bond force constant |
-| POL_USE_HARMONIC_ANGLE       | bool         | True        | None          | Use harmonic angle interaction. |
-| POL_HARMONIC_ANGLE_R0        | float        | pi          | None          | harmonic angle distance equilibrium constant |
-| POL_HARMONIC_ANGLE_CONSTANT_K| float        | 100.0       | kJ/mol/radian^2 | harmonic angle force constant |
+| POL_USE_HARMONIC_ANGLE       | bool         | True        | None          | Use harmonic angle interaction for consecutuve beads ($i,i\pm 1, i\pm 2$). |
+| POL_HARMONIC_ANGLE_R0        | float        | pi          | None (radians)   | Equilibrium angle of harmonic angle force. |
+| POL_HARMONIC_ANGLE_CONSTANT_K| float        | 100.0       | kJ/mol/radian^2 | Harmonic angle force constant. |
 | LE_USE_HARMONIC_BOND         | bool         | True        | None          | Use harmonic bond interaction for long range loops. |
-| LE_FIXED_DISTANCES           | bool         | False       | None          | For fixed distances between loops. False if you want to correlate with the hatmap strength. |
-| LE_HARMONIC_BOND_R0          | float        | 0.1         | None          | harmonic bond distance equilibrium constant |
-| LE_HARMONIC_BOND_K           | float        | 30000.0     | kJ/mol/nm^2   | harmonic bond force constant |
-| EV_USE_EXCLUDED_VOLUME       | bool         | True        | None          | Use excluded volume. |
-| EV_EPSILON                   | float        | 100.0       | None          | Epsilon parameter. |
-| EV_R_SMALL                   | float        | 0.05        | None          | Add something small in denominator to make it not exploding all the time. |
-| EV_POWER                     | float        | 3.0         | None          | Power in the exponent of EV potential. |
-| SC_USE_SPHERICAL_CONTAINER   | bool         | False       | None          | Use Spherical container |
-| SC_RADIUS1                   | float        | None        | None          | Spherical container radius, |
-| SC_RADIUS2                   | float        | None        | None          | Spherical container radius, |
-| SC_SCALE                     | float        | 1000.0      | None          | Spherical container scaling factor |
+| LE_FIXED_DISTANCES           | bool         | False       | None          | For fixed distances between loops. False if you want to correlate with the heatmap strength. |
+| LE_HARMONIC_BOND_R0          | float        | 0.1         | None          | Harmonic bond distance equilibrium constant for long-range loops. |
+| LE_HARMONIC_BOND_K           | float        | 30000.0     | kJ/mol/nm^2   | Harmonic bond force constant for long-range loops. |
+| EV_USE_EXCLUDED_VOLUME       | bool         | True        | None          | Use excluded volume $V_{ev}=\epsilon\left(\frac{\sigma}{r+r_{\text{small}}}\right)^{\alpha}$. |
+| EV_EPSILON                   | float        | 100.0       | kJ/mol          | Epsilon parameter - strength of excluded volume. |
+| EV_R_SMALL                   | float        | 0.05        | nm          | Add something small in denominator to make it not exploding all the time. |
+| EV_POWER                     | float        | 3.0         | None          | Power $\alpha$ in the exponent of EV potential. |
+| SC_USE_SPHERICAL_CONTAINER   | bool         | False       | None          | Use Spherical container. |
+| SC_RADIUS1                   | float        | None        | nm          | Inner spherical container radius. |
+| SC_RADIUS2                   | float        | None        | nm          | Outer spherical container radius. |
+| SC_SCALE                     | float        | 1000.0      | kJ/mol/nm^2   | Spherical container scaling factor |
 | CHB_USE_CHROMOSOMAL_BLOCKS   | bool         | False       | None          | Use Chromosomal Blocks. |
-| CHB_KC                       | float        | 0.3         | None          | Block copolymer width parameter. |
-| CHB_DE                       | float        | 1e-3        | None          | Energy factor for block copolymer chromosomal model. |
-| COB_USE_COMPARTMENT_BLOCKS   | bool         | False       | None          | Use Compartment Blocks. |
-| COB_DISTANCE                 | float        | None        | None          | Block copolymer equilibrium distance for chromosomal blocks. |
-| COB_EA                       | float        | 1.0         | None          | Energy strength for A compartment. |
-| COB_EB                       | float        | 2.0         | None          | Energy strength for B compartment. |
+| CHB_KC                       | float        | 0.3         | nm^(-4)       | Block copolymer width parameter. |
+| CHB_DE                       | float        | 1e-3        | kJ/mol        | Energy factor for block copolymer chromosomal model. |
+| COB_USE_COMPARTMENT_BLOCKS   | bool         | False       | kJ/mol        | Use Compartment Blocks. |
+| COB_DISTANCE                 | float        | None        | nm        | Block copolymer equilibrium distance for chromosomal blocks. |
+| COB_EA                       | float        | 1.0         | kJ/mol         | Energy strength for A compartment. |
+| COB_EB                       | float        | 2.0         | kJ/mol         | Energy strength for B compartment. |
 | SCB_USE_SUBCOMPARTMENT_BLOCKS| bool         | False       | None          | Use Subcompartment Blocks. |
-| SCB_DISTANCE                 | float        | None        | None          | Block copolymer equilibrium distance for chromosomal blocks. |
-| SCB_EA1                      | float        | 1.0         | None          | Energy strength for A1 compartment. |
-| SCB_EA2                      | float        | 1.33        | None          | Energy strength for A2 compartment. |
-| SCB_EB1                      | float        | 1.66        | None          | Energy strength for B1 compartment. |
-| SCB_EB2                      | float        | 2.0         | None          | Energy strength for B2 compartment. |
+| SCB_DISTANCE                 | float        | None        | nm          | Block copolymer equilibrium distance for chromosomal blocks. |
+| SCB_EA1                      | float        | 1.0         | kJ/mol        | Energy strength for A1 compartment. |
+| SCB_EA2                      | float        | 1.33        | kJ/mol        | Energy strength for A2 compartment. |
+| SCB_EB1                      | float        | 1.66        | kJ/mol        | Energy strength for B1 compartment. |
+| SCB_EB2                      | float        | 2.0         | kJ/mol        | Energy strength for B2 compartment. |
 | IBL_USE_B_LAMINA_INTERACTION | bool         | False       | None          | Interactions of B compartment with lamina. |
-| IBL_SCALE                    | float        | 100.0       | None          | Scaling factor for B comoartment interaction with lamina. |
-| CF_USE_CENTRAL_FORCE         | bool         | False       | None          | Attraction of smaller chromosomes. |
-| CF_STRENGTH                  | float        | 100.0       | None          | Strength of Interaction |
+| IBL_SCALE                    | float        | 100.0       | kJ/mol        | Scaling factor for B comoartment interaction with lamina. |
+| CF_USE_CENTRAL_FORCE         | bool         | False       | None          | Attraction of smaller chromosomes to the nucleolus (in the center). |
+| CF_STRENGTH                  | float        | 100.0       | kJ/mol        | Strength of Interaction |
 | NUC_DO_INTERPOLATION         | bool         | False       | None          | Attraction of smaller chromosomes. |
-| MAX_NUCS_PER_BEAD            | int          | 4           | None          | Maximum amount of nucleosomes per single bead. |
+| MAX_NUCS_PER_BEAD            | int          | 4           | None          | Maximum amount of nucleosomes per single bead for nucleosome interpolation. |
 | NUC_RADIUS                   | float        | 0.1         | None          | The radius of the single nucleosome helix. |
 | POINTS_PER_NUC               | int          | 20          | None          | The number of points that consist a nucleosome helix. |
 | PHI_NORM                     | float        | pi/5        | None          | Zig zag angle. |
 | SIM_RUN_MD                   | bool         | False       | None          | Do you want to run MD simulation? |
 | SIM_N_STEPS                  | int          | None        | None          | Number of steps in MD simulation |
 | SIM_ERROR_TOLERANCE          | float        | 0.01        | None          | Error tolerance for variable MD simulation |
-| SIM_AMD_ALPHA                | float        | 100.0       | None          | Alpha of AMD simulation. |
-| SIM_AMD_E                    | float        | 1000.0      | None          | E (energy) of AMD simulation. |
+| SIM_AMD_ALPHA                | float        | 100.0       | kJ/mol          | Alpha of AMD simulation. |
+| SIM_AMD_E                    | float        | 1000.0      | kJ/mol          | E (energy) of AMD simulation. |
 | SIM_SAMPLING_STEP            | int          | 100         | None          | It determines in t how many steps we save a structure. |
-| SIM_INTEGRATOR_TYPE          | str          | langevin    | None          | Alternative: langevin, verlet |
-| SIM_INTEGRATOR_STEP          | Quantity     | 1 femtosecond | femtosecond  | The step of integrator. |
-| SIM_FRICTION_COEFF           | float        | 0.5         | None          | Friction coefficient (Used only with langevin integrator) |
-| SIM_SET_INITIAL_VELOCITIES   | bool         | False       | None          | Sets initial velocities based on Boltzmann distribution |
-| SIM_TEMPERATURE              | Quantity     | 310 kelvin  | kelvin        | Simulation temperature |
+| SIM_INTEGRATOR_TYPE          | str          | langevin    | None          | Possible choices: variable_nagevin, langevin, variable_verlet, verlet, amd, brownian. |
+| SIM_INTEGRATOR_STEP          | Quantity     | 1      | fsec  | The step of integrator. |
+| SIM_FRICTION_COEFF           | float        | 0.5         | 1/psec          | Friction coefficient (Used only with langevin and brownian integrators). |
+| SIM_SET_INITIAL_VELOCITIES   | bool         | False       | None          | Sets initial velocities based on Boltzmann distribution. |
+| SIM_TEMPERATURE              | Quantity     | 310  | kelvin        | Simulation temperature |
 | TRJ_FRAMES                   | int          | 2000        | None          | Number of trajectory frames to save. |
 
 
