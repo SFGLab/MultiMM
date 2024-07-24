@@ -69,6 +69,8 @@ python run.py -c config.ini
 
 The sotware will return you a folder with the resulting structure, and some plots that show how compartments are distributed.
 
+Example data can be found in the Google Drive: https://drive.google.com/drive/folders/1nFAPE4pCaHpeL5nw6nq0VvfUFoc24aXm?usp=sharing. Please note that these data are not produced in our laboratory, and they are publicly available data from Rao et al, with predicted subcompartments with CALDER. The ATAC-Seq data are from ENCODE.
+
 ## The long table of simulation arguments
 There is a big amount of parameters defined in the aguments of MultiMM. Here we provide the default values and a description of each one of them. The default values are tested to work with the genome-wide simulation, and they can be changes in the configuration file, if they do not satisfy user's need. In general it is not needed to specify the units, but it is important to know what kind of OpenMM units are assumed.
 
