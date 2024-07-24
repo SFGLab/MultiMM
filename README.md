@@ -45,6 +45,7 @@ OUT_PATH = application_note
 ; Simulation Parameters
 N_BEADS = 50000
 SHUFFLE_CHROMS = True
+NUC_DO_INTERPOLATION = True
 
 ; Enable forcefield for GW simulation
 SC_USE_SPHERICAL_CONTAINER = True
@@ -58,7 +59,6 @@ SIM_RUN_MD = True
 SIM_SAMPLING_STEP = 50
 SIM_N_STEPS = 1000
 TRJ_FRAMES = 100
-NUC_DO_INTERPOLATION = True
 ```
 
 Having specified the paramameters and the forces that you would like to use, you can run on terminal the following command,
