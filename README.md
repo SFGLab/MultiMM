@@ -5,15 +5,6 @@ MultiMM is an OpenMM model for the modelling of the whole genome structure. What
 
 Having run MultiMM model, the user obtains a genomewide structure. The user can color different chromosomes, or different compartments, or they can even vizualize seprately chromosomes. The usage of MultiEM is very simple since it is based on the modification of a single configuration file. Here we exaplain its usage.
 
-## Required datasets
-
-MultiMM model relies on three types of datasets:
-
-* Loop interactions in `bedpe` format (mandatory).
-* Compartmentalization data in `bed` format (optional).
-* ATAC-Seq p-value data in `.BigWig ` format (optional).
-
-For calling subcompartments, we suggest our users to use Calder software: https://github.com/CSOgroup/CALDER2.
 
 ## About Operating System
 
@@ -27,6 +18,12 @@ pip install -r requirements.txt
 ```
 
 ## Input Data
+
+MultiMM model relies on three types of datasets:
+
+* Loop interactions in `bedpe` format (mandatory).
+* Compartmentalization data in `bed` format (optional).
+* ATAC-Seq p-value data in `.BigWig ` format (optional).
 
 For **loop interactions**, the user needs to provide a fie with interactions between anchor 1 and anchor 2, and their strength. Therefore, the file should be in `.bedpe` format, it should have 7 columns, it should not contain a header, and it should look like that,
 
