@@ -26,6 +26,31 @@ Create a python 3.10 environment and type,
 pip install -r requirements.txt
 ```
 
+## Input Data
+
+For **loop interactions**, the user needs to provide a fie with interactions between anchor 1 and anchor 2, and their strength. Therefore, the file should be in `.bedpe` format, it should have 7 columns, it should not contain a header, and it should look like that,
+
+```
+chr10	100225000	100230000	chr10	100420000	100425000	95
+chr10	100225000	100230000	chr10	101005000	101010000	56
+chr10	101190000	101195000	chr10	101370000	101375000	152
+chr10	101190000	101200000	chr10	101470000	101480000	181
+chr10	101600000	101605000	chr10	101805000	101810000	152
+```
+
+The file may contain all chromosomes, and MultiMM can model them automatically. In case of single cell data, the user can probide a file with the second and third column identical (the same for fifth and sixth column), and have everywhere strength 1.
+
+For **(sub)compartment interactions**, the file should look like the one produced from CALDER software: https://github.com/CSOgroup/CALDER2. It does not have to be called by CALDER but it should be in the same format. Specifically, the user needs to provide at least the first four columns of the file, containing chromosome, regions, and the subcompartments label. Therefore, it should look like this,
+
+```
+chr1	700001	900000	A.1.2.2.2.2.2	0.875	.	700001	900000	#FF4848
+chr1	900001	1400000	A.1.1.1.1.2.1.1.1.1.1	1	.	900001	1400000	#FF0000
+chr1	1400001	1850000	A.1.1.1.1.2.1.2.2.2.1	1	.	1400001	1850000	#FF0000
+chr1	1850001	2100000	B.1.1.2.2.1.2.1	0.5	.	1850001	2100000	#DADAFF
+```
+
+For ATAC-Seq data the user should provide a file with p-value in BigWig format. It is needed to have the library pyBigWig which does not work in Windows operating systems.
+
 ## Usage
 All the parameters of the model are saved within a `config.ini` file. This file should have the following form,
 
@@ -149,6 +174,12 @@ Note that despite the fact that (sub)compartment forcefields are by default disa
 | SIM_SET_INITIAL_VELOCITIES   | bool         | False       | None          | Sets initial velocities based on Boltzmann distribution. |
 | SIM_TEMPERATURE              | Quantity     | 310  | kelvin        | Simulation temperature |
 | TRJ_FRAMES                   | int          | 2000        | None          | Number of trajectory frames to save. |
+
+## Copyrights
+
+The software is freely distributed and everybody can use it how they want, improve it, and communicate with the authors in case that they want to work further with this research. In case that the software would be used for reserch, we would like that you will cite our paper:
+
+- Korsak, Sevastianos, Krzysztof Banecki, and Dariusz Plewczynski. "Multiscale Molecular Modelling of Chromatin with MultiMM: From Nucleosomes to the Whole Genome." bioRxiv (2024): 2024-07.
 
 
 ## Copyrights
