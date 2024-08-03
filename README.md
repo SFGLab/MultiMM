@@ -51,6 +51,8 @@ chr1	1850001	2100000	B.1.1.2.2.1.2.1	0.5	.	1850001	2100000	#DADAFF
 
 For ATAC-Seq data the user should provide a file with p-value in BigWig format. It is needed to have the library pyBigWig which does not work in Windows operating systems.
 
+**Attention!** For now MultiMM works only for human genome data. The code probaby can run for other organisms as well with a little debugging and modifications.
+
 ## Usage
 All the parameters of the model are saved within a `config.ini` file. This file should have the following form,
 
@@ -177,10 +179,8 @@ Note that despite the fact that (sub)compartment forcefields are by default disa
 
 ## Copyrights
 
-The software is freely distributed and everybody can use it how they want, improve it, and communicate with the authors in case that they want to work further with this research. In case that the software would be used for reserch, we would like that you will cite our paper:
+The software is freely distributed and everybody can use it how they want, improve it, or apply it to their research interests. In case that the software would be used for research, we would like that you will cite our paper:
 
 - Korsak, Sevastianos, Krzysztof Banecki, and Dariusz Plewczynski. "Multiscale Molecular Modelling of Chromatin with MultiMM: From Nucleosomes to the Whole Genome." bioRxiv (2024): 2024-07.
 
-
-## Copyrights
-Please cite our article if you would like to base your research in this software.
+Please, communicate with the authors in case that you would like to contribute in this model, and you would like to improve it.
