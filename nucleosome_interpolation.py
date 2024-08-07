@@ -150,7 +150,7 @@ class NucleosomeInterpolation:
     
 def main():
     # Example data
-    V = get_coordinates_cif('/home/skorsak/Data/simulation_results/GM12878_GW/MultiEM_minimized.cif')
+    V = get_coordinates_cif('/home/skorsak/Data/simulation_results/GM12878_GW/MultiMM_minimized.cif')
     print('Initial granularity of structure =', len(V))
     bw = import_bw('/home/skorsak/Data/encode/ATAC-Seq/ENCSR637XSC_GM12878/ENCFF667MDI_pval.bigWig', len(V))  # Mock self.signal array
 

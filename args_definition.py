@@ -86,7 +86,7 @@ class ListOfArgs(list):
 
     def get_complete_config(self) -> str:
         w = "####################\n"
-        w += "#   MultiEM Model   #\n"
+        w += "#   MultiMM Model   #\n"
         w += "####################\n\n"
         w += "# This is automatically generated config file.\n"
         w += f"# Generated at: {datetime.datetime.now().isoformat()}\n\n"
@@ -175,7 +175,7 @@ args = ListOfArgs([
     # Chromosomal Blocks
     Arg('CHB_USE_CHROMOSOMAL_BLOCKS', help='Use Chromosomal Blocks.', type=bool, default='False', val='False'),
     Arg('CHB_KC', help='Block copolymer width parameter.', type=float, default='0.3', val='0.3'),
-    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='1e-3', val='1e-3'),
+    Arg('CHB_DE', help='Energy factor for block copolymer chromosomal model.', type=float, default='1e-5', val='1e-5'),
     
     # Compartment Blocks
     Arg('COB_USE_COMPARTMENT_BLOCKS', help='Use Compartment Blocks.', type=bool, default='False', val='False'),
@@ -193,11 +193,11 @@ args = ListOfArgs([
 
     # Interactions of B compartment with lamina
     Arg('IBL_USE_B_LAMINA_INTERACTION', help='Interactions of B compartment with lamina.', type=bool, default='False', val='False'),
-    Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='100.0', val='100.0'),
+    Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='400.0', val='400.0'),
     
     # Central Force for Smaller Chromosomes Attraction to the Nucleolus
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
-    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='100.0', val='100.0'),
+    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='10.0', val='10.0'),
 
     # Nucleosome interpolation
     Arg('NUC_DO_INTERPOLATION', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),

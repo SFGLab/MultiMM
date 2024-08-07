@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from mpl_toolkits import mplot3d
 from scipy import interpolate
 import matplotlib.pyplot as plt
 from hilbertcurve.hilbertcurve import HilbertCurve
@@ -98,7 +97,7 @@ def find_element_indexes(arr, elem):
 
     return ', '.join(ranges)
 
-def write_cmm(comps,name='MultiEM_compartment_colors.cmd'):
+def write_cmm(comps,name='MultiMM_compartment_colors.cmd'):
     comp_old = 2
     counter, start = 0, 0
     comp_dict = {-2:'#bf0020', -1:'#ba5062', 1:'#4e4c87',2:'#181385',0:'#fafcfc'}
@@ -214,7 +213,7 @@ def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',curve='hilbert',scale=5):
             connects += f'D{i+1} covale {res_name1} {cl1} {i+1} {atom_name1} {res_name2} {cl2} {i+2} {atom_name2}\n'
 
     # Save files
-    mmcif_file_name = path+'MultiEM_init.cif'
+    mmcif_file_name = path+'MultiMM_init.cif'
     atomhead = mmcif_atomhead()
     conhead = mmcif_connecthead()
     mmcif_file_content = atomhead+atoms+'\n'+conhead+connects
@@ -223,7 +222,7 @@ def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',curve='hilbert',scale=5):
         f.write(mmcif_file_content)
 
     if psf:
-        generate_psf(n_dna,path+'MultiEM.psf')
+        generate_psf(n_dna,path+'MultiMM.psf')
 
     print("File {} saved...".format(mmcif_file_name))
 
@@ -318,9 +317,9 @@ def generate_psf(n: int, file_name='stochastic_LE.psf', title="No title provided
         f.writelines(lines)
 
 def mmcif_atomhead():
-    head = """data_MultiEM
+    head = """data_MultiMM
 # 
-_entry.id MultiEM
+_entry.id MultiMM
 # 
 _audit_conform.dict_name       mmcif_pdbx.dic 
 _audit_conform.dict_version    5.296 

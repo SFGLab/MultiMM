@@ -97,7 +97,7 @@ class MultiMM:
         if args.LOOPS_PATH.lower().endswith('.bedpe'):
             self.ms, self.ns, self.ds, self.chr_ends, self.chrom_idxs = import_mns_from_bedpe(bedpe_file = args.LOOPS_PATH,N_beads=self.args.N_BEADS,\
                                                                             coords = coords, chrom=args.CHROM,\
-                                                                            viz=False, path=self.save_path,\
+                                                                            path=self.save_path,\
                                                                             shuffle=args.SHUFFLE_CHROMS,seed=args.SHUFFLING_SEED)
         else:
             raise InterruptedError('You did not provide appropriate loop file. Loop .bedpe file is obligatory.')
@@ -325,10 +325,10 @@ class MultiMM:
         end = time.time()
         elapsed = end - start
         print(f'Nucleosome interpolation finished succesfully in {elapsed//3600:.0f} hours, {elapsed%3600//60:.0f} minutes and  {elapsed%60:.0f} seconds.')
-
+    
     def set_radiuses(self):
-        self.radius1 = 0.5*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
-        self.radius2 = 4*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
+        self.radius1 = (self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS1==None else self.args.SC_RADIUS1
+        self.radius2 = 3.5*(self.args.N_BEADS/50000)**(1/3) if self.args.SC_RADIUS2==None else self.args.SC_RADIUS2
         if self.args.COB_DISTANCE!=None:
             self.r_comp = self.args.COB_DISTANCE
         elif self.args.SCB_DISTANCE!=None:

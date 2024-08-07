@@ -215,7 +215,7 @@ def integers_to_hex_colors(start, end):
 
     return hex_colors
 
-def write_chrom_colors(chrom_ends,chrom_idxs,name='MultiEM_chromosome_colors.cmd'):    
+def write_chrom_colors(chrom_ends,chrom_idxs,name='MultiMM_chromosome_colors.cmd'):    
     colors = integers_to_hex_colors(0, len(chrom_ends)+1)
     
     content = ''
@@ -228,7 +228,7 @@ def write_chrom_colors(chrom_ends,chrom_idxs,name='MultiEM_chromosome_colors.cmd
 def min_max_trans(x):
     return (x-x.min())/(x.max()-x.min())
 
-def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,viz=False,min_loop_dist=2,path='',shuffle=False,seed=0,n_chroms=22):
+def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,min_loop_dist=2,path='',shuffle=False,seed=0,n_chroms=22):
     # Import loops
     np.random.seed(seed)
     loops = pd.read_csv(bedpe_file,header=None,sep='\t')
@@ -268,7 +268,7 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,
     ms, ns = mns[0,:], mns[1,:]
     ms[ms>=N_beads],ns[ns>=N_beads]=N_beads-1, N_beads-1
     ms,ns,cs = ms[ns>ms+min_loop_dist], ns[ns>ms+min_loop_dist], cs[ns>ms+min_loop_dist]
-    ds = 0.1+0.1*min_max_trans(1/cs**2/3)
+    ds = 0.1+0.1*min_max_trans(1/cs**2/3) if not np.all(cs==cs[0]) else np.ones(len(ms)) 
 
     # Perform some data cleaning
     mask = (ns-ms)!=0
