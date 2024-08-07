@@ -143,7 +143,7 @@ Note that despite the fact that (sub)compartment forcefields are by default disa
 | SC_SCALE                     | float        | 1000.0      | kJ/mol/nm^2   | Spherical container scaling factor |
 | CHB_USE_CHROMOSOMAL_BLOCKS   | bool         | False       | None          | Use Chromosomal Blocks. |
 | CHB_KC                       | float        | 0.3         | nm^(-4)       | Block copolymer width parameter. |
-| CHB_DE                       | float        | 1e-3        | kJ/mol        | Energy factor for block copolymer chromosomal model. |
+| CHB_DE                       | float        | 1e-5        | kJ/mol        | Energy factor for block copolymer chromosomal model. |
 | COB_USE_COMPARTMENT_BLOCKS   | bool         | False       | kJ/mol        | Use Compartment Blocks. |
 | COB_DISTANCE                 | float        | None        | nm        | Block copolymer equilibrium distance for chromosomal blocks. |
 | COB_EA                       | float        | 1.0         | kJ/mol         | Energy strength for A compartment. |
@@ -155,9 +155,9 @@ Note that despite the fact that (sub)compartment forcefields are by default disa
 | SCB_EB1                      | float        | 1.66        | kJ/mol        | Energy strength for B1 compartment. |
 | SCB_EB2                      | float        | 2.0         | kJ/mol        | Energy strength for B2 compartment. |
 | IBL_USE_B_LAMINA_INTERACTION | bool         | False       | None          | Interactions of B compartment with lamina. |
-| IBL_SCALE                    | float        | 100.0       | kJ/mol        | Scaling factor for B comoartment interaction with lamina. |
+| IBL_SCALE                    | float        | 400.0       | kJ/mol        | Scaling factor for B comoartment interaction with lamina. |
 | CF_USE_CENTRAL_FORCE         | bool         | False       | None          | Attraction of smaller chromosomes to the nucleolus (in the center). |
-| CF_STRENGTH                  | float        | 100.0       | kJ/mol        | Strength of Interaction |
+| CF_STRENGTH                  | float        | 10.0       | kJ/mol        | Strength of Interaction |
 | NUC_DO_INTERPOLATION         | bool         | False       | None          | Attraction of smaller chromosomes. |
 | MAX_NUCS_PER_BEAD            | int          | 4           | None          | Maximum amount of nucleosomes per single bead for nucleosome interpolation. |
 | NUC_RADIUS                   | float        | 0.1         | None          | The radius of the single nucleosome helix. |
