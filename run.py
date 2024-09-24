@@ -66,18 +66,15 @@ class MultiMM:
         ------------
         args: list of arguments imported from config.ini file.
         '''
-        # Output folder        
+        # Output folder
         self.ms, self.ns, self.ds, self.chr_ends, self.Cs = None, None, None, None, None
         
         # Make save directory
         self.save_path = args.OUT_PATH+'/'
-        try:
-            os.mkdir(self.save_path)
-            os.mkdir(self.save_path+'ensembles')
-            os.mkdir(self.save_path+'chromosomes')
-            os.mkdir(self.save_path+'plots')
-        except OSError as error:
-            print("Folder 'chromosomes' already exists!")
+        # Create main save directory and subdirectories if they don't exist
+        os.makedirs(os.path.join(self.save_path, 'ensembles'), exist_ok=True)
+        os.makedirs(os.path.join(self.save_path, 'chromosomes'), exist_ok=True)
+        os.makedirs(os.path.join(self.save_path, 'plots'), exist_ok=True)
 
         self.args  = args
         coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
@@ -103,7 +100,7 @@ class MultiMM:
             raise InterruptedError('You did not provide appropriate loop file. Loop .bedpe file is obligatory.')
 
         # Nucleosomes
-        if args.NUC_DO_INTERPOLATION:
+        if args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH!=None:
             if args.ATACSEQ_PATH.lower().endswith('.bw') or args.ATACSEQ_PATH.lower().endswith('.bigwig'):
                 self.atacseq = import_bw(args.ATACSEQ_PATH,self.args.N_BEADS,chrom=self.args.CHROM,coords=coords,\
                                          shuffle=args.SHUFFLE_CHROMS,seed=args.SHUFFLING_SEED)
@@ -281,14 +278,29 @@ class MultiMM:
     
     def min_energy(self):
         print('\nEnergy minimization...')
-        platform = mm.Platform.getPlatformByName(self.args.PLATFORM)
+        # Try to use CUDA or OpenCL, fall back to CPU if not available
+        try:
+            platform = mm.Platform.getPlatformByName(self.args.PLATFORM)
+            if platform.getName() not in ["CUDA", "OpenCL"]:
+                raise Exception(f"{self.args.PLATFORM} is not CUDA or OpenCL")
+        except Exception as e:
+            print(f"Failed to find CUDA or OpenCL: {e}. Falling back to CPU.")
+            platform = mm.Platform.getPlatformByName('CPU')
+        
+        # Run the simulation
         self.simulation = Simulation(self.pdb.topology, self.system, self.integrator, platform)     
         self.simulation.context.setPositions(self.pdb.positions)
         self.simulation.context.setVelocitiesToTemperature(self.args.SIM_TEMPERATURE, 0)
+
+        # Report which platform is being used
         current_platform = self.simulation.context.getPlatform()
         print(f"Simulation will run on platform: {current_platform.getName()}.")
+
+        # Perform energy minimization
         start_time = time.time()
         self.simulation.minimizeEnergy()
+
+        # Save the minimized structure
         self.state = self.simulation.context.getState(getPositions=True)
         PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+'MultiMM_minimized.cif', 'w'))
         print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)//3600:.0f} hours, {(time.time() - start_time)%3600//60:.0f} minutes and  {(time.time() - start_time)%60:.0f} seconds. :D ---\n")
@@ -363,7 +375,7 @@ class MultiMM:
             print('Done! :)\n')
         
         # Run nucleosome interpolation
-        if self.args.NUC_DO_INTERPOLATION:
+        if self.args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH!=None:
             self.nuc_interpolation()
             
 

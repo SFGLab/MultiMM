@@ -197,7 +197,7 @@ args = ListOfArgs([
     
     # Central Force for Smaller Chromosomes Attraction to the Nucleolus
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
-    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='10.0', val='10.0'),
+    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='100.0', val='100.0'),
 
     # Nucleosome interpolation
     Arg('NUC_DO_INTERPOLATION', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),

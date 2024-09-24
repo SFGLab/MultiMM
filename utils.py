@@ -228,6 +228,14 @@ def write_chrom_colors(chrom_ends,chrom_idxs,name='MultiMM_chromosome_colors.cmd
 def min_max_trans(x):
     return (x-x.min())/(x.max()-x.min())
 
+def process_file(input_file, output_file):
+    with open(input_file, 'r') as infile, open(output_file, 'w') as outfile:
+        for line in infile:
+            columns = line.strip().split('\t')
+            # Repeat the second and fourth columns, and add a new column with 1
+            new_line = f"{columns[0]}\t{columns[1]}\t{columns[1]}\t{columns[2]}\t{columns[3]}\t{columns[3]}\t1\n"
+            outfile.write(new_line)
+
 def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,min_loop_dist=2,path='',shuffle=False,seed=0,n_chroms=22):
     # Import loops
     np.random.seed(seed)

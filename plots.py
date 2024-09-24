@@ -90,13 +90,13 @@ def viz_structure(V, colors=None, r=0.1, cmap='coolwarm'):
         polymer = polyline.tube(radius=r)
         polymer.plot(smooth_shading=True, show_scalar_bar=False)
 
-def viz_chroms(sim_path,r=0.1):
+def viz_chroms(sim_path,r=0.1,comps=True):
     cif_path = sim_path + '/MultiMM_minimized.cif'
     chrom_idxs_path = sim_path + '/chrom_idxs.npy'
     chrom_comps_path = sim_path + '/compartments.npy'
     chrom_ends_path = sim_path + '/chrom_lengths.npy'
     chrom_idxs = np.load(chrom_idxs_path)
-    comps = np.load(chrom_comps_path)
+    if comps: comps = np.load(chrom_comps_path)
     chrom_ends = np.load(chrom_ends_path)
     V = get_coordinates_cif(cif_path)
     N = len(V)
@@ -105,7 +105,7 @@ def viz_chroms(sim_path,r=0.1):
         start, end = chrom_ends[i], chrom_ends[i+1]
         chroms[start:end] = chrom_idxs[i]
     viz_structure(V,chroms[:len(V)],cmap='gist_ncar',r=r)
-    viz_structure(V,comps[:len(V)],cmap='coolwarm',r=r)
+    if comps: viz_structure(V,comps[:len(V)],cmap='coolwarm',r=r)
 
 def get_heatmap(cif_file,viz=False,th=1,save=False,save_path=None,vmax=1,vmin=0):
     '''

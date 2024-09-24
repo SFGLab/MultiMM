@@ -5,12 +5,16 @@ from scipy.spatial import distance
 from scipy.spatial.distance import pdist, squareform
 from scipy.sparse import csr_matrix
 from scipy.stats import pearsonr
+import scipy.ndimage as ndimage
+from scipy.spatial.distance import cdist
+from scipy.spatial import KDTree
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from scipy.sparse.linalg import eigsh
+import seaborn as sns
 
 # Metrics for comparisons
 def calculate_correlation(matrix1, matrix2):
@@ -339,6 +343,52 @@ def minMax(v,Max=1,Min=0):
 def standarize(v):
     return (v-np.mean(v))/np.std(v)
 
+# Heatmap Comparison
+def find_local_maxima(heatmap, min_distance=1):
+    # Find local maxima
+    maxima = ndimage.maximum_filter(heatmap, size=min_distance) == heatmap
+    maxima_positions = np.transpose(np.nonzero(maxima))  # (N, 2) array of positions
+    maxima_intensities = heatmap[maxima_positions[:, 0], maxima_positions[:, 1]]
+    
+    return maxima_positions, maxima_intensities
+
+def compare_maxima_positions(pos1, pos2, distance_threshold=1):
+    # Create KDTree for the second set of positions
+    tree = KDTree(pos2)
+    
+    matched_pairs = []  # To store pairs of matched indices
+
+    for idx, point in enumerate(pos1):
+        # Find the nearest point in pos2 within the distance threshold
+        distances, indices = tree.query(point, distance_upper_bound=distance_threshold)
+        if distances != np.inf:  # Valid match within threshold
+            matched_pairs.append((idx, indices))
+
+    return matched_pairs
+
+def analyze_heatmaps(heatmap1, heatmap2, min_distance=1, distance_threshold=1):
+    # Step 1: Find local maxima for both heatmaps
+    pos1, intensities1 = find_local_maxima(heatmap1, min_distance=min_distance)
+    pos2, intensities2 = find_local_maxima(heatmap2, min_distance=min_distance)
+    
+    # Step 2: Compare positions of maxima and find matches
+    matched_pairs = compare_maxima_positions(pos1, pos2, distance_threshold=distance_threshold)
+    
+    # Extract matched intensities
+    matched_intensities1 = np.array([intensities1[i1] for i1, _ in matched_pairs])
+    matched_intensities2 = np.array([intensities2[i2] for _, i2 in matched_pairs])
+
+    # Step 3: Calculate percentage of common maxima
+    percentage_common_maxima = (len(matched_pairs) / len(pos1)) * 100
+    
+    # Step 4: Compute correlation of intensities (Pearson correlation)
+    if len(matched_intensities1) > 1 and len(matched_intensities2) > 1:
+        correlation, _ = pearsonr(matched_intensities1, matched_intensities2)
+    else:
+        correlation = np.nan  # In case of insufficient data
+    
+    return percentage_common_maxima, correlation
+
 # Compute eigenvectors
 def compute_compartments(matrix):
     """
@@ -407,7 +457,7 @@ def compare_matrices(m,mr,exp_m, viz=True):
         print('Correlation of simulation with the second eigenvector:',corr_sim2)
         print('Correlation of random walk with the second eigenvector:',corr_rw2)
 
-    return corr_sim1, corr_rw1, corr_sim2, corr_rw2
+    return np.abs(corr_sim1), np.abs(corr_rw1), np.abs(corr_sim2), np.abs(corr_rw2)
 
 def pipeline_single_ensemble(V,Vr,exp_m,viz=True):
     # Downgrade structures to have same number of points as the experimental heatmaps
@@ -421,13 +471,69 @@ def pipeline_single_ensemble(V,Vr,exp_m,viz=True):
     # Compute the statistics
     corr_sim1, corr_rw1, corr_sim2, corr_rw2 = compare_matrices(m,mr,exp_m,viz)
 
-def ensemble_pipeline(ensemble_path,exp_m,N_chroms=22,N_ens=100,viz=True):
+def ensemble_pipeline_boxplot(ensemble_path, exp_path, N_chroms=22, N_ens=20, viz=True):
+    # Lists to hold correlation values
+    Cs_sim, Cs_rw = list(), list()
+    
+    for i in range(N_chroms):
+        # Load experimental data
+        exp_m = np.nan_to_num(np.load(exp_path + f'/chrom{i+1}_primary+replicate_ice_norm_50kb.npy'))
+        exp_m = remove_diagonals(exp_m, 5)
+        L = len(exp_m)
+        
+        # Calculate heatmaps from experimental structures
+        print(f'Chromosome {i+1}:')
+        print('Calculating heatmaps from experimental structures...')
+        corrs_sim, corrs_rw = [], []
+        for j in tqdm(range(N_ens)):
+            V = get_coordinates_cif(ensemble_path + f'/ens_{j+1}/chromosomes/MultiMM_minimized_chr{i+1}.cif')
+            V_reduced = mean_downsample(V, L)
+            m = structure_to_heatmap(V_reduced)
+
+            Vr = random_walk_3d(len(V))
+            Vr_reduced = mean_downsample(Vr, L)
+            mr = structure_to_heatmap(Vr_reduced)
+        
+            # Calculate correlations
+            corr_sim1, corr_rw1 ,_ ,_ = compare_matrices(m, mr, exp_m, False)
+            corrs_sim.append(np.abs(corr_sim1))
+            corrs_rw.append(np.abs(corr_rw1))
+
+        Cs_sim.append(corrs_sim)
+        Cs_rw.append(corrs_rw)
+        print(f'Chromosome {i+1} done!\n')
+
+    if viz:
+        # Box plot for each chromosome
+        plt.figure(figsize=(20, 5), dpi=200)
+        
+        # Prepare data for box plots
+        data_sim = [Cs_sim[i] for i in range(N_chroms)]
+        data_rw = [Cs_rw[i] for i in range(N_chroms)]
+        
+        box_sim = plt.boxplot(data_sim, positions=np.arange(N_chroms) - 0.2, widths=0.4, patch_artist=True,
+                              boxprops=dict(facecolor='blue', color='blue'), medianprops=dict(color='black'))
+        box_rw = plt.boxplot(data_rw, positions=np.arange(N_chroms) + 0.2, widths=0.4, patch_artist=True,
+                             boxprops=dict(facecolor='red', color='red'), medianprops=dict(color='black'))
+
+        plt.xticks(np.arange(N_chroms), [f'chr{i + 1}' for i in range(N_chroms)])
+        plt.xlabel("Chromosomes", fontsize=16)
+        plt.ylabel("Correlation with 1st Eigenvector", fontsize=14)
+        plt.legend([box_sim["boxes"][0], box_rw["boxes"][0]], ['Simulation', 'Random Walk'], loc='upper right')
+        plt.savefig('heatmap_correlation_boxplots.pdf', format='pdf', dpi=200)
+        plt.savefig('heatmap_correlation_boxplots.svg', format='svg', dpi=200)
+        plt.show()
+
+def ensemble_pipeline_bars(ensemble_path,exp_path,N_chroms=22,N_ens=20,viz=True):
     # Run loop for each chromosome
     Cs_sim1, Cs_sim2 = list(), list()
     Cs_rw1, Cs_rw2 = list(), list()
-    avg_ms, avg_mrs = list(), list()
-    L = len(exp_m)
+    
     for i in range(N_chroms):
+        # Experimental path
+        exp_m = np.nan_to_num(np.load(exp_path+f'/chrom{i+1}_primary+replicate_ice_norm_50kb.npy'))
+        L = len(exp_m)
+
         # Average the heatmaps of each ensemble
         avg_m = 0
         print(f'Chromosome {i+1}:')
@@ -438,7 +544,6 @@ def ensemble_pipeline(ensemble_path,exp_m,N_chroms=22,N_ens=100,viz=True):
             m = structure_to_heatmap(V_reduced)
             avg_m += m
         avg_m /= N_ens
-        avg_ms.append(avg_m)
 
         # Average the heatmaps of each random walk
         avg_mr = 0
@@ -448,8 +553,11 @@ def ensemble_pipeline(ensemble_path,exp_m,N_chroms=22,N_ens=100,viz=True):
             Vr_reduced = mean_downsample(Vr, L)
             mr = structure_to_heatmap(Vr_reduced)
             avg_mr += mr
-        avg_mr /= N_ens 
-        avg_mrs.append(avg_mr)
+        avg_mr /= N_ens
+
+        avg_m = remove_diagonals(avg_m, 1)
+        avg_mr = remove_diagonals(avg_mr, 1)
+        exp_m = remove_diagonals(exp_m, 1)
 
         # Compare them
         corr_sim1, corr_rw1, corr_sim2, corr_rw2 = compare_matrices(avg_m,avg_mr,exp_m,False)
@@ -466,21 +574,131 @@ def ensemble_pipeline(ensemble_path,exp_m,N_chroms=22,N_ens=100,viz=True):
         print(f'Chromosome {i+1} done!\n')
 
     if viz:
+        chroms = ['chr'+str(i) for i in range(1,N_chroms+1)]
         X_axis = np.arange(N_chroms) 
-        plt.figure(figsize=(16, 6),dpi=200)
+        plt.figure(figsize=(20, 5),dpi=200)
         plt.bar(X_axis - 0.2, Cs_sim1, 0.4, label = 'Simulation', color='blue') 
-        plt.bar(X_axis + 0.2, Cs_rw1, 0.4, label = 'Random Walk', color= 'red') 
+        plt.bar(X_axis + 0.2, Cs_rw1, 0.4, label = 'Random Walk', color= 'red')
+        plt.xticks(X_axis, chroms)
+        plt.xlabel("Chromosomes",fontsize=16) 
+        plt.legend()
+        plt.ylabel("Correlation with First Eigenvector",fontsize=14) 
+        plt.savefig('corr_1st_eigenvec.pdf',format='pdf',dpi=200)
+        plt.savefig('corr_1st_eigenvec.svg',format='svg',dpi=200)
+        
+        plt.show()
+
+        plt.figure(figsize=(20, 5),dpi=200)
+        plt.bar(X_axis - 0.2, Cs_sim2, 0.4, label = 'Simulation', color='blue') 
+        plt.bar(X_axis + 0.2, Cs_rw2, 0.4, label = 'Random Walk', color= 'red') 
 
         plt.xticks(X_axis, chroms)
-        plt.xlabel("Chromosomes") 
-        plt.ylabel("Correlation") 
+        plt.xlabel("Chromosomes",fontsize=16)
         plt.legend()
+        plt.ylabel("Correlation with Second Eigenvector",fontsize=14)
+        plt.savefig('corr_2st_eigenvec.pdf',format='pdf',dpi=200)
+        plt.savefig('corr_2st_eigenvec.svg',format='svg',dpi=200)
         plt.show()
-    
-    return avg_ms, avg_mrs
+
+def regions_pipeline(regions_dir,chroms,starts,ends,N_ens=1000):
+    # Experimental path
+    corrs_sim, corrs_rw = [], []
+    pvals_sim, pvals_rw = [], []
+    ps_sim, ints_sim = [], []
+    ps_rw, ints_rw = [], []
+
+    # Average the heatmaps of each ensemble
+    avg_m = 0
+    print('Calculating heatmaps from experimental structures...')
+    for i in tqdm(range(N_ens)):
+        try:
+            exp_m = np.nan_to_num(np.load(f'/home/skorsak/Data/Rao/regs/primary+replicate_ice_norm_25kb_chrom{chroms[i]}_{starts[i]}_{ends[i]}.npy'))
+            L = len(exp_m)
+        except:
+            print(f"Problem with chromosome {chroms[i]}_{starts[i]}_{ends[i]} experimental data")
+            continue
+        
+        try:
+            V = get_coordinates_cif(regions_dir+f'/regens_chrom{chroms[i]}_region_{starts[i]}_{ends[i]}/MultiMM_minimized.cif')
+        except:
+            print(f"Problem with chromosome {chroms[i]}_{starts[i]}_{ends[i]} simulated data")
+            continue
+        V_reduced = mean_downsample(V, L)
+        m = structure_to_heatmap(V_reduced)
+
+        Vr = random_walk_3d(len(V))
+        Vr_reduced = mean_downsample(Vr, L)
+        mr = structure_to_heatmap(Vr_reduced)
+
+        exp_m, rs, cs = remove_zero_rows_and_columns(exp_m)
+        m = np.delete(m, rs, axis=0)
+        m = np.delete(m, cs, axis=1)
+        mr = np.delete(mr, rs, axis=0)
+        mr = np.delete(mr, cs, axis=1)
+
+        m = remove_diagonals(m, 1)
+        mr = remove_diagonals(mr, 1)
+        exp_m = remove_diagonals(exp_m, 1)
+
+        m = (m-np.mean(m))/np.std(m)
+        mr = (mr-np.mean(mr))/np.std(mr)
+        exp_m = (exp_m-np.mean(exp_m))/np.std(exp_m)
+        m = (m-np.min(m))/(np.max(m)-np.min(m))
+        mr = (mr-np.min(mr))/(np.max(mr)-np.min(mr))
+        exp_m = (exp_m-np.min(exp_m))/(np.max(exp_m)-np.min(exp_m))
+
+        p_sim, int_sim = analyze_heatmaps(remove_diagonals(m,4),remove_diagonals(exp_m,4), min_distance=5, distance_threshold=5)
+        p_rw, int_rw = analyze_heatmaps(remove_diagonals(mr,4), remove_diagonals(exp_m,4), min_distance=5, distance_threshold=5)
+
+        corr_V, pval_sim = calculate_correlation(m, exp_m)
+        corr_Vr, pval_rw = calculate_correlation(mr, exp_m)
+        corrs_sim.append(corr_V)
+        corrs_rw.append(corr_Vr)
+        pvals_sim.append(pval_sim)
+        pvals_rw.append(pval_rw)
+        ps_sim.append(p_sim)
+        ps_rw.append(p_rw)
+        ints_sim.append(int_sim)
+        ints_rw.append(int_rw)
+
+    # Create the violin plot
+    data = [corrs_sim, corrs_rw]
+    plt.figure(figsize=(6, 9))
+    sns.violinplot(data=data)
+    plt.xticks([0, 1], ['Simulation', 'Random Walk'],fontsize=16)
+    plt.ylabel('Correlation with Experimental Data',fontsize=16)
+    plt.savefig('violin.svg',format='svg',dpi=200)
+    plt.savefig('violin.pdf',format='pdf',dpi=200)
+    plt.show()
+
+    # Create the violin plot
+    data = [np.array(ps_sim)/100, np.array(ps_rw)/100]
+    plt.figure(figsize=(6, 9))
+    sns.violinplot(data=data)
+    plt.xticks([0, 1], ['Simulation', 'Random Walk'],fontsize=16)
+    plt.ylabel('Percentage of Common Loops',fontsize=16)
+    plt.savefig('violin_ps.pdf',format='pdf',dpi=200)
+    plt.show()
+
+    # Create the violin plot
+    data = [ints_sim, ints_rw]
+    plt.figure(figsize=(6, 9))
+    sns.violinplot(data=data)
+    plt.xticks([0, 1], ['Simulation', 'Random Walk'],fontsize=16)
+    plt.ylabel('Peak Intensity Correlation',fontsize=16)
+    plt.savefig('violin_ints.pdf',format='pdf',dpi=200)
+    plt.show()
 
 # Import structures
-path = '/home/skorsak/Data/simulation_results/gw_ens'
-exp_m = np.nan_to_num(np.load('/home/skorsak/Data/Rao/chrom5_primary+replicate_ice_norm_25kb.npy'))
+sim_path = '/home/skorsak/Data/simulation_results/gw_ens_5M'
+exp_path = '/home/skorsak/Data/Rao'
 
-avg_ms, avg_mrs = ensemble_pipeline(path,exp_m)
+ensemble_pipeline_bars(sim_path,exp_path)
+
+# # Load data
+# regs_path = '/home/skorsak/Data/simulation_results/ensembles_of_regions'
+# starts = np.load('/home/skorsak/Data/simulation_results/starts.npy')
+# ends = np.load('/home/skorsak/Data/simulation_results/ends.npy')
+# chroms = np.load('/home/skorsak/Data/simulation_results/chroms.npy')
+
+# regions_pipeline(regs_path,chroms,starts,ends)
