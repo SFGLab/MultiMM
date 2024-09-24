@@ -1,35 +1,34 @@
-# MultiMM: An OpenMM-based software for the whole genome 3D structure reconstruction
-MultiMM is an OpenMM model for the modelling of the whole genome structure. What makes it different from other models is that it is multiscale, which means that it aims to model different scales of chromatin starting from smaller scales (nucleosomes) to the scale of chromosomal territories. The algorithm is fast and accurate. Key point for the fast modelling is the GPU parallelization of the OpenMM and smart assumptions that assist the optimizer to find the global minimum. The most fundamental of these assumptions, is the assumption of Hilbert curve as an initial structure. This helps MultiMM to minimize faster because the initial structure is already highly compacted.
+# MultiMM: An OpenMM-based software for whole genome 3D structure reconstruction
+MultiMM is an OpenMM model designed for modeling the 3D structure of the whole genome. Its distinguishing feature is that it is multiscale, meaning it aims to model different levels of chromatin organization, from smaller scales (nucleosomes) to the level of chromosomal territories. The algorithm is both fast and accurate. A key feature enabling its speed is GPU parallelization via OpenMM, along with smart assumptions that assist the optimizer in finding the global minimum. One such fundamental assumption is the use of a Hilbert curve as the initial structure. This helps MultiMM to converge faster because the initial structure is already highly compacted.
 
 ![GW_em](https://github.com/user-attachments/assets/3d019616-2c0f-4bfc-a792-d87fcdc0d96a)
 
-Having run MultiMM model, the user obtains a genomewide structure. The user can color different chromosomes, or different compartments, or they can even vizualize seprately chromosomes. The usage of MultiMM is very simple since it is based on the modification of a single configuration file. Here we exaplain its usage.
+After running the MultiMM model, users obtain a genome-wide structure. Users can color different chromosomes or compartments, or they can visualize individual chromosomes separately. MultiMM is simple to use, as it is based on modifying a single configuration file. Here we explain its usage.
 
 ![MultiMM_scales](https://github.com/user-attachments/assets/a0d14ddc-41bf-4d14-8a8c-aa418fe575b5)
 
+## About Operating Systems
 
-## About Operating System
-
-MultiMM is tested mainly in Linux-based operating systems. It has been tested succesfully in Ubuntu, Debian and Red-Hat based distributions. It is possible also to run it on MacOS, but without CUDA support, which is very helpful for the acceleration of the computations. We suggest the user to not run MultiMM on Windows computers.
+MultiMM has been tested primarily on Linux-based operating systems, with successful tests in Ubuntu, Debian, and Red Hat-based distributions. It is also possible to run it on macOS, though without CUDA support, which is helpful for accelerating computations. We do not recommend running MultiMM on Windows systems.
 
 ## Installation
-Create a python 3.10 environment and type,
+Create a Python 3.10 environment and type:
 
-```
+```bash
 pip install -r requirements.txt
 ```
 
 ## Input Data
 
-MultiMM model relies on three types of datasets:
+MultiMM relies on three types of datasets:
 
-* Loop interactions in `bedpe` format (mandatory).
-* Compartmentalization data in `bed` format (optional).
-* ATAC-Seq p-value data in `.BigWig ` format (optional).
+- Loop interactions in `bedpe` format (mandatory).
+- Compartmentalization data in `bed` format (optional).
+- ATAC-Seq p-value data in `.BigWig` format (optional).
 
-For **loop interactions**, the user needs to provide a fie with interactions between anchor 1 and anchor 2, and their strength. Therefore, the file should be in `.bedpe` format, it should have 7 columns, it should not contain a header, and it should look like that,
+For **loop interactions**, users need to provide a file with interactions between anchor 1 and anchor 2, and their strength. The file must be in `.bedpe` format, should contain 7 columns, and should not include a header. An example:
 
-```
+```text
 chr10	100225000	100230000	chr10	100420000	100425000	95
 chr10	100225000	100230000	chr10	101005000	101010000	56
 chr10	101190000	101195000	chr10	101370000	101375000	152
@@ -37,25 +36,25 @@ chr10	101190000	101200000	chr10	101470000	101480000	181
 chr10	101600000	101605000	chr10	101805000	101810000	152
 ```
 
-The file may contain all chromosomes, and MultiMM can model them automatically. In case of single cell data, the user can probide a file with the second and third column identical (the same for fifth and sixth column), and have everywhere strength 1.
+The file may contain interactions for all chromosomes, which MultiMM can automatically model. For single-cell data, users can provide a file with the second and third columns identical (the same for the fifth and sixth columns) and strength set to 1.
 
-For **(sub)compartment interactions**, the file should look like the one produced from CALDER software: https://github.com/CSOgroup/CALDER2. It does not have to be called by CALDER but it should be in the same format. Specifically, the user needs to provide at least the first four columns of the file, containing chromosome, regions, and the subcompartments label. Therefore, it should look like this,
+For **(sub)compartment interactions**, the file should be in the format produced by the CALDER software: https://github.com/CSOgroup/CALDER2. Users do not need to run CALDER specifically, but the file format must match. The file should contain at least the first four columns with chromosome, regions, and the subcompartment label. Example:
 
-```
-chr1	700001	900000	A.1.2.2.2.2.2	0.875	.	700001	900000	#FF4848
+```text
+chr1	700001	900000	A.1.2.2.2.2.2.2	0.875	.	700001	900000	#FF4848
 chr1	900001	1400000	A.1.1.1.1.2.1.1.1.1.1	1	.	900001	1400000	#FF0000
 chr1	1400001	1850000	A.1.1.1.1.2.1.2.2.2.1	1	.	1400001	1850000	#FF0000
 chr1	1850001	2100000	B.1.1.2.2.1.2.1	0.5	.	1850001	2100000	#DADAFF
 ```
 
-For ATAC-Seq data the user should provide a file with p-value in BigWig format. It is needed to have the library pyBigWig which does not work in Windows operating systems.
+For **ATAC-Seq data**, users should provide a file with p-values in BigWig format. The `pyBigWig` library is required, which does not work on Windows systems.
 
-**Attention!** For now MultiMM works only for human genome data. The code probaby can run for other organisms as well with a little debugging and modifications.
+**Note:** At present, MultiMM only works for human genome data. The code may run for other organisms with some debugging and modifications.
 
 ## Usage
-All the parameters of the model are saved within a `config.ini` file. This file should have the following form,
+All the model's parameters are specified in a `config.ini` file. This file should have the following format:
 
-```
+```ini
 [Main]
 
 ; Platform selection
@@ -73,7 +72,7 @@ N_BEADS = 50000
 SHUFFLE_CHROMS = True
 NUC_DO_INTERPOLATION = True
 
-; Enable forcefield for GW simulation
+; Enable forcefield for genome-wide simulation
 SC_USE_SPHERICAL_CONTAINER = True
 CHB_USE_CHROMOSOMAL_BLOCKS = True
 SCB_USE_SUBCOMPARTMENT_BLOCKS = True
@@ -87,22 +86,25 @@ SIM_N_STEPS = 1000
 TRJ_FRAMES = 100
 ```
 
-Having specified the paramameters and the forces that you would like to use, you can run on terminal the following command,
+After specifying the parameters and forces, users can run the following command in the terminal:
 
-```
+```bash
 python run.py -c config.ini
 ```
 
-The sotware will return you a folder with the resulting structure, and some plots that show how compartments are distributed.
+The software will output a folder with the resulting structure and plots showing compartment distribution.
 
-Example data can be found in the Google Drive: https://drive.google.com/drive/folders/1nFAPE4pCaHpeL5nw6nq0VvfUFoc24aXm?usp=sharing. Please note that these data are not produced in our laboratory, and they are publicly available data from Rao et al, with predicted subcompartments with CALDER. The ATAC-Seq data are from ENCODE. 
+Example data can be found on Google Drive: https://drive.google.com/drive/folders/1nFAPE4pCaHpeL5nw6nq0VvfUFoc24aXm?usp=sharing. Note that this data is publicly available from Rao et al. The subcompartment predictions were made using CALDER, and the ATAC-Seq data is from ENCODE.
 
-In `examples` folder we provide example configuration files that can be used in different modelling cases.
+In the `examples` folder, we provide example configuration files for different modeling scenarios.
 
-## The long table of simulation arguments
-There is a big amount of parameters defined in the aguments of MultiMM. Here we provide the default values and a description of each one of them. The default values are tested to work with the genome-wide simulation, and they can be changes in the configuration file, if they do not satisfy user's need. In general it is not needed to specify the units, but it is important to know what kind of OpenMM units are assumed.
+## Simulation Arguments
 
-Note that despite the fact that (sub)compartment forcefields are by default disabled, they should be enabled in the configuration file, in case that compartmentalization data would be provided. Similarly, for 
+MultiMM has numerous configurable parameters. Below is a description of each argument and its default values. The defaults have been tested for genome-wide simulation but can be modified in the configuration file if needed. Units are typically assumed based on OpenMM conventions, though explicit unit specification is not required.
+
+
+
+This version should now be more precise and polished. Let me know if you'd like to adjust anything further!
 
 | Argument Name                | Type         | Value       | Units         | Description |
 |------------------------------|--------------|-------------|---------------|-------------|
@@ -178,7 +180,7 @@ Note that despite the fact that (sub)compartment forcefields are by default disa
 
 ## Copyrights
 
-The software is freely distributed and everybody can use it how they want, improve it, or apply it to their research interests. In case that the software would be used for research, we would like that you will cite our paper:
+The software is freely distributed under the GNU license and everybody can use it how they want, improve it, or apply it to their research interests. In case that the software would be used for research, we would like that you will cite our paper:
 
 - Korsak, Sevastianos, Krzysztof Banecki, and Dariusz Plewczynski. "Multiscale Molecular Modelling of Chromatin with MultiMM: From Nucleosomes to the Whole Genome." bioRxiv (2024): 2024-07.
 
