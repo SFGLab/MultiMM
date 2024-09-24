@@ -13,19 +13,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v4  # Check out your repository
+    
+    # Set up Python 3.10 for the environment
     - name: Set up Python
       uses: actions/setup-python@v3
       with:
         python-version: '3.10'
+
+    # Install dependencies needed for the build and environment setup
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install build twine  # Ensure twine is installed
+        pip install build  # Needed to build the package
+        pip install .  # Install the MultiMM package from the current directory
+
+    # Build the package (wheel + source distribution)
     - name: Build package
       run: python -m build
+
+    # Publish the package to PyPI using your API token
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
       with:
         user: __token__
         password: ${{ secrets.PYPI_API_TOKEN }}
+
+    # Set up the environment to run MultiMM - example run
+    - name: Test MultiMM command
+      run: |
+        MultiMM -c config.ini  # Run MultiMM with a sample config file
