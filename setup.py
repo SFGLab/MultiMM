@@ -1,12 +1,15 @@
 from setuptools import setup, find_packages
 from pathlib import Path
 
+with open('README.md', 'r', encoding='utf-8') as f:
+    long_description = f.read()
+
 setup(
     name='MultiMM',  # Package name
     version='1.0.0',  # Version of the software
     description='A tool for chromatin modeling from nucleosomes to chromosomal territories.',
     long_description=open('README.md').read(),
-    long_description_content_type='text/markdown',
+    long_description_content_type= long_description,
     author='Sebastian Korsak',
     author_email='s.korsak@datascience.edu.pl',
     url='https://github.com/SFGLab/MultiMM',  # GitHub repository URL
