@@ -10,7 +10,6 @@ configparser>=6.0.1
 typing-extensions>=4.7.1
 pyBigWig>=0.3.22
 hilbertcurve>=2.0.5
-pandas>=2.0.3
 tqdm>=4.65.2
 pyvista[all]
 OpenMM>=8.1.1
