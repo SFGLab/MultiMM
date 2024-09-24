@@ -11,7 +11,7 @@ setup(
     long_description=open('README.md').read(),
     long_description_content_type= long_description,
     author='Sebastian Korsak',
-    author_email='s.korsak@datascience.edu.pl',
+    author_email='sebykorsak@gmail.com',
     url='https://github.com/SFGLab/MultiMM',  # GitHub repository URL
     license='GNU General Public License v3.0',
     packages=find_packages(),  # Automatically finds all packages and sub-packages
