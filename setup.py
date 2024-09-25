@@ -8,7 +8,7 @@ setup(
     name='MultiMM',  # Package name
     version='1.0.0',  # Version of the software
     description='A tool for chromatin modeling from nucleosomes to chromosomal territories.',
-    long_description=open('README.md').read(),
+    long_description=long_description,
     long_description_content_type= 'text/markdown',
     author='Sebastian Korsak',
     author_email='sebykorsak@gmail.com',
