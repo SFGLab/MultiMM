@@ -9,11 +9,11 @@ from typing import List
 from sys import stdout
 import openmm as mm
 from openmm.app import PDBxFile, ForceField, Simulation, DCDReporter, StateDataReporter
-from initial_structure_tools import *
-from utils import *
-from plots import *
-from args_definition import *
-from nucleosome_interpolation import *
+from .initial_structure_tools import *
+from .utils import *
+from .plots import *
+from .args_definition import *
+from .nucleosome_interpolation import *
 import time
 import os
 
