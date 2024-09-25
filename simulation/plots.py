@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
 import pandas as pd
-from utils import *
+from .utils import *
 from sklearn.decomposition import PCA
 import pyvista as pv
 
