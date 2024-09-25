@@ -29,9 +29,9 @@ def get_perp_component(x, v):
 
 
 class NucleosomeInterpolation:
-    def __init__(self, V, bw, max_nucs_per_bead=4, nuc_radius=0.1, points_per_nuc=20, phi_norm=np.pi/5):
+    def __init__(self, V, bw, nuc_radius=0.1, points_per_nuc=20, phi_norm=np.pi/5):
         self.V, self.bw = V, bw
-        self.max_nucs_per_bead, self.nuc_points = max_nucs_per_bead, points_per_nuc
+        self.max_nucs_per_bead, self.nuc_points = int(np.ceil(1/(2*nuc_radius))), points_per_nuc
         self.nuc_r, self.phi_norm = nuc_radius, phi_norm
     
     def make_helix(self, r, theta, z0):
