@@ -4,7 +4,7 @@ from scipy import interpolate
 import matplotlib.pyplot as plt
 from hilbertcurve.hilbertcurve import HilbertCurve
 import warnings
-from utils import *
+from .utils import *
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 subcomp_dict={-2:'B1',-1:'B2',0:'O',1:'A1',2:'A2'}
