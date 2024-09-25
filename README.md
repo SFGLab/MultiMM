@@ -127,6 +127,8 @@ V = suts.get_coordinates_cif(cif_path)
 splt.viz_structure(V)
 ``` 
 
+We would like once again to thank people who developed `pyvista` library and allow us to have fast and good vizualizations of large chromatin structure.
+
 ## Simulation Arguments
 
 MultiMM has numerous configurable parameters. Below is a description of each argument and its default values. The defaults have been tested for genome-wide simulation but can be modified in the configuration file if needed. Units are typically assumed based on OpenMM conventions, though explicit unit specification is not required.
