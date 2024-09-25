@@ -29,11 +29,9 @@ setup(
         'pyBigWig',
         'hilbertcurve',
         'tqdm',
+        'pyvista[all]',
+        'OpenMM',
     ],
-    extras_require={  # Optional dependencies
-        'viz': ['pyvista[all]'],
-        'simulations': ['OpenMM'],
-    },
     entry_points={
         'console_scripts': [
             'MultiMM=simulation.run:main',  # MultiMM command points to run.py's main function
