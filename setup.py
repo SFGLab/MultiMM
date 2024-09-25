@@ -9,7 +9,7 @@ setup(
     version='1.0.0',  # Version of the software
     description='A tool for chromatin modeling from nucleosomes to chromosomal territories.',
     long_description=long_description,
-    long_description_content_type= 'text/markdown',
+    long_description_content_type='text/markdown',
     author='Sebastian Korsak',
     author_email='sebykorsak@gmail.com',
     url='https://github.com/SFGLab/MultiMM',  # GitHub repository URL
@@ -29,9 +29,11 @@ setup(
         'pyBigWig',
         'hilbertcurve',
         'tqdm',
-        'pyvista[all]',
-        'OpenMM'
     ],
+    extras_require={  # Optional dependencies
+        'viz': ['pyvista[all]'],
+        'simulations': ['OpenMM'],
+    },
     entry_points={
         'console_scripts': [
             'MultiMM=MultiMM.run:main',  # MultiMM command points to run.py's main function
@@ -40,7 +42,7 @@ setup(
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
-        'Operating System :: Linux Debian, Fedora, Arch, Ubuntu etc.',
+        'Operating System :: POSIX :: Linux',  # General OS classifier
     ],
     python_requires='>=3.10',  # Specify Python version compatibility
 )
