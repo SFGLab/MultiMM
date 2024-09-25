@@ -11,8 +11,8 @@ After running the MultiMM model, users obtain a genome-wide structure. Users can
 ## Key Features
 
 - Efficient simulation of chromatin interactions using 3D conformations.
-- Supports **Hi-C**, **ATAC-seq**, and **loop interaction** data formats.
-- Integration with **bedpe** and **hic** formats for chromatin structures.
+- Can simulate the scales of nucleosomes, TADs, compartments, chromosomal territories and interactions with lamina.
+- Integration with **bedpe** for chromatin structures.
 - Scalable simulations across different force fields and resolution levels.
 - Compatible with modern GPU-accelerated simulation libraries.
 
