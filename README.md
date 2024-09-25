@@ -10,11 +10,11 @@ After running the MultiMM model, users obtain a genome-wide structure. Users can
 
 ## Key Features
 
+- OpenMM based.
+- User-friendly software available via PyPI.
 - Efficient simulation of chromatin interactions using 3D conformations.
-- Can simulate the scales of nucleosomes, TADs, compartments, chromosomal territories and interactions with lamina.
-- Integration with **bedpe** for chromatin structures.
-- Scalable simulations across different force fields and resolution levels.
-- Compatible with modern GPU-accelerated simulation libraries.
+- Can simulate the scales of nucleosomes, TADs, compartments, chromosomal territories and interactions with lamina. Scalable simulations across different force fields and resolution levels.
+- Compatible with modern GPU-accelerated simulation libraries. CPU acceleration can also be done.
 
 ## About Operating Systems
 
