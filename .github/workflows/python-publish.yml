@@ -21,6 +21,11 @@ jobs:
       with:
         python-version: '3.10'
 
+    # Clean any trash that remained
+    - name: Clean build artifacts
+      run: |
+        rm -rf build/ dist/ *.egg-info
+
     # Install dependencies needed for the build and environment setup
     - name: Install dependencies
       run: |
