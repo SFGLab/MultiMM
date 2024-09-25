@@ -21,10 +21,10 @@ After running the MultiMM model, users obtain a genome-wide structure. Users can
 MultiMM has been tested primarily on Linux-based operating systems, with successful tests in Ubuntu, Debian, and Red Hat-based distributions. It is also possible to run it on macOS, though without CUDA support, which is helpful for accelerating computations. We do not recommend running MultiMM on Windows systems.
 
 ## Installation
-Create a Python 3.10 environment and type:
+MultiMM can be easily installed with pip:
 
 ```bash
-pip install -r requirements.txt
+pip install MultiMM
 ```
 
 ## Input Data
@@ -98,7 +98,7 @@ TRJ_FRAMES = 100
 After specifying the parameters and forces, users can run the following command in the terminal:
 
 ```bash
-python run.py -c config.ini
+MultiMM -c config.ini
 ```
 
 The software will output a folder with the resulting structure and plots showing compartment distribution.
@@ -106,6 +106,26 @@ The software will output a folder with the resulting structure and plots showing
 Example data can be found on Google Drive: https://drive.google.com/drive/folders/1nFAPE4pCaHpeL5nw6nq0VvfUFoc24aXm?usp=sharing. Note that this data is publicly available from Rao et al. The subcompartment predictions were made using CALDER, and the ATAC-Seq data is from ENCODE.
 
 In the `examples` folder, we provide example configuration files for different modeling scenarios.
+
+## Vizualization
+
+For vizualization purposes, if you would like to import the whole genome structure you may use the command,
+
+```python
+import simulation.plots as splt
+
+splt.viz_chroms(sim_path)
+```
+
+For `sim_path` you should add the output folder directory path (add `comps=Fase` in case that you do not need compartment coloring). Otherwise, in case that the user would like to model a particular region, without using compartment or chromosome coloring (pretty much any cif structure), they can type,
+
+```python
+import simulation.plots as splt
+import simulation.utils as suts
+
+V = suts.get_coordinates_cif(cif_path)
+splt.viz_structure(V)
+``` 
 
 ## Simulation Arguments
 
