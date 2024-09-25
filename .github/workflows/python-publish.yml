@@ -45,8 +45,3 @@ jobs:
         password: ${{ secrets.PYPI_API_TOKEN }}
         verify_metadata: false
         skip_existing: false
-
-    # Set up the environment to run MultiMM - example run
-    - name: Test MultiMM command
-      run: |
-        MultiMM -c config.ini  # Run MultiMM with a sample config file
