@@ -36,7 +36,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'MultiMM=MultiMM.run:main',  # MultiMM command points to run.py's main function
+            'MultiMM=simulation.run:main',  # MultiMM command points to run.py's main function
         ],
     },
     classifiers=[
