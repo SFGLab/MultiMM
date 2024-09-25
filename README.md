@@ -8,6 +8,14 @@ After running the MultiMM model, users obtain a genome-wide structure. Users can
 
 ![MultiMM_scales](https://github.com/user-attachments/assets/a0d14ddc-41bf-4d14-8a8c-aa418fe575b5)
 
+## Key Features
+
+- Efficient simulation of chromatin interactions using 3D conformations.
+- Supports **Hi-C**, **ATAC-seq**, and **loop interaction** data formats.
+- Integration with **bedpe** and **hic** formats for chromatin structures.
+- Scalable simulations across different force fields and resolution levels.
+- Compatible with modern GPU-accelerated simulation libraries.
+
 ## About Operating Systems
 
 MultiMM has been tested primarily on Linux-based operating systems, with successful tests in Ubuntu, Debian, and Red Hat-based distributions. It is also possible to run it on macOS, though without CUDA support, which is helpful for accelerating computations. We do not recommend running MultiMM on Windows systems.
