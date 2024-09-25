@@ -4,9 +4,9 @@
 #########################################################
 
 import numpy as np
-from utils import *
-from initial_structure_tools import *
-from plots import *
+from .utils import *
+from .initial_structure_tools import *
+from .plots import *
 from tqdm import tqdm
 
 
