@@ -39,7 +39,7 @@ jobs:
 
     # Use PyPI token
     - name: Publish package
-      uses: pypa/gh-action-pypi-publish@v3
+      uses: pypa/gh-action-pypi-publish@v1
       with:
         user: __token__
         password: ${{ secrets.PYPI_API_TOKEN }}
