@@ -27,6 +27,8 @@ MultiMM can be easily installed with pip:
 pip install MultiMM
 ```
 
+PyPI software: https://pypi.org/project/MultiMM/.
+
 ## Input Data
 
 MultiMM relies on three types of datasets:
