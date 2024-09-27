@@ -194,7 +194,6 @@ This version should now be more precise and polished. Let me know if you'd like 
 | CF_USE_CENTRAL_FORCE         | bool         | False       | None          | Attraction of smaller chromosomes to the nucleolus (in the center). |
 | CF_STRENGTH                  | float        | 10.0       | kJ/mol        | Strength of Attraction of Smaller Chromosomes |
 | NUC_DO_INTERPOLATION         | bool         | False       | None          | Attraction of smaller chromosomes. |
-| MAX_NUCS_PER_BEAD            | int          | 4           | None          | Maximum amount of nucleosomes per single bead for nucleosome interpolation. |
 | NUC_RADIUS                   | float        | 0.1         | None          | The radius of the single nucleosome helix. |
 | POINTS_PER_NUC               | int          | 20          | None          | The number of points that consist a nucleosome helix. |
 | PHI_NORM                     | float        | pi/5        | None          | Zig zag angle. |
