@@ -4,7 +4,7 @@ from scipy import interpolate
 import matplotlib.pyplot as plt
 from hilbertcurve.hilbertcurve import HilbertCurve
 import warnings
-from .utils import *
+from utils import *
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 subcomp_dict={-2:'B1',-1:'B2',0:'O',1:'A1',2:'A2'}
@@ -230,6 +230,8 @@ def compute_init_struct(N_beads,mode='rw',scale=5):
             return random_walk_structure(N_beads)
         case 'confined_rw':
             return confined_random_walk(N_beads)
+        case 'knot':
+            return trefoil_knot_structure(N_beads)
         case 'self_avoiding_rw':
             return self_avoiding_random_walk(N_beads)
         case 'circle':
