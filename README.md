@@ -145,7 +145,7 @@ This version should now be more precise and polished. Let me know if you'd like 
 | DEVICE                       | str          | None        | None          | device index for CUDA or OpenCL (count from 0) |
 | INITIAL_STRUCTURE_PATH       | str          | None        | None          | Path to CIF file. |
 | BUILD_INITIAL_STRUCTURE      | bool         | True        | None          | To build a new initial structure. |
-| INITIAL_STRUCTURE_TYPE       | str          | hilbert     | None          | you can choose between: hilbert, circle, rw, confined_rw, self_avoiding_rw, helix, spiral, sphere. |
+| INITIAL_STRUCTURE_TYPE       | str          | hilbert     | None          | you can choose between: hilbert, circle, rw, confined_rw, self_avoiding_rw, helix, spiral, sphere, knot. |
 | FORCEFIELD_PATH              | str          | None        | None          | Path to XML file with forcefield. |
 | N_BEADS                      | int          | 50000       | None          | Number of Simulation Beads. |
 | COMPARTMENT_PATH             | str          | None        | None          | It should be  a `.bed` file with subcompartments from Calder. |
