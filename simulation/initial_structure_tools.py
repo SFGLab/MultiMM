@@ -4,7 +4,7 @@ from scipy import interpolate
 import matplotlib.pyplot as plt
 from hilbertcurve.hilbertcurve import HilbertCurve
 import warnings
-from .utils import *
+from utils import *
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 subcomp_dict={-2:'B1',-1:'B2',0:'O',1:'A1',2:'A2'}
@@ -136,33 +136,11 @@ def read_compartments(file,ch,reg,res,binary=True):
 def generate_hilbert_curve(n_points,p=8,n=3,displacement_sigma=0.1,scale=6,viz=False,add_noise=False):
     hilbert_curve = HilbertCurve(p, n)
 
-    distances = list(range(n_points)) # if n_points>4095 else list(range(n_points))
+    distances = list(range(n_points))
     points = np.array(hilbert_curve.points_from_distances(distances))
-    
-    #if n_points>4095:
-    #   x_sim, y_sim, z_sim = points[:,0], points[:,1], points[:,2]
-    #   tck, u = interpolate.splprep(x=[x_sim,y_sim,z_sim], s=2)
-    #   u_fine = np.linspace(0,1,n_points)
-    #   x_fine, y_fine, z_fine = interpolate.splev(u_fine, tck)
-    #   V_interpol = np.vstack((x_fine,y_fine,z_fine)).T
-    #else:
-    #   V_interpol = points
     if add_noise:
         displacement = np.random.normal(loc=0.0, scale=displacement_sigma, size=n_points*3).reshape(n_points,3)
         V_interpol = V_interpol + displacement
-    #max_dist = np.max(np.linalg.norm(V_interpol,axis=1))
-
-    #if viz:
-    #    fig = plt.figure()
-    #    ax = plt.axes(projection='3d')
-
-    #    z = V_interpol[:,2]
-    #    x = V_interpol[:,0]
-    #    y = V_interpol[:,1]
-
-    #    ax.plot3D (x, y, z, 'green')
-    #    ax.set_title('Hilbert Curve')
-    #    plt.show()
     
     return points
 
@@ -181,13 +159,95 @@ def polymer_circle(n: int, z_stretch: float = 1.0, radius: float = 5.0) -> np.nd
     points = np.array(points)
     return points
 
+def helix_structure(N_beads, radius=1, pitch=2):
+    theta = np.linspace(0, 4 * np.pi, N_beads)  # 2 full turns
+    x = radius * np.cos(theta)
+    y = radius * np.sin(theta)
+    z = np.linspace(0, pitch * N_beads, N_beads)
+    V = np.column_stack((x, y, z))
+    return V
+
+def spiral_structure(N_beads, initial_radius=1, pitch=1, growth_factor=0.05):
+    theta = np.linspace(0, 4 * np.pi, N_beads)
+    radius = initial_radius + growth_factor * np.arange(N_beads)
+    x = radius * np.cos(theta)
+    y = radius * np.sin(theta)
+    z = np.linspace(0, pitch * N_beads, N_beads)
+    V = np.column_stack((x, y, z))
+    return V
+
+def sphere_surface_structure(N_beads, radius=1):
+    phi = np.random.uniform(0, 2 * np.pi, N_beads)
+    costheta = np.random.uniform(-1, 1, N_beads)
+    u = np.random.uniform(0, 1, N_beads)
+    
+    theta = np.arccos(costheta)
+    r = radius * u ** (1/3)
+
+    x = r * np.sin(theta) * np.cos(phi)
+    y = r * np.sin(theta) * np.sin(phi)
+    z = r * np.cos(theta)
+    
+    V = np.column_stack((x, y, z))
+    return V
+
+def confined_random_walk(N_beads, box_size=5):
+    V = np.zeros((N_beads, 3))
+    for i in range(1, N_beads):
+        step = np.random.choice([-1, 1], size=3)  # Random step in x, y, z
+        V[i] = V[i-1] + step
+        # Keep the points within a confined box (folding in)
+        V[i] = np.clip(V[i], -box_size, box_size)
+    return V
+
+def trefoil_knot_structure(N_beads, scale=5):
+    t = np.linspace(0, 2 * np.pi, N_beads)
+    x = scale * (np.sin(t) + 2 * np.sin(2 * t))
+    y = scale * (np.cos(t) - 2 * np.cos(2 * t))
+    z = -scale * np.sin(3 * t)
+    
+    V = np.column_stack((x, y, z))
+    return V
+
+def random_walk_structure(N_beads, step_size=1):
+    # Initialize the structure array
+    V = np.zeros((N_beads, 3))
+    
+    # Loop over each bead, starting from the second one
+    for i in range(1, N_beads):
+        # Randomly pick a direction for each step
+        step_direction = np.random.normal(size=3)
+        step_direction /= np.linalg.norm(step_direction)  # Normalize to make it unit length
+        
+        # Move the current bead from the last bead by a fixed step size
+        V[i] = V[i-1] + step_size * step_direction
+    
+    return V
+
+def compute_init_struct(N_beads,mode='rw',scale=5):
+    match mode:
+        case 'rw':
+            return random_walk_structure(N_beads)
+        case 'confined_rw':
+            return confined_random_walk(N_beads)
+        case 'self_avoiding_rw':
+            return self_avoiding_random_walk(N_beads)
+        case 'circle':
+            return polymer_circle(N_beads,50,5)
+        case 'helix':
+            return helix_structure(N_beads)
+        case 'spiral':
+            return spiral_structure(N_beads)
+        case 'sphere':
+            return sphere_surface_structure(N_beads)
+        case 'hilbert':
+            return generate_hilbert_curve(n_dna,scale=scale)
+        case _:
+            return IndentationError('Invalid option for initial structure.')
+
 def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',curve='hilbert',scale=5):
     # Define the initial coordinates of histones and the structure of DNA
-    if curve=='hilbert':
-        dna_points = generate_hilbert_curve(n_dna,scale=scale) 
-    elif curve=='circle': 
-        dna_points = polymer_circle(n_dna,50,5)
-    
+    dna_points = compute_init_struct(n_dna,mode=curve,scale=scale)
     # Write the positions in .mmcif file
     atoms = ''
     
