@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from math import pi
 from typing import Union
 import argparse
+import importlib.resources
 import openmm as mm
 from openmm.unit import Quantity
 
