@@ -378,14 +378,19 @@ class MultiMM:
         if self.args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH!=None:
             self.nuc_interpolation()
             
-
 def main():
     # Input data
     args = get_config()
     
     # Run simulation
-    md = MultiMM(args)
-    md.run()
+    if args.GENERATE_ENSEMBLE:
+        for i in range(args.N_ENSEMBLE):
+            args.OUT_PATH = args.OUOUT_PATHT_PATH+f'_{i+1}'
+            md = MultiMM(args)
+            md.run()
+    else:
+        md = MultiMM(args)
+        md.run()
 
 if __name__=='__main__':
     main()

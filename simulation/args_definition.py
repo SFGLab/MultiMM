@@ -139,6 +139,8 @@ args = ListOfArgs([
     Arg('INITIAL_STRUCTURE_PATH', help="Path to CIF file.", type=str, default='', val=''),
     Arg('BUILD_INITIAL_STRUCTURE', help="To build a new initial structure.", type=bool, default='True', val='True'),
     Arg('INITIAL_STRUCTURE_TYPE', help="you can choose between: hilbert, circle, rw, confined_rw, knot, self_avoiding_rw, spiral, sphere.", type=str, default='hilbert', val='hilbert'),
+    Arg('GENERATE_ENSEMBLE', help="Default value: false. True in case that you would like to have an ensemble of structures instead of one. Better to disable it for large simulations that require long computational time. Moreover it is better to start random walk initial structure in case of true value.", type=bool, default='False', val='False'),
+    Arg('N_ENSEMBLE', help="Number of samples of structures that you would like to calculate.", type=int, default='', val=''),
     Arg('FORCEFIELD_PATH', help="Path to XML file with forcefield.", type=str, default=default_xml_path, val=default_xml_path),
     Arg('N_BEADS', help="Number of Simulation Beads.", type=int, default='50000', val='50000'),
     Arg('COMPARTMENT_PATH', help="It can be either .bed file with subcompartments from Calder or .BigWig signal.", type=str, default='', val=''),
