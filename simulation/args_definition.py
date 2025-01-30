@@ -144,7 +144,7 @@ args = ListOfArgs([
     Arg('N_ENSEMBLE', help="Number of samples of structures that you would like to calculate.", type=int, default='', val=''),
     Arg('FORCEFIELD_PATH', help="Path to XML file with forcefield.", type=str, default=default_xml_path, val=default_xml_path),
     Arg('N_BEADS', help="Number of Simulation Beads.", type=int, default='50000', val='50000'),
-    Arg('COMPARTMENT_PATH', help="It can be either .bed file with subcompartments from Calder or .BigWig signal.", type=str, default='', val=''),
+    Arg('COMPARTMENT_PATH', help="It should be a .bed file with subcompartments from Calder (or something in the same format).", type=str, default='', val=''),
     Arg('LOOPS_PATH', help="A .bedpe file path with loops. It is required.", type=str, default='', val=''),
     Arg('ATACSEQ_PATH', help="A .bw or .BigWig file path with atacseq data. It is not required.", type=str, default='', val=''),
     Arg('OUT_PATH', help="Output folder name.", type=str, default='results', val='results'),

@@ -60,7 +60,7 @@ chr1	1850001	2100000	B.1.1.2.2.1.2.1	0.5	.	1850001	2100000	#DADAFF
 
 For **ATAC-Seq data**, users should provide a file with p-values in BigWig format. The `pyBigWig` library is required, which does not work on Windows systems.
 
-**Note:** At present, MultiMM only works for human genome data. The code may run for other organisms with some debugging and modifications.
+**Note:** At present, MultiMM only works for human genome data. The code may run for other organisms with some debugging and modifications. We hope that it will be generalized in future versions. *MultiMM can run for different types of datasets. It is possible to call loops from any kind of experiment: Hi-C, scHi-C, ChIA-PET, Hi-ChIP. However, we cannot guarantee that the default choice of parameters is the most appropriate one for any dataset. Therefore, the user should test it and check the convergence of the algorithm for their own data. Before making any changes in the parameters, read the method paper carefully and try to understand the function of each force.*
 
 ## Usage
 All the model's parameters are specified in a `config.ini` file. This file should have the following format:
@@ -146,8 +146,8 @@ This version should now be more precise and polished. Let me know if you'd like 
 | INITIAL_STRUCTURE_PATH       | str          | None        | None          | Path to CIF file. |
 | BUILD_INITIAL_STRUCTURE      | bool         | True        | None          | To build a new initial structure. |
 | INITIAL_STRUCTURE_TYPE       | str          | hilbert     | None          | you can choose between: hilbert, circle, rw, confined_rw, self_avoiding_rw, helix, spiral, sphere, knot. |
-| GENERATE_ENSEMBLE      | bool         | False        | False          | True if you need to create an ensemble of structures. |
-| N_ENSEMBLE      | int         | None        | None          | Number of samples that you would like to create. |
+| GENERATE_ENSEMBLE            | bool         | False       | False         | True if you need to create an ensemble of structures. |
+| N_ENSEMBLE                   | int          | None        | None          | Number of samples that you would like to create. |
 | FORCEFIELD_PATH              | str          | None        | None          | Path to XML file with forcefield. |
 | N_BEADS                      | int          | 50000       | None          | Number of Simulation Beads. |
 | COMPARTMENT_PATH             | str          | None        | None          | It should be  a `.bed` file with subcompartments from Calder. |
@@ -216,7 +216,6 @@ This version should now be more precise and polished. Let me know if you'd like 
 
 The software is freely distributed under the GNU license and everybody can use it how they want, improve it, or apply it to their research interests. In case that the software would be used for research, we would like that you will cite our paper:
 
-- Korsak, Sevastianos, Krzysztof Banecki, and Dariusz Plewczynski. "Multiscale Molecular Modelling of Chromatin with MultiMM: From Nucleosomes to the Whole Genome." bioRxiv (2024): 2024-07.
+- Korsak, Sevastianos, Krzysztof Banecki, and Dariusz Plewczynski. "Multiscale molecular modeling of chromatin with MultiMM: From nucleosomes to the whole genome." Computational and Structural Biotechnology Journal 23 (2024): 3537-3548.
 
 Please, communicate with the authors in case that you would like to contribute in this model, and you would like to improve it.
-

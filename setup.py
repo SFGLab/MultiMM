@@ -6,12 +6,12 @@ with open('README.md', 'r', encoding='utf-8') as f:
 
 setup(
     name='MultiMM',  # Package name
-    version='1.0.9',  # Version of the software
+    version='1.0.10',  # Version of the software
     description='A tool for chromatin modeling from nucleosomes to chromosomal territories.',
     long_description=long_description,
     long_description_content_type='text/markdown',
     author='Sebastian Korsak',
-    author_email='sebykorsak@gmail.com',
+    author_email='s.korsak@datascience.edu.pl',
     url='https://github.com/SFGLab/MultiMM',  # GitHub repository URL
     license='GNU General Public License v3.0',
     packages=find_packages(),  # Automatically finds all packages and sub-packages
