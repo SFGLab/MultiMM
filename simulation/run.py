@@ -386,6 +386,7 @@ def main():
     name = args.OUT_PATH
     if args.GENERATE_ENSEMBLE:
         for i in range(args.N_ENSEMBLE):
+            args.SHUFFLING_SEED = i
             args.OUT_PATH = name+f'_{i+1}'
             md = MultiMM(args)
             md.run()
