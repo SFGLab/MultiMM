@@ -146,6 +146,8 @@ This version should now be more precise and polished. Let me know if you'd like 
 | INITIAL_STRUCTURE_PATH       | str          | None        | None          | Path to CIF file. |
 | BUILD_INITIAL_STRUCTURE      | bool         | True        | None          | To build a new initial structure. |
 | INITIAL_STRUCTURE_TYPE       | str          | hilbert     | None          | you can choose between: hilbert, circle, rw, confined_rw, self_avoiding_rw, helix, spiral, sphere, knot. |
+| GENERATE_ENSEMBLE      | bool         | False        | False          | True if you need to create an ensemble of structures. |
+| N_ENSEMBLE      | int         | None        | None          | Number of samples that you would like to create. |
 | FORCEFIELD_PATH              | str          | None        | None          | Path to XML file with forcefield. |
 | N_BEADS                      | int          | 50000       | None          | Number of Simulation Beads. |
 | COMPARTMENT_PATH             | str          | None        | None          | It should be  a `.bed` file with subcompartments from Calder. |
