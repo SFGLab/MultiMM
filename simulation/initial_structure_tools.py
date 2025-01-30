@@ -243,7 +243,7 @@ def compute_init_struct(N_beads,mode='rw',scale=5):
         case 'sphere':
             return sphere_surface_structure(N_beads)
         case 'hilbert':
-            return generate_hilbert_curve(n_dna,scale=scale)
+            return generate_hilbert_curve(N_beads,scale=scale)
         case _:
             return IndentationError('Invalid option for initial structure.')
 
