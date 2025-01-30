@@ -7,6 +7,14 @@ import argparse
 import openmm as mm
 from openmm.unit import Quantity
 
+# Dynamically set the default path to the XML file in the package
+try:
+    with importlib.resources.path('loopsage.forcefields', 'classic_sm_ff.xml') as default_xml_path:
+        default_xml_path = str(default_xml_path)
+except FileNotFoundError:
+    # If running in a development setup without the resource installed, fallback to a relative path
+    default_xml_path = 'simulation/forcefields/ff.xml'
+
 @dataclass
 class Arg(object):
     name: str
@@ -131,7 +139,7 @@ args = ListOfArgs([
     Arg('INITIAL_STRUCTURE_PATH', help="Path to CIF file.", type=str, default='', val=''),
     Arg('BUILD_INITIAL_STRUCTURE', help="To build a new initial structure.", type=bool, default='True', val='True'),
     Arg('INITIAL_STRUCTURE_TYPE', help="you can choose between: hilbert, circle.", type=str, default='hilbert', val='hilbert'),
-    Arg('FORCEFIELD_PATH', help="Path to XML file with forcefield.", type=str, default='', val=''),
+    Arg('FORCEFIELD_PATH', help="Path to XML file with forcefield.", type=str, default=default_xml_path, val=default_xml_path),
     Arg('N_BEADS', help="Number of Simulation Beads.", type=int, default='50000', val='50000'),
     Arg('COMPARTMENT_PATH', help="It can be either .bed file with subcompartments from Calder or .BigWig signal.", type=str, default='', val=''),
     Arg('LOOPS_PATH', help="A .bedpe file path with loops. It is required.", type=str, default='', val=''),
