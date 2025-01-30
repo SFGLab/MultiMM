@@ -13,3 +13,4 @@ hilbertcurve>=2.0.5
 tqdm>=4.65.2
 pyvista[all]
 OpenMM>=8.1.1
+OpenMM-cuda>=8.1.1

@@ -383,9 +383,10 @@ def main():
     args = get_config()
     
     # Run simulation
+    name = args.OUT_PATH
     if args.GENERATE_ENSEMBLE:
         for i in range(args.N_ENSEMBLE):
-            args.OUT_PATH = args.OUT_PATH+f'_{i+1}'
+            args.OUT_PATH = name+f'_{i+1}'
             md = MultiMM(args)
             md.run()
     else:
