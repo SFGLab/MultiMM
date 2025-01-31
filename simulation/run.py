@@ -8,6 +8,33 @@ from sys import stdout
 from .args_definition import *
 from .model import *
 
+def args_tests(args):
+    if args.COMPARTMENT_PATH==None and args.COB_USE_COMPARTMENT_BLOCKS:
+        raise InterruptedError('\033[91mYou cannot model compartments without providing a file in .bed format. Either disable COB_USE_COMPARTMENT_BLOCKS or import data from some compartment caller according to the documentation.\033[0m')
+    elif args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH==None:
+        raise InterruptedError('\033[91mYou enabled nucleosome simulation without providing nucleosome data. Either import a .bigwig file that shows nucleosome occupancy or disable NUC_DO_INTERPOLATION.\033[0m')
+    elif args.COMPARTMENT_PATH==None and args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
+        raise InterruptedError('\033[91mYou cannot model subcompartments without providing a file in .bed format. Either disable SCB_USE_SUBCOMPARTMENT_BLOCKS or import data from some compartment caller according to the documentation.\033[0m')
+    elif args.COMPARTMENT_PATH==None and args.IBL_USE_B_LAMINA_INTERACTION:
+        raise InterruptedError('\033[91mLamina interactions are compartment specific, but you did not provide a .bed file for compartments. Maybe you should disable the IBL_USE_B_LAMINA_INTERACTION?\033[0m')
+    elif args.IBL_USE_B_LAMINA_INTERACTION and not (args.SCB_USE_SUBCOMPARTMENT_BLOCKS or COB_USE_COMPARTMENT_BLOCKS):
+        raise InterruptedError('\033[91mYou have enabled lamina interactions which are compartment specific, but you did not enable compartment or subcompartment forces. Please, read the documentation and the paper to understand better the forcefield!\033[0m')
+    elif args.CF_USE_CENTRAL_FORCE and args.CHROM!=None:
+        raise InterruptedError('\033[91mOoo00ops! You enabled chromosome attraction, but you want to model only one chromosome. Maybe disable CF_USE_CENTRAL_FORCE?')
+    elif args.CHB_USE_CHROMOSOMAL_BLOCKS and args.CHROM!=None:
+        raise InterruptedError('\033[91mBetter disable CHB_USE_CHROMOSOMAL_BLOCKS when you model only one chromosome.')
+
+    if args.SHUFFLE_CHROMS and (args.CHROM!=None and args.CHROM!=''):
+        print('\n\033[38;5;214mWarning!! You enabled chromosome shuffling, but you model only a specific region of a specific chromosome.\033[0m\n')
+    if args.CHROM!=None and args.IBL_USE_B_LAMINA_INTERACTION:
+        print('\n\033[38;5;214mWarning!! You enabled lamina interactions, but you want to model a specific chromosomal region. It is not imprtantly wrong, but keep in mind that it makes more sense when you model the whole genome.\033[0m\n')
+    if args.CHROM!=None and args.SC_USE_SPHERICAL_CONTAINER:
+        print('\n\033[38;5;214mWarning!! You enabled spherical container but you want to model a single chromosomal region. It is not importantly wrong, but it makes more sense when you model the whole genome.\033[0m\n')
+    if (not args.POL_USE_HARMONIC_BOND) or (not args.POL_USE_HARMONIC_ANGLE) or (not args.EV_USE_EXCLUDED_VOLUME):
+        print('\n\033[38;5;214mWarning!! Take care when you disable fundamental forces from the backbone!.\033[0m\n')
+    if args.CHB_USE_CHROMOSOMAL_BLOCKS:
+        print('\n\033[38;5;214mWarning!! You are using chromosomal block forces. Take care because they are not always very biological. Refer to the documentation to be sure that you are doing everything correctly.\033[0m\n')
+
 def my_config_parser(config_parser: configparser.ConfigParser) -> List[tuple[str, str]]:
     """Helper function that makes flat list arg name, and it's value from ConfigParser object."""
     sections = config_parser.sections()
@@ -53,6 +80,7 @@ def get_config() -> ListOfArgs:
 def main():
     # Input data
     args = get_config()
+    args_tests(args)
     
     # Run simulation
     name = args.OUT_PATH

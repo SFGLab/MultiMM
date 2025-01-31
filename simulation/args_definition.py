@@ -202,7 +202,7 @@ args = ListOfArgs([
     Arg('SCB_EA2', help='Energy strength for A2 compartment.', type=float, default='1.33', val='1.33'),
     Arg('SCB_EB1', help='Energy strength for B1 compartment.', type=float, default='1.66', val='1.66'),
     Arg('SCB_EB2', help='Energy strength for B2 compartment.', type=float, default='2.0', val='2.0'),
-
+    
     # Interactions of B compartment with lamina
     Arg('IBL_USE_B_LAMINA_INTERACTION', help='Interactions of B compartment with lamina.', type=bool, default='False', val='False'),
     Arg('IBL_SCALE', help='Scaling factor for B comoartment interaction with lamina.', type=float, default='400.0', val='400.0'),
