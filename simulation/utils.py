@@ -236,7 +236,22 @@ def process_file(input_file, output_file):
             new_line = f"{columns[0]}\t{columns[1]}\t{columns[1]}\t{columns[2]}\t{columns[3]}\t{columns[3]}\t1\n"
             outfile.write(new_line)
 
-def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,min_loop_dist=2,path='',shuffle=False,seed=0,n_chroms=22):
+def downsample_arrays(ms, ns, cs, ds, down_prob):
+    assert len(ms) == len(ns) == len(cs) == len(ds), "Arrays must have the same length"
+    
+    # Generate a mask of indices to keep
+    mask = np.random.rand(len(ms)) < down_prob
+    indices = np.where(mask)[0]
+
+    # Apply the same mask to all arrays
+    ms_downsampled = ms[indices]
+    ns_downsampled = ns[indices]
+    cs_downsampled = cs[indices]
+    ds_downsampled = ds[indices]
+
+    return ms_downsampled, ns_downsampled, cs_downsampled, ds_downsampled
+
+def import_mns_from_bedpe(bedpe_file, N_beads, coords=None, chrom=None, threshold=0, min_loop_dist=2, path='', down_prob=1.0, shuffle=False, seed=0, n_chroms=22):
     # Import loops
     np.random.seed(seed)
     loops = pd.read_csv(bedpe_file,header=None,sep='\t')
@@ -282,10 +297,15 @@ def import_mns_from_bedpe(bedpe_file,N_beads,coords=None,chrom=None,threshold=0,
     mask = (ns-ms)!=0
     ms = ms[mask]
     ns = ns[mask]
-    avg_ls = np.average(ns-ms)
-    print('Average loop size:',avg_ls)
     ds= ds[mask]
     cs = cs[mask]
+
+    if down_prob<1.0:
+        ms, ns, cs, ds = downsample_arrays(ms, ns, cs, ds, down_prob)
+
+    avg_ls = np.average(ns-ms)
+    print('Average loop size:',avg_ls)
+
     N_loops = len(ms)
     np.save(path+'chrom_idxs.npy',chrom_idxs)
     np.save(path+'ms.npy',ms)
