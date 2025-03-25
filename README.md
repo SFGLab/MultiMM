@@ -15,6 +15,7 @@ After running the MultiMM model, users obtain a genome-wide structure. Users can
 - Efficient simulation of chromatin interactions using 3D conformations.
 - Can simulate the scales of nucleosomes, TADs, compartments, chromosomal territories and interactions with lamina. Scalable simulations across different force fields and resolution levels.
 - Compatible with modern GPU-accelerated simulation libraries. CPU acceleration can also be done.
+- Possibility of creation of ensembles of 3D structures of chromatin.
 
 ## About Operating Systems
 
@@ -135,9 +136,13 @@ We would like once again to thank people who developed `pyvista` library and all
 
 MultiMM has numerous configurable parameters. Below is a description of each argument and its default values. The defaults have been tested for genome-wide simulation but can be modified in the configuration file if needed. Units are typically assumed based on OpenMM conventions, though explicit unit specification is not required.
 
+Here we can see the long table of the simulation arguments. Somtimes MultiMM might not work for some choices of arguments. For example:
 
+* If you would like to model lamina interaction having disabled compartment interactions.
+* If you do not provide appropriate data i.e. for compartmentalization but you have enabled (sub)compartent-specific forcefield.
 
-This version should now be more precise and polished. Let me know if you'd like to adjust anything further!
+Therefore, it is advisable to read the paper and understand well the meaning of each force before you start running simulations. MultiMM is a research model, not a market product and thus it requires a level of expertise (despite the easiness of usage) to underatand and run it.
+
 
 | Argument Name                | Type         | Value       | Units         | Description |
 |------------------------------|--------------|-------------|---------------|-------------|
@@ -215,8 +220,8 @@ This version should now be more precise and polished. Let me know if you'd like 
 
 ## Copyrights
 
-The software is freely distributed under the GNU license and everybody can use it how they want, improve it, or apply it to their research interests. In case that the software would be used for research, we would like that you will cite our paper:
+The software is freely distributed under the GNU license and everybody is free to use it for their research interests following the open-source lisence of MultiMM. In case that the software would be used for research or any other activity, the method paper should be cited:
 
 - Korsak, Sevastianos, Krzysztof Banecki, and Dariusz Plewczynski. "Multiscale molecular modeling of chromatin with MultiMM: From nucleosomes to the whole genome." Computational and Structural Biotechnology Journal 23 (2024): 3537-3548.
 
-Please, communicate with the authors in case that you would like to contribute in this model, and you would like to improve it.
+Please, communicate with the authors in case that you would like to contribute in this model and you would like to improve it. In case, that you have problems to run it, your feedback is very valuable to us and we are open to help you.

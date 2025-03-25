@@ -31,9 +31,24 @@ class MultiMM:
 
         self.args  = args
         coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
+
+        if (args.GENE_TSV!=None):
+            if args.GENE_ID!=None:
+                chrom, coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_id=args.GENE_ID)
+                print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_ID}')
+            elif args.GENE_NAME!=None:
+                chrom, coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_name=args.GENE_NAME)
+                print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_NAME}')
+            else:
+                raise InterruptedError('You did not provide gene name or ID.')
         
         # Compartments
-        if args.COMPARTMENT_PATH!=None:
+        if args.EIGENVECTOR_TSV!=None:
+            if args.EIGENVECTOR_TSV.lower().endswith('.tsv'):
+               self.Cs, self.chr_ends = get_eigenvector(eigenvec_tsv, chrom, region)
+            else:
+                raise InterruptedError('Eigenvector should be in tsv format.')
+        elif args.COMPARTMENT_PATH!=None:
             if args.COMPARTMENT_PATH.lower().endswith('.bed'):
                 self.Cs, self.chr_ends, self.chrom_idxs = import_bed(bed_file=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
                                                                         chrom=self.args.CHROM,coords=coords,\
@@ -41,7 +56,7 @@ class MultiMM:
                                                                         shuffle=args.SHUFFLE_CHROMS,seed=args.SHUFFLING_SEED)
             else:
                 raise InterruptedError('Compartments file should be in .bed format.')
-        
+
         # Loops
         if args.LOOPS_PATH.lower().endswith('.bedpe'):
             self.ms, self.ns, self.ds, self.chr_ends, self.chrom_idxs = import_mns_from_bedpe(bedpe_file = args.LOOPS_PATH,N_beads=self.args.N_BEADS,\

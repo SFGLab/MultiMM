@@ -9,18 +9,20 @@ from .args_definition import *
 from .model import *
 
 def args_tests(args):
-    if args.COMPARTMENT_PATH==None and args.COB_USE_COMPARTMENT_BLOCKS:
+    if args.LOOPS_PATH==NONE or args.LOOPS_PATH=='':
+        raise InterruptedError('\033[91mMultiMM cannot run without providing interactions in .bedpe format!!!\033[0m')
+    elif (args.COMPARTMENT_PATH==None or args.COMPARTMENT_PATH=='') and args.COB_USE_COMPARTMENT_BLOCKS:
         raise InterruptedError('\033[91mYou cannot model compartments without providing a file in .bed format. Either disable COB_USE_COMPARTMENT_BLOCKS or import data from some compartment caller according to the documentation.\033[0m')
     elif args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH==None:
         raise InterruptedError('\033[91mYou enabled nucleosome simulation without providing nucleosome data. Either import a .bigwig file that shows nucleosome occupancy or disable NUC_DO_INTERPOLATION.\033[0m')
-    elif args.COMPARTMENT_PATH==None and args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
+    elif (args.COMPARTMENT_PATH==None or args.COMPARTMENT_PATH=='') and args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
         raise InterruptedError('\033[91mYou cannot model subcompartments without providing a file in .bed format. Either disable SCB_USE_SUBCOMPARTMENT_BLOCKS or import data from some compartment caller according to the documentation.\033[0m')
     elif args.COMPARTMENT_PATH==None and args.IBL_USE_B_LAMINA_INTERACTION:
         raise InterruptedError('\033[91mLamina interactions are compartment specific, but you did not provide a .bed file for compartments. Maybe you should disable the IBL_USE_B_LAMINA_INTERACTION?\033[0m')
     elif args.IBL_USE_B_LAMINA_INTERACTION and not (args.SCB_USE_SUBCOMPARTMENT_BLOCKS or COB_USE_COMPARTMENT_BLOCKS):
         raise InterruptedError('\033[91mYou have enabled lamina interactions which are compartment specific, but you did not enable compartment or subcompartment forces. Please, read the documentation and the paper to understand better the forcefield!\033[0m')
     elif args.CF_USE_CENTRAL_FORCE and args.CHROM!=None:
-        raise InterruptedError('\033[91mOoo00ops! You enabled chromosome attraction, but you want to model only one chromosome. Maybe disable CF_USE_CENTRAL_FORCE?')
+        raise InterruptedError('\033[91mOoo00ops! You enabled chromosome-specific attraction to the nucleolus, but you want to model only one chromosome. Maybe disable CF_USE_CENTRAL_FORCE?')
     elif args.CHB_USE_CHROMOSOMAL_BLOCKS and args.CHROM!=None:
         raise InterruptedError('\033[91mBetter disable CHB_USE_CHROMOSOMAL_BLOCKS when you model only one chromosome.')
 
