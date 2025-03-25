@@ -415,3 +415,22 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
     np.save(path+'signal.npy',genomewide_signal)
     
     return genomewide_signal
+
+def get_gene_region(gene_tsv, gene_id=None, gene_name=None, window_size = 100000):
+    '''
+    Input a gene tsv and ouputs a region around the gene
+    '''
+    genes = pd.read_csv(gene_tsv,sep='\t')
+    if gene_id!=None:
+        print('Region will be define based on gene ID.')
+        chrom = genes[genes['gene_id']==gene_id]['chromosome'].values[0]
+        start = genes[genes['gene_id']==gene_id]['start'].values[0]
+        end = genes[genes['gene_id']==gene_id]['end'].values[0]
+    elif gene_name!=None:
+        print('Region will be define based on gene name.')
+        chrom = genes[genes['gene_id']==gene_id]['chromosome'].values[0]
+        start = genes[genes['gene_id']==gene_id]['start'].values[0]
+        end = genes[genes['gene_id']==gene_id]['end'].values[0]
+    
+    region = [max(0,int(start-window_size)), int(end+window_size)]
+    return chrom, region
