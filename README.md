@@ -61,7 +61,7 @@ chr1	1400001	1850000	A.1.1.1.1.2.1.2.2.2.1	1	.	1400001	1850000	#FF0000
 chr1	1850001	2100000	B.1.1.2.2.1.2.1	0.5	.	1850001	2100000	#DADAFF
 ```
 
-Alternatively, the user can provide a file in `.tsv` format with the first eigenvector. MultiMM would discretise it and convert it to compartments.
+Alternatively, the user can provide a file in `.tsv` format with the first eigenvector. MultiMM would discretise it and convert it to compartments. Here we assume that positive values correspond to A compartment.
 
 ```txt
 chrom	start	end	E1
