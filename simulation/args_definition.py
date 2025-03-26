@@ -13,7 +13,6 @@ try:
     with importlib.resources.path('simulation.forcefields', 'ff.xml') as default_xml_path:
         default_xml_path = str(default_xml_path)
 except FileNotFoundError:
-    # If running in a development setup without the resource installed, fallback to a relative path
     default_xml_path = 'simulation/forcefields/ff.xml'
 
 @dataclass
@@ -151,6 +150,7 @@ args = ListOfArgs([
     Arg('GENE_TSV', help="A .tsv with genes and their locations in the genome.", type=str, default='', val=''),
     Arg('GENE_NAME', help="The name of the gene of interest.", type=str, default='', val=''),
     Arg('GENE_ID', help="The id of the gene of interest.", type=str, default='', val=''),
+    Arg('GENE_WINDOW', help="The window around of the area around the gene of interest.", type=int, default='200000', val='200000'),
     Arg('ATACSEQ_PATH', help="A .bw or .BigWig file path with atacseq data. It is not required.", type=str, default='', val=''),
     Arg('OUT_PATH', help="Output folder name.", type=str, default='results', val='results'),
     Arg('LOC_START', help="Starting region coordinate.", type=int, default='', val=''),
@@ -180,7 +180,7 @@ args = ListOfArgs([
     Arg('EV_USE_EXCLUDED_VOLUME', help="Use excluded volume.", type=bool, default='True', val='True'),
     Arg('EV_EPSILON', help="Epsilon parameter.", type=float, default='100.0', val='100.0'),
     Arg('EV_R_SMALL', help="Add something small in denominator to make it not exploding all the time.", type=float, default='0.05', val='0.05'),
-    Arg('EV_POWER', help="Power in the exponent of EV potential.", type=float, default='3.0', val='3.0'),
+    Arg('EV_POWER', help="Power in the exponent of EV potential.", type=float, default='6.0', val='6.0'),
     
     # Spherical container
     Arg('SC_USE_SPHERICAL_CONTAINER', help='Use Spherical container', type=bool, default='False', val='False'),

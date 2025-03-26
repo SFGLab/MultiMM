@@ -6,7 +6,7 @@ with open('README.md', 'r', encoding='utf-8') as f:
 
 setup(
     name='MultiMM',  # Package name
-    version='1.0.16',  # Version of the software
+    version='1.0.17',  # Version of the software
     description='A tool for chromatin modeling from nucleosomes to chromosomal territories.',
     long_description=long_description,
     long_description_content_type='text/markdown',
