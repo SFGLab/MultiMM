@@ -32,6 +32,7 @@ PyPI software: https://pypi.org/project/MultiMM/.
 
 ## Input Data
 
+### Loops (bedpe file)
 MultiMM relies on three types of datasets:
 
 - Loop interactions in `bedpe` format (mandatory).
@@ -48,6 +49,7 @@ chr10	101190000	101200000	chr10	101470000	101480000	181
 chr10	101600000	101605000	chr10	101805000	101810000	152
 ```
 
+### Compartments
 The file may contain interactions for all chromosomes, which MultiMM can automatically model. For single-cell data, users can provide a file with the second and third columns identical (the same for the fifth and sixth columns) and strength set to 1.
 
 For **(sub)compartment interactions**, the file should be in the format produced by the CALDER software: https://github.com/CSOgroup/CALDER2. Users do not need to run CALDER specifically, but the file format must match. The file should contain at least the first four columns with chromosome, regions, and the subcompartment label. Example:
@@ -59,9 +61,45 @@ chr1	1400001	1850000	A.1.1.1.1.2.1.2.2.2.1	1	.	1400001	1850000	#FF0000
 chr1	1850001	2100000	B.1.1.2.2.1.2.1	0.5	.	1850001	2100000	#DADAFF
 ```
 
+Alternatively, the user can provide a file in `.tsv` format with the first eigenvector. MultiMM would discretise it and convert it to compartments.
+
+```txt
+chrom	start	end	E1
+chr1	600000	700000	0.05836110001861745
+chr1	800000	900000	0.8317623736592369
+chr1	900000	1000000	0.9789303554074167
+chr1	1000000	1100000	1.060977133694018
+chr1	1100000	1200000	1.0742104160308021
+chr1	1200000	1300000	0.9966570829436122
+chr1	1300000	1400000	1.032129387572702
+chr1	1400000	1500000	1.145813878361721
+```
+
+### Nucleosomes
+
 For **ATAC-Seq data**, users should provide a file with p-values in BigWig format. The `pyBigWig` library is required, which does not work on Windows systems.
 
 **Note:** At present, MultiMM only works for human genome data. The code may run for other organisms with some debugging and modifications. We hope that it will be generalized in future versions. *MultiMM can run for different types of datasets. It is possible to call loops from any kind of experiment: Hi-C, scHi-C, ChIA-PET, Hi-ChIP. However, we cannot guarantee that the default choice of parameters is the most appropriate one for any dataset. Therefore, the user should test it and check the convergence of the algorithm for their own data. Before making any changes in the parameters, read the method paper carefully and try to understand the function of each force.*
+
+### Definition of a region based on a gene (optional)
+
+In case that you would like to model a region around a gene, it is enough if you load a `.tsv` file with genes and determine either the gene name or the gene id.
+
+The file should look like as the following one,
+
+```text
+gene_id	gene_name	chromosome	start	end
+ENSG00000160072	ATAD3B	chr1	1471765	1497848
+ENSG00000279928	DDX11L17	chr1	182696	184174
+ENSG00000228037		chr1	2581560	2584533
+ENSG00000142611	PRDM16	chr1	3069168	3438621
+ENSG00000284616		chr1	5301928	5307394
+ENSG00000157911	PEX10	chr1	2403964	2413797
+ENSG00000269896		chr1	2350414	2352820
+ENSG00000228463		chr1	257864	359681
+ENSG00000260972		chr1	5492978	5494674
+ENSG00000224340		chr1	10054445	10054781
+```
 
 ## Usage
 All the model's parameters are specified in a `config.ini` file. This file should have the following format:
@@ -158,8 +196,13 @@ Therefore, it is advisable to read the paper and understand well the meaning of 
 | N_BEADS                      | int          | 50000       | None          | Number of Simulation Beads. |
 | COMPARTMENT_PATH             | str          | None        | None          | It should be  a `.bed` file with subcompartments from Calder. |
 | LOOPS_PATH                   | str          | None        | None          | A `.bedpe` file path with loops. It is required. |
+| EIGENVECTOR_TSV   | str  | ''    | None   | Compartmentalization in the format of the first eigenvector of Hi-C in TSV data. |
 | ATACSEQ_PATH                 | str          | None        | None          | A `.bw` or `.BigWig` file path with atacseq data for nucleosome interpolation. It is not required. |
 | OUT_PATH                     | str          | results     | None          | Output folder name. |
+| GENE_TSV      | str  | ''    | None   | A .tsv with genes and their locations in the genome. |
+| GENE_NAME     | str  | ''    | None   | The name of the gene of interest. |
+| GENE_ID       | str  | ''    | None   | The id of the gene of interest. |
+| GENE_WINDOW   | int  | 200000| bp     | The window around the area of the gene of interest. |
 | LOC_START                    | int          | None        | None          | Starting region coordinate (*in case that you do not want to model the whole genome*). |
 | LOC_END                      | int          | None        | None          | Ending region coordinate (*in case that you do not want to model the whole genome*). |
 | CHROM                        | str          | None        | None          | Chromosome that corresponds the the modelling region of interest (*in case that you do not want to model the whole genome*). |

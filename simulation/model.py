@@ -37,11 +37,11 @@ class MultiMM:
             if args.GENE_ID!=None:
                 print('Gene ID:',args.GENE_ID)
                 chrom, coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_id=args.GENE_ID,window_size=args.GENE_WINDOW)
-                print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_ID}.')
+                print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_ID}.\n')
             elif args.GENE_NAME!=None:
                 print('Gene name:',args.GENE_NAME)
                 chrom, coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_name=args.GENE_NAME,window_size=args.GENE_WINDOW)
-                print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_NAME}.')
+                print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_NAME}.\n')
             else:
                 raise InterruptedError('You did not provide gene name or ID.')
         

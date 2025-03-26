@@ -292,9 +292,8 @@ def import_mns_from_bedpe(bedpe_file, N_beads, coords=None, chrom=None, threshol
     ms, ns = mns[0,:], mns[1,:]
     ms[ms>=N_beads],ns[ns>=N_beads]=N_beads-1, N_beads-1
     ms,ns,cs = ms[ns>ms+min_loop_dist], ns[ns>ms+min_loop_dist], cs[ns>ms+min_loop_dist]
-    print(ms)
     ds = 0.1+0.1*min_max_trans(1/cs**(2/3)) if not np.all(cs==cs[0]) else np.ones(len(ms))
-
+    
     # Perform some data cleaning
     mask = (ns-ms)!=0
     ms = ms[mask]
