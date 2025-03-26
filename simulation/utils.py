@@ -6,6 +6,7 @@ from matplotlib.pyplot import figure
 from matplotlib.colors import to_hex
 import matplotlib.pyplot as plt
 import pandas as pd
+import re
 import numpy as np
 from scipy.spatial import distance
 from tqdm import tqdm
@@ -291,7 +292,8 @@ def import_mns_from_bedpe(bedpe_file, N_beads, coords=None, chrom=None, threshol
     ms, ns = mns[0,:], mns[1,:]
     ms[ms>=N_beads],ns[ns>=N_beads]=N_beads-1, N_beads-1
     ms,ns,cs = ms[ns>ms+min_loop_dist], ns[ns>ms+min_loop_dist], cs[ns>ms+min_loop_dist]
-    ds = 0.1+0.1*min_max_trans(1/cs**2/3) if not np.all(cs==cs[0]) else np.ones(len(ms)) 
+    print(ms)
+    ds = 0.1+0.1*min_max_trans(1/cs**(2/3)) if not np.all(cs==cs[0]) else np.ones(len(ms))
 
     # Perform some data cleaning
     mask = (ns-ms)!=0
@@ -416,7 +418,7 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
     
     return genomewide_signal
 
-def get_gene_region(gene_tsv, gene_id=None, gene_name=None, window_size = 100000):
+def get_gene_region(gene_tsv, gene_id=None, gene_name=None, window_size = 500000):
     '''
     Input a gene tsv and ouputs a region around the gene
     '''
@@ -428,9 +430,9 @@ def get_gene_region(gene_tsv, gene_id=None, gene_name=None, window_size = 100000
         end = genes[genes['gene_id']==gene_id]['end'].values[0]
     elif gene_name!=None:
         print('Region will be define based on gene name.')
-        chrom = genes[genes['gene_id']==gene_id]['chromosome'].values[0]
-        start = genes[genes['gene_id']==gene_id]['start'].values[0]
-        end = genes[genes['gene_id']==gene_id]['end'].values[0]
+        chrom = genes[genes['gene_name']==gene_name]['chromosome'].values[0]
+        start = genes[genes['gene_name']==gene_name]['start'].values[0]
+        end = genes[genes['gene_name']==gene_name]['end'].values[0]
     
     region = [max(0,int(start-window_size)), int(end+window_size)]
     return chrom, region
@@ -449,33 +451,59 @@ def discretize_array(arr, thresholds):
     thresholds = np.sort(thresholds)
     return np.digitize(arr, bins=thresholds, right=False)
 
-def get_eigenvector(eigenvec_tsv, chrom, region, N_beads, viz=False):
-    resolution = (region[1]-region[0])//N_beads
+def chrom_sort_key(chrom):
+    match = re.match(r'chr(\d+|X|Y)', chrom)
+    val = match.group(1)
+    return int(val) if val.isdigit() else {'X': 23, 'Y': 24}[val]
+
+def get_eigenvector(eigenvec_tsv, N_beads, chrom=None, region=None, viz=False):
+    # Import dataset
     eigenvector = pd.read_csv(eigenvec_tsv,sep='\t')
-    n_chroms = np.unique(eigenvector['chrom'].values)
-    chrom_idxs = [0]
+    chroms = np.unique(eigenvector['chrom'].values)
+    chroms = sorted(chroms, key=chrom_sort_key)
+    n_chroms = len(np.unique(eigenvector['chrom'].values))
+
+    # Determine the ends of the chromosomes
+    chrom_ends = [0]
     for i in range(n_chroms):
-        chr_idx = int(np.max(eigenvector[eigenvector['chrom']==f'chr{i+1}'].values))
-        chrom_idxs.append(chr_idx)
-    chrom_idxs = np.array(chrom_idxs)
-    eigenvector = eigenvector[(eigenvector['chrom']==chrom)].reset_index(drop=True)
-    max_abs_value = np.max(np.abs(eigenvector['E1'].values))
-    thres = np.linspace(-max_abs_value, max_abs_value, 4)
+        chr_end = max(eigenvector[eigenvector['chrom'] == chroms[i]]['end'].values)
+        chrom_ends.append(chr_end)
+    chrom_ends = np.array(chrom_ends)
+    eigenvector = eigenvector[eigenvector['chrom']==chrom].reset_index(drop=True)
+    eigenvec_array = eigenvector['E1'].values
+
+    # Determine spins by digitalizing array
+    thres = np.linspace(np.min(eigenvec_array), np.max(eigenvec_array), 5)[:4]
     s_array = discretize_array(eigenvec_array, thres)-2
+    s_array[s_array<=0] = s_array[s_array<=0]-1
     eigenvector['s'] = s_array
-    eigenvector = eigenvector[(eigenvector['start']<region[0])&(eigenvector['end']>region[0])].reset_index(drop=True)
-    eigenvector['start'] = (eigenvector['start']-region[0])//resolution
-    eigenvector['end'] = (eigenvector['end']-region[0])//resolution
+
+    # Keep only the region of interest
+    if chrom!=None:
+        resolution = (region[1]-region[0])//N_beads
+        eigenvector = eigenvector[(eigenvector['end']>region[0])&(eigenvector['start']<region[1])].reset_index(drop=True)
+        eigenvector['start'] = (eigenvector['start']-region[0])//resolution
+        eigenvector['end'] = (eigenvector['end']-region[0])//resolution
+    else:
+        for i in range(n_chroms):
+            eigenvector[eigenvector['chrom']==chroms[i]]['start']=eigenvector[eigenvector['chrom']==chroms[i]]['start']+chrom_ends[i]
+            eigenvector[eigenvector['chrom']==chroms[i]]['end']=eigenvector[eigenvector['chrom']==chroms[i]]['end']+chrom_ends[i]
+        resolution = np.max(eigenvector['end'].values)//N_beads
+        eigenvector['start'] = eigenvector['start']//resolution
+        eigenvector['end'] = eigenvector['end']//resolution
     eigenvec_array = eigenvector['E1'].values
     starts, ends = eigenvector['start'].values, eigenvector['end'].values
+    starts[0], ends[-1] = 0, N_beads
+    
     Ss = eigenvector['s'].values
     spins = np.zeros(N_beads)
     for i in range(len(starts)):
-         spins[starts[i]:ends[i]] = Ss[i]
+        spins[starts[i]:ends[i]] = Ss[i]
 
+    # In case that you want to see the eigenvector
     if viz:
         plt.plot(eigenvec_array)
         plt.ylabel('Eigenvector')
         plt.xlabel('Genomic Distance')
         plt.show()
-    return spins, chrom_idxs
+    return spins, chrom_ends

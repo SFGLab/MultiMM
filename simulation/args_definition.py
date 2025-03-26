@@ -10,7 +10,7 @@ from openmm.unit import Quantity
 
 # Dynamically set the default path to the XML file in the package
 try:
-    with importlib.resources.path('loopsage.forcefields', 'classic_sm_ff.xml') as default_xml_path:
+    with importlib.resources.path('simulation.forcefields', 'ff.xml') as default_xml_path:
         default_xml_path = str(default_xml_path)
 except FileNotFoundError:
     # If running in a development setup without the resource installed, fallback to a relative path

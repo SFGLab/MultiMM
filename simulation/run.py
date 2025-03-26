@@ -9,7 +9,7 @@ from .args_definition import *
 from .model import *
 
 def args_tests(args):
-    if args.LOOPS_PATH==NONE or args.LOOPS_PATH=='':
+    if args.LOOPS_PATH==None or args.LOOPS_PATH=='':
         raise InterruptedError('\033[91mMultiMM cannot run without providing interactions in .bedpe format!!!\033[0m')
     elif (args.COMPARTMENT_PATH==None or args.COMPARTMENT_PATH=='') and args.COB_USE_COMPARTMENT_BLOCKS:
         raise InterruptedError('\033[91mYou cannot model compartments without providing a file in .bed format. Either disable COB_USE_COMPARTMENT_BLOCKS or import data from some compartment caller according to the documentation.\033[0m')
