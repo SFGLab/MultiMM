@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editors
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Compiled
+*.out
+*.o
+*.so
+
+# Archives
+*.zip
+*.tar.gz
+*.tar.bz2
+*.7z
+
+# Backup files
+*~
+
+# Virtualenvs
+env/
+venv/
+.venv/
+
+# Slurm output (adjust to match pattern)
+slurm-*.out
+
+# IDEs
+.vscode/
+.idea/
+
+# Custom temp folders
+tmp/
+temp/
