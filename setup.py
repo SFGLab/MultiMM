@@ -16,7 +16,6 @@ setup(
     license='GNU General Public License v3.0',
     packages=find_packages(include=['simulation', 'simulation.*']),
     include_package_data=True,
-    packages=find_packages(),  # Automatically finds all packages and sub-packages
     install_requires=[  # List your package dependencies here
         'numpy',
         'scipy',
