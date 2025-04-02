@@ -6,7 +6,7 @@ with open('README.md', 'r', encoding='utf-8') as f:
 
 setup(
     name='MultiMM',  # Package name
-    version='1.0.17',  # Version of the software
+    version='1.0.18',  # Version of the software
     description='A tool for chromatin modeling from nucleosomes to chromosomal territories.',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -14,6 +14,8 @@ setup(
     author_email='s.korsak@datascience.edu.pl',
     url='https://github.com/SFGLab/MultiMM',  # GitHub repository URL
     license='GNU General Public License v3.0',
+    packages=find_packages(include=['simulation', 'simulation.*']),
+    include_package_data=True,
     packages=find_packages(),  # Automatically finds all packages and sub-packages
     install_requires=[  # List your package dependencies here
         'numpy',
