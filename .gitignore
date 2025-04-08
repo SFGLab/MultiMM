@@ -50,3 +50,5 @@ slurm-*.out
 # Custom temp folders
 tmp/
 temp/
+*.pyc
+__pycache__/
