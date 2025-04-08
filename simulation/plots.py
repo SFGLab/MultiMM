@@ -76,7 +76,8 @@ def polyline_from_points(points):
     poly.lines = the_cell
     return poly
 
-def viz_structure(V, colors=None, r=0.1, cmap='coolwarm'):
+def viz_structure(V, colors=None, r=0.1, cmap='coolwarm', save_path=None):
+    """Visualize structure V and optionally save it to a file."""
     polyline = polyline_from_points(V)
     polyline["scalars"] = np.arange(polyline.n_points)
 
@@ -85,16 +86,23 @@ def viz_structure(V, colors=None, r=0.1, cmap='coolwarm'):
         color_values = (colors - np.min(colors)) / (np.max(colors) - np.min(colors))  # Normalize colors
         polyline["colors"] = color_values  # Set colors as point scalars
         polymer = polyline.tube(radius=r)
-        polymer.plot(smooth_shading=True, cmap=cmap, scalars="colors", show_scalar_bar=False)
     else:
         polymer = polyline.tube(radius=r)
-        polymer.plot(smooth_shading=True, show_scalar_bar=False)
+
+    # Create plotter
+    plotter = pv.Plotter(off_screen=True if save_path else False)
+    plotter.add_mesh(polymer, smooth_shading=True, cmap=cmap, scalars="colors" if colors is not None else None, show_scalar_bar=False)
+
+    if save_path:
+        plotter.show(screenshot=save_path)
+    else:
+        plotter.show()
 
 def viz_chroms(sim_path,r=0.1,comps=True):
-    cif_path = sim_path + '/MultiMM_minimized.cif'
-    chrom_idxs_path = sim_path + '/chrom_idxs.npy'
-    chrom_comps_path = sim_path + '/compartments.npy'
-    chrom_ends_path = sim_path + '/chrom_lengths.npy'
+    cif_path = sim_path + 'model/MultiMM_minimized.cif'
+    chrom_idxs_path = sim_path + 'metadata/chrom_idxs.npy'
+    chrom_comps_path = sim_path + 'metadata/compartments.npy'
+    chrom_ends_path = sim_path + 'metadata/chrom_lengths.npy'
     chrom_idxs = np.load(chrom_idxs_path)
     if comps: comps = np.load(chrom_comps_path)
     chrom_ends = np.load(chrom_ends_path)
@@ -104,8 +112,8 @@ def viz_chroms(sim_path,r=0.1,comps=True):
     for i in range(len(chrom_ends)-1):
         start, end = chrom_ends[i], chrom_ends[i+1]
         chroms[start:end] = chrom_idxs[i]
-    viz_structure(V,chroms[:len(V)],cmap='gist_ncar',r=r)
-    if comps: viz_structure(V,comps[:len(V)],cmap='coolwarm',r=r)
+    viz_structure(V,chroms[:len(V)],cmap='gist_ncar',r=r,save_path=sim_path+'plots/minimized_structure_chromosomes.png')
+    if comps: viz_structure(V,comps[:len(V)],cmap='coolwarm',r=r,save_path=sim_path+'plots/minimized_structure_compartments.png')
 
 def get_heatmap(cif_file,viz=False,th=1,save=False,save_path=None,vmax=1,vmin=0):
     '''

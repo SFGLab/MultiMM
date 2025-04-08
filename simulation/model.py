@@ -19,17 +19,23 @@ class MultiMM:
         ------------
         args: list of arguments imported from config.ini file.
         '''
+        # Import args
+        self.args  = args
+
         # Output folder
         self.ms, self.ns, self.ds, self.chr_ends, self.Cs = None, None, None, None, None
         
         # Make save directory
         self.save_path = args.OUT_PATH+'/'
         # Create main save directory and subdirectories if they don't exist
-        os.makedirs(os.path.join(self.save_path, 'ensembles'), exist_ok=True)
-        os.makedirs(os.path.join(self.save_path, 'chromosomes'), exist_ok=True)
+        os.makedirs(os.path.join(self.save_path, 'md_frames'), exist_ok=True)
         os.makedirs(os.path.join(self.save_path, 'plots'), exist_ok=True)
-
-        self.args  = args
+        if args.GENE_ID==None and args.GENE_NAME==None and args.LOC_START==None: os.makedirs(os.path.join(self.save_path, 'plots','chromosomes'), exist_ok=True)
+        os.makedirs(os.path.join(self.save_path, 'metadata'), exist_ok=True)
+        os.makedirs(os.path.join(self.save_path, 'model'), exist_ok=True)
+        if args.GENE_ID==None and args.GENE_NAME==None and args.LOC_START==None: os.makedirs(os.path.join(self.save_path, 'model','chromosomes'), exist_ok=True)
+        save_args_to_txt(self.args,args.OUT_PATH+'/metadata/parameters.txt')
+        
         chrom = args.CHROM
         coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
 
@@ -77,7 +83,7 @@ class MultiMM:
             else:
                 raise InterruptedError('ATAC-Seq file should be in .bw or .BigWig format.')
         
-        if self.args.CHROM=='': write_chrom_colors(self.chr_ends,self.chrom_idxs,name=self.save_path+'MultiMM_chromosome_colors.cmd')
+        if self.args.CHROM=='': write_chrom_colors(self.chr_ends,self.chrom_idxs,name=self.save_path+'metadata/MultiMM_chromosome_colors.cmd')
 
         # Chromosomes
         self.chrom_spin, self.chrom_strength = np.zeros(self.args.N_BEADS), np.zeros(self.args.N_BEADS)
@@ -206,11 +212,11 @@ class MultiMM:
         if self.args.BUILD_INITIAL_STRUCTURE:
             print('\nCreating initial structure...')
             comp_mode = 'compartments' if np.all(self.Cs!=None) and len(np.unique(self.Cs))<=3 else 'subcompartments'
-            if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'MultiMM_compartment_colors.cmd')
+            if np.all(self.Cs!=None): write_cmm(self.Cs,name=self.save_path+'metadata/MultiMM_compartment_colors.cmd')
             pdb_content = build_init_mmcif(n_dna=self.args.N_BEADS,chrom_ends=self.chr_ends,\
-                                           path=self.save_path,curve=self.args.INITIAL_STRUCTURE_TYPE,scale=(self.radius1+self.radius2)/2)
+                                           path=self.save_path+'metadata/',curve=self.args.INITIAL_STRUCTURE_TYPE,scale=(self.radius1+self.radius2)/2)
             print('---Done!---')
-        self.pdb = PDBxFile(self.save_path+'MultiMM_init.cif') if self.args.INITIAL_STRUCTURE_path==None or build_init_mmcif else PDBxFile(self.args.INITIAL_STRUCTURE_PATH)
+        self.pdb = PDBxFile(self.save_path+'metadata/MultiMM_init.cif') if self.args.INITIAL_STRUCTURE_path==None or build_init_mmcif else PDBxFile(self.args.INITIAL_STRUCTURE_PATH)
         self.mass_center = np.average(get_coordinates_mm(self.pdb.positions),axis=0)
         forcefield = ForceField(self.args.FORCEFIELD_PATH)
         self.system = forcefield.createSystem(self.pdb.topology)
@@ -251,10 +257,13 @@ class MultiMM:
         # Try to use CUDA or OpenCL, fall back to CPU if not available
         try:
             platform = mm.Platform.getPlatformByName(self.args.PLATFORM)
-            if platform.getName() not in ["CUDA", "OpenCL"]:
-                raise Exception(f"{self.args.PLATFORM} is not CUDA or OpenCL")
+            
+            # Only check if user *wanted* GPU
+            if self.args.PLATFORM in ["CUDA", "OpenCL"]:
+                if platform.getName() not in ["CUDA", "OpenCL"]:
+                    raise Exception(f"{self.args.PLATFORM} is not CUDA or OpenCL")
         except Exception as e:
-            print(f"Failed to find CUDA or OpenCL: {e}. Falling back to CPU.")
+            print(f"Failed to find {self.args.PLATFORM}: {e}. Falling back to CPU.")
             platform = mm.Platform.getPlatformByName('CPU')
         
         # Run the simulation
@@ -272,7 +281,7 @@ class MultiMM:
 
         # Save the minimized structure
         self.state = self.simulation.context.getState(getPositions=True)
-        PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+'MultiMM_minimized.cif', 'w'))
+        PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+'model/MultiMM_minimized.cif', 'w'))
         print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)//3600:.0f} hours, {(time.time() - start_time)%3600//60:.0f} minutes and  {(time.time() - start_time)%60:.0f} seconds. :D ---\n")
         print('---Done!---')
 
@@ -280,30 +289,30 @@ class MultiMM:
         V = get_coordinates_mm(self.state.getPositions())
         for i in range(len(self.chr_ends)-1):
             write_mmcif_chrom(coords=10*V[self.chr_ends[i]:self.chr_ends[i+1]],\
-                        path=self.save_path+f'chromosomes/MultiMM_minimized_{chrs[self.chrom_idxs[i]]}.cif')
+                        path=self.save_path+f'model/chromosomes/MultiMM_minimized_{chrs[self.chrom_idxs[i]]}.cif')
 
     def run_md(self):
         self.simulation.reporters.append(StateDataReporter(stdout, self.args.SIM_SAMPLING_STEP, step=True, totalEnergy=True, kineticEnergy=True ,potentialEnergy=True, temperature=True, separator='\t'))
-        self.simulation.reporters.append(DCDReporter(self.save_path+'MultiMM_annealing.dcd', self.args.SIM_N_STEPS//self.args.TRJ_FRAMES))
+        self.simulation.reporters.append(DCDReporter(self.save_path+'metadata/MultiMM_annealing.dcd', self.args.SIM_N_STEPS//self.args.TRJ_FRAMES))
         print('Running relaxation...')
         start = time.time()
         for i in range(self.args.SIM_N_STEPS//self.args.SIM_SAMPLING_STEP):
             self.simulation.step(self.args.SIM_SAMPLING_STEP)
             self.state = self.simulation.context.getState(getPositions=True)
-            PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+f'ensembles/ens_{i+1}.cif', 'w'))
+            PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+f'md_frames/frame_{i+1}.cif', 'w'))
         end = time.time()
         elapsed = end - start
         self.state = self.simulation.context.getState(getPositions=True)
-        PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+'MultiMM_afterMD.cif', 'w'))
+        PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+'model/MultiMM_afterMD.cif', 'w'))
         print(f'Everything is done! Simulation finished succesfully!\nMD finished in {elapsed//3600:.0f} hours, {elapsed%3600//60:.0f} minutes and  {elapsed%60:.0f} seconds. ---\n')
 
     def nuc_interpolation(self):
         print('Running nucleosome interpolation...')
         start = time.time()
-        nuc_interpol = NucleosomeInterpolation(get_coordinates_cif(self.save_path+'MultiMM_minimized.cif'),self.atacseq,\
+        nuc_interpol = NucleosomeInterpolation(get_coordinates_cif(self.save_path+'model/MultiMM_minimized.cif'),self.atacseq,\
                     self.args.MAX_NUCS_PER_BEAD, self.args.NUC_RADIUS, self.args.POINTS_PER_NUC, self.args.PHI_NORM)
         Vnuc = nuc_interpol.interpolate_structure_with_nucleosomes()
-        write_mmcif_chrom(Vnuc,path=self.save_path+f'MultiMM_minimized_with_nucs.cif')
+        write_mmcif_chrom(Vnuc,path=self.save_path+f'model/MultiMM_minimized_with_nucs.cif')
         end = time.time()
         elapsed = end - start
         print(f'Nucleosome interpolation finished succesfully in {elapsed//3600:.0f} hours, {elapsed%3600//60:.0f} minutes and  {elapsed%60:.0f} seconds.')
@@ -333,15 +342,30 @@ class MultiMM:
         
         # Run simulation / Energy minimization
         self.min_energy()
-        self.save_chromosomes() 
+        if args.GENE_ID==None and args.GENE_NAME==None and args.LOC_START==None: self.save_chromosomes() 
         
         # Run molecular dynamics
         if self.args.SIM_RUN_MD: self.run_md()
         
         # Make diagnostic plots
-        if self.args.SAVE_PLOTS and np.any(self.Cs!=None):
+        if self.args.SAVE_PLOTS:
             print('Creating and saving plots...')
-            plot_projection(get_coordinates_mm(self.state.getPositions()),self.Cs,save_path=self.save_path)
+            is_gw = args.GENE_ID==None and args.GENE_NAME==None and args.LOC_START==None
+            is_comp = np.any(self.Cs!=None)
+            if is_gw:
+                if is_comp: plot_projection(get_coordinates_mm(self.state.getPositions()),self.Cs,save_path=self.save_path)
+                viz_chroms(self.save_path,r=0.2,comps=is_comp)
+                for i in range(len(self.chr_ends)-1):
+                    V = get_coordinates_cif(self.save_path+f'model/chromosomes/MultiMM_minimized_{chrs[self.chrom_idxs[i]]}.cif')
+                    viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+f'plots/chromosomes/{chrs[self.chrom_idxs[i]]}_minimized_structure.png')
+            else:
+                V = get_coordinates_cif(self.save_path+'metadata/MultiMM_init.cif')
+                viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/initial_structure.png')
+                V = get_coordinates_cif(self.save_path+'model/MultiMM_minimized.cif')
+                viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/minimized_structure.png')
+                if self.args.SIM_RUN_MD:
+                    V = get_coordinates_cif(self.save_path+'model/MultiMM_afterMD.cif')
+                    viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/structure_afterMD.png')
             print('Done! :)\n')
         
         # Run nucleosome interpolation

@@ -172,7 +172,7 @@ def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path='',shuffle=Fals
     resolution = chrom_ends[-1]//N_beads if chrom==None else (coords[1]-coords[0])//N_beads
     chrom_ends = np.array(chrom_ends)//resolution
     chrom_ends[-1] = N_beads
-    np.save(save_path+'chrom_lengths.npy',chrom_ends)
+    np.save(save_path+'metadata/chrom_lengths.npy',chrom_ends)
     if chrom!=None:
         comps_df[1], comps_df[2] = comps_df[1]-coords[0], comps_df[2]-coords[0]
     comps_df[1], comps_df[2] = comps_df[1]//resolution, comps_df[2]//resolution
@@ -191,8 +191,8 @@ def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path='',shuffle=Fals
             val = -1
         comps_array[comps_df[1][i]:comps_df[2][i]] = val
 
-    np.save(save_path+'compartments.npy',comps_array)
-    np.save(save_path+'chrom_idxs.npy',chrom_idxs)
+    np.save(save_path+'metadata/compartments.npy',comps_array)
+    np.save(save_path+'metadata/chrom_idxs.npy',chrom_idxs)
     print('Done')
     return comps_array.astype(int), chrom_ends.astype(int), chrom_idxs.astype(int)
 
@@ -275,7 +275,7 @@ def import_mns_from_bedpe(bedpe_file, N_beads, coords=None, chrom=None, threshol
     resolution = int(np.max(loops[5].values))//N_beads if chrom==None else (coords[1]-coords[0])//N_beads
     chrom_ends = np.array(chrom_ends)//resolution
     chrom_ends[-1] = N_beads
-    np.save(path+'chrom_lengths.npy',chrom_ends)
+    np.save(path+'metadata/chrom_lengths.npy',chrom_ends)
     if chrom!=None:
         loops[1], loops[2], loops[4], loops[5] = loops[1]-coords[0], loops[2]-coords[0], loops[4]-coords[0], loops[5]-coords[0]
     loops[1], loops[2], loops[4], loops[5] = loops[1]//resolution, loops[2]//resolution, loops[4]//resolution, loops[5]//resolution
@@ -308,10 +308,10 @@ def import_mns_from_bedpe(bedpe_file, N_beads, coords=None, chrom=None, threshol
     print('Average loop size:',avg_ls)
 
     N_loops = len(ms)
-    np.save(path+'chrom_idxs.npy',chrom_idxs)
-    np.save(path+'ms.npy',ms)
-    np.save(path+'ns.npy',ns)
-    np.save(path+'ds.npy',ds)
+    np.save(path+'metadata/chrom_idxs.npy',chrom_idxs)
+    np.save(path+'metadata/ms.npy',ms)
+    np.save(path+'metadata/ns.npy',ns)
+    np.save(path+'metadata/ds.npy',ds)
     print('Done! Number of loops is ',N_loops)
     return ms.astype(int), ns.astype(int), ds, chrom_ends.astype(int), chrom_idxs.astype(int)
 
@@ -366,7 +366,7 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
         lengths = np.array(lengths)
         resolution = chrom_length//(2*N_beads)
         polymer_lengths = lengths//resolution
-        np.save(path+'chrom_lengths.npy',polymer_lengths)
+        np.save(path+'metadata/chrom_lengths.npy',polymer_lengths)
 
     # Import the downgraded signal
     print('Importing bw signal...')
@@ -413,7 +413,7 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
         plt.grid()
         plt.show()
 
-    np.save(path+'signal.npy',genomewide_signal)
+    np.save(path+'metadata/signal.npy',genomewide_signal)
     
     return genomewide_signal
 
@@ -454,6 +454,12 @@ def chrom_sort_key(chrom):
     match = re.match(r'chr(\d+|X|Y)', chrom)
     val = match.group(1)
     return int(val) if val.isdigit() else {'X': 23, 'Y': 24}[val]
+
+def save_args_to_txt(args, filename):
+    """Save all arguments and their values into a text file."""
+    with open(filename, 'w') as f:
+        for arg in args:
+            f.write(f"{arg.name} = {arg.val}\n")
 
 def get_eigenvector(eigenvec_tsv, N_beads, chrom=None, region=None, viz=False):
     # Import dataset

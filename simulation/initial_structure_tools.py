@@ -282,7 +282,7 @@ def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',curve='hilbert',scale=5):
 
     with open(mmcif_file_name, 'w') as f:
         f.write(mmcif_file_content)
-
+    
     if psf:
         generate_psf(n_dna,path+'MultiMM.psf')
 

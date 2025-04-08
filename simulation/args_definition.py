@@ -132,7 +132,7 @@ available_platforms = [mm.Platform.getPlatform(i).getName() for i in range(mm.Pl
 
 args = ListOfArgs([
     # Platform settings
-    Arg('PLATFORM', help=f"name of the platform. Available choices: {' '.join(available_platforms)}", type=str, default='', val=''),
+    Arg('PLATFORM', help=f"name of the platform. Available choices: {' '.join(available_platforms)}", type=str, default='CPU', val='CPU'),
     Arg('DEVICE', help="device index for CUDA or OpenCL (count from 0)", type=str, default='', val=''),
     
     # Input data
@@ -224,7 +224,7 @@ args = ListOfArgs([
     
     # Simulation parameters
     Arg('SIM_RUN_MD', help='Do you want to run MD simulation?', type=bool, default='False', val='False'),
-    Arg('SIM_N_STEPS', help='Number of steps in MD simulation', type=int, default='', val=''),
+    Arg('SIM_N_STEPS', help='Number of steps in MD simulation', type=int, default='10000', val='10000'),
     Arg('SIM_ERROR_TOLERANCE', help='Error tolerance for variable MD simulation', type=float, default='0.01', val='0.01'),
     Arg('SIM_AMD_ALPHA', help='Alpha of AMD simulation.', type=float, default='100.0', val='100.0'),
     Arg('SIM_AMD_E', help='E (energy) of AMD simulation.', type=float, default='1000.0', val='1000.0'),

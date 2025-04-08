@@ -184,7 +184,7 @@ Therefore, it is advisable to read the paper and understand well the meaning of 
 
 | Argument Name                | Type         | Value       | Units         | Description |
 |------------------------------|--------------|-------------|---------------|-------------|
-| PLATFORM                     | str          | None        | None          | name of the platform. Available choices: CPU, OpenCL, CUDA. |
+| PLATFORM                     | str          | CPU        | CPU          | name of the platform. Available choices: CPU, OpenCL, CUDA. |
 | DEVICE                       | str          | None        | None          | device index for CUDA or OpenCL (count from 0) |
 | INITIAL_STRUCTURE_PATH       | str          | None        | None          | Path to CIF file. |
 | BUILD_INITIAL_STRUCTURE      | bool         | True        | None          | To build a new initial structure. |
@@ -249,7 +249,7 @@ Therefore, it is advisable to read the paper and understand well the meaning of 
 | POINTS_PER_NUC               | int          | 20          | None          | The number of points that consist a nucleosome helix. |
 | PHI_NORM                     | float        | pi/5        | None          | Zig zag angle. |
 | SIM_RUN_MD                   | bool         | False       | None          | Do you want to run MD simulation? |
-| SIM_N_STEPS                  | int          | None        | None          | Number of steps in MD simulation |
+| SIM_N_STEPS                  | int          | 10000        | None          | Number of steps in MD simulation |
 | SIM_ERROR_TOLERANCE          | float        | 0.01        | None          | Error tolerance for variable MD simulation |
 | SIM_AMD_ALPHA                | float        | 100.0       | kJ/mol          | Alpha of AMD simulation. |
 | SIM_AMD_E                    | float        | 1000.0      | kJ/mol          | E (energy) of AMD simulation. |
