@@ -79,8 +79,6 @@ chr1	1400000	1500000	1.145813878361721
 
 For **ATAC-Seq data**, users should provide a file with p-values in BigWig format. The `pyBigWig` library is required, which does not work on Windows systems.
 
-**Note:** At present, MultiMM only works for human genome data. The code may run for other organisms with some debugging and modifications. We hope that it will be generalized in future versions. *MultiMM can run for different types of datasets. It is possible to call loops from any kind of experiment: Hi-C, scHi-C, ChIA-PET, Hi-ChIP. However, we cannot guarantee that the default choice of parameters is the most appropriate one for any dataset. Therefore, the user should test it and check the convergence of the algorithm for their own data. Before making any changes in the parameters, read the method paper carefully and try to understand the function of each force.*
-
 ### Definition of a region based on a gene (optional)
 
 In case that you would like to model a region around a gene, it is enough if you load a `.tsv` file with genes and determine either the gene name or the gene id.
@@ -100,6 +98,8 @@ ENSG00000228463		chr1	257864	359681
 ENSG00000260972		chr1	5492978	5494674
 ENSG00000224340		chr1	10054445	10054781
 ```
+
+> **Note:** At present, MultiMM only works for human genome data. The code may run for other organisms with some debugging and modifications. We hope that it will be generalized in future versions. *MultiMM can run for different types of datasets. It is possible to call loops from any kind of experiment: Hi-C, scHi-C, ChIA-PET, Hi-ChIP. However, we cannot guarantee that the default choice of parameters is the most appropriate one for any dataset. Therefore, the user should test it and check the convergence of the algorithm for their own data. Before making any changes in the parameters, read the method paper carefully and try to understand the function of each force.*
 
 ## Usage
 All the model's parameters are specified in a `config.ini` file. This file should have the following format:
@@ -186,6 +186,7 @@ Therefore, it is advisable to read the paper and understand well the meaning of 
 |------------------------------|--------------|-------------|---------------|-------------|
 | PLATFORM                     | str          | CPU        | CPU          | name of the platform. Available choices: CPU, OpenCL, CUDA. |
 | DEVICE                       | str          | None        | None          | device index for CUDA or OpenCL (count from 0) |
+| MAGIC_ARGUMENT               | str          | None        | None          | Helping function to specify parameters of simulation. Choose 'GENE', 'CHROM' or 'GW' depending on the resolution of interest. |
 | INITIAL_STRUCTURE_PATH       | str          | None        | None          | Path to CIF file. |
 | BUILD_INITIAL_STRUCTURE      | bool         | True        | None          | To build a new initial structure. |
 | INITIAL_STRUCTURE_TYPE       | str          | hilbert     | None          | you can choose between: hilbert, circle, rw, confined_rw, self_avoiding_rw, helix, spiral, sphere, knot. |

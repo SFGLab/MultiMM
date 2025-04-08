@@ -134,6 +134,7 @@ args = ListOfArgs([
     # Platform settings
     Arg('PLATFORM', help=f"name of the platform. Available choices: {' '.join(available_platforms)}", type=str, default='CPU', val='CPU'),
     Arg('DEVICE', help="device index for CUDA or OpenCL (count from 0)", type=str, default='', val=''),
+    Arg('MAGIC_ARGUMENT', help="Choose 'GENE' or 'REGION' for gene or TAD level, 'CHROM' for chromosome leve, and 'GW' for genome level. It will setup some parameters for you and print you helpful comments.", type=str, default='', val=''),
     
     # Input data
     Arg('INITIAL_STRUCTURE_PATH', help="Path to CIF file.", type=str, default='', val=''),

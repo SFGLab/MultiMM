@@ -21,6 +21,7 @@ class MultiMM:
         '''
         # Import args
         self.args  = args
+        self.convenient_argument_changer()
 
         # Output folder
         self.ms, self.ns, self.ds, self.chr_ends, self.Cs = None, None, None, None, None
@@ -91,6 +92,44 @@ class MultiMM:
             for i in range(len(self.chr_ends)-1):
                 self.chrom_spin[self.chr_ends[i]:self.chr_ends[i+1]] = self.chrom_idxs[i]
                 self.chrom_strength[self.chr_ends[i]:self.chr_ends[i+1]] = chrom_strength[i]
+
+    def convenient_argument_changer(self):
+        self.args.NUC_DO_INTERPOLATION = False
+        self.args.ATACSEQ_PATH = None
+        if self.args.MAGIC_ARGUMENT=='GENE' or self.args.MAGIC_ARGUMENT=='REGION' or self.args.MAGIC_ARGUMENT=='TAD':
+            print('\033[91m' + 'MAGIC COMMENT: For gene level it is needed to provide a loops_path, a gene_tsv file, and a gene_name or gene_id to specify the target gene of interest.'+ '\033[0m')
+            self.args.N_BEADS=1000
+            self.args.SC_USE_SPHERICAL_CONTAINER=False
+            self.args.CHB_USE_CHROMOSOMAL_BLOCKS=False
+            self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS=False
+            self.args.COB_USE_COMPARTMENT_BLOCKS=False
+            self.args.IBL_USE_B_LAMINA_INTERACTION=False
+            self.args.CF_USE_CENTRAL_FORCE=False
+            self.args.SHUFFLE_CHROMS=False
+            self.args.SIM_RUN_MD=True
+            self.args.SIM_N_STEPS=10000
+        elif self.args.MAGIC_ARGUMENT=='CHROMOSOME' or self.args.MAGIC_ARGUMENT=='CHROM' or self.args.MAGIC_ARGUMENT=='COMP':
+            print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beggining and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an eigenvector_tsv to include block-copolymer forces.'+ '\033[0m')
+            self.args.N_BEADS=20000
+            self.args.SC_USE_SPHERICAL_CONTAINER=False
+            self.args.CHB_USE_CHROMOSOMAL_BLOCKS=False
+            self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS=False
+            self.args.COB_USE_COMPARTMENT_BLOCKS=True if self.args.EIGENVECTOR_TSV!=None or self.args.COMPARTMENT_PATH!=None else False
+            self.args.IBL_USE_B_LAMINA_INTERACTION=False
+            self.args.CF_USE_CENTRAL_FORCE=False
+            self.args.SIM_RUN_MD=True
+            self.args.SIM_N_STEPS=10000
+        elif self.args.MAGIC_ARGUMENT=='GW' or self.args.MAGIC_ARGUMENT=='GENOME':
+            print('\033[91m' + 'MAGIC COMMENT: For gw level it is needed to provide a loops_path. You can optionally add an eigenvector_tsv to include block-copolymer forces.'+ '\033[0m')
+            self.args.N_BEADS=200000
+            self.args.SC_USE_SPHERICAL_CONTAINER=True
+            self.args.CHB_USE_CHROMOSOMAL_BLOCKS=False
+            self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS=False
+            self.args.COB_USE_COMPARTMENT_BLOCKS=True if self.args.eigenvec_tsv!=None or self.args.COMPARTMENT_PATH!=None else False
+            self.args.IBL_USE_B_LAMINA_INTERACTION=True
+            self.args.CF_USE_CENTRAL_FORCE=True
+            self.args.SIM_RUN_MD=False
+            self.args.SIM_N_STEPS=10000
 
     def add_evforce(self):
         sigma = self.args.LE_HARMONIC_BOND_R0
