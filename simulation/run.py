@@ -48,35 +48,47 @@ def my_config_parser(config_parser: configparser.ConfigParser) -> List[tuple[str
     return args_cp
 
 def get_config() -> ListOfArgs:
-    """This function prepares the list of arguments.
-    At first List of args with defaults is read.
-    Then it's overwritten by args from config file (ini file).
-    In the end config is overwritten by argparse options."""
+    """Prepare list of arguments.
+    First, defaults are set.
+    Then, optionally config file values.
+    Finally, CLI arguments overwrite everything."""
 
-    print(f"Reading config...")
+    print("Reading config...")
+
+    # Step 1: Setup argparse
     arg_parser = argparse.ArgumentParser()
-
     arg_parser.add_argument('-c', '--config_file', help="Specify config file (ini format)", metavar="FILE")
+
     for arg in args:
         arg_parser.add_argument(f"--{arg.name.lower()}", help=arg.help)
-    args_ap = arg_parser.parse_args()  # args from argparse
-    config_parser = configparser.ConfigParser()
-    config_parser.read(args_ap.config_file)
-    args_cp = my_config_parser(config_parser)
-    # Override defaults args with values from config file
-    for cp_arg in args_cp:
-        name, value = cp_arg
-        arg = args.get_arg(name)
-        arg.val = value
-    # Now again override args with values from command line.
-    for ap_arg in args_ap.__dict__:
-        if ap_arg not in ['config_file']:
-            name, value = ap_arg, getattr(args_ap, ap_arg)
-            if value is not None:
-                arg = args.get_arg(name)
-                arg.val = value
+
+    args_ap = arg_parser.parse_args()  # parse command-line arguments
+    args_dict = vars(args_ap)
+
+    # Step 2: If config file provided, parse it
+    if args_ap.config_file:
+        config_parser = configparser.ConfigParser()
+        config_parser.read(args_ap.config_file)
+        args_cp = my_config_parser(config_parser)
+
+        # Override default args with values from config file
+        for cp_arg in args_cp:
+            name, value = cp_arg
+            arg = args.get_arg(name)
+            arg.val = value
+
+    # Step 3: Override again with CLI arguments (if present)
+    for name, value in args_dict.items():
+        if name == "config_file":
+            continue
+        if value is not None:
+            arg = args.get_arg(name.upper())
+            arg.val = value
+
+    # Step 4: Finalize
     args.to_python()
     args.write_config_file()
+    
     return args
             
 def main():
