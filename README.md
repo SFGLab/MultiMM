@@ -32,14 +32,17 @@ PyPI software: https://pypi.org/project/MultiMM/.
 
 ## Input Data
 
-### Loops (bedpe file)
 MultiMM relies on three types of datasets:
 
 - Loop interactions in `bedpe` format (mandatory).
 - Compartmentalization data in `bed` format (optional).
 - ATAC-Seq p-value data in `.BigWig` format (optional).
 
-For **loop interactions**, users need to provide a file with interactions between anchor 1 and anchor 2, and their strength. The file must be in `.bedpe` format, should contain 7 columns, and should not include a header. An example:
+### Loops (bedpe file)
+
+For **loop interactions**, users must provide a file describing interactions between anchor 1 and anchor 2, along with their strength.
+
+The file must be in .bedpe format, contain 7 columns, and must not include a header.
 
 ```text
 chr10	100225000	100230000	chr10	100420000	100425000	95
@@ -48,9 +51,12 @@ chr10	101190000	101195000	chr10	101370000	101375000	152
 chr10	101190000	101200000	chr10	101470000	101480000	181
 chr10	101600000	101605000	chr10	101805000	101810000	152
 ```
+The file can include interactions from all chromosomes; MultiMM will automatically handle them.
+
+For single-cell data, users should prepare the file by setting the second and third columns identical (as well as the fifth and sixth columns) and set the strength value to 1.
+
 
 ### Compartments
-The file may contain interactions for all chromosomes, which MultiMM can automatically model. For single-cell data, users can provide a file with the second and third columns identical (the same for the fifth and sixth columns) and strength set to 1.
 
 For **(sub)compartment interactions**, the file should be in the format produced by the CALDER software: https://github.com/CSOgroup/CALDER2. Users do not need to run CALDER specifically, but the file format must match. The file should contain at least the first four columns with chromosome, regions, and the subcompartment label. Example:
 
@@ -77,13 +83,13 @@ chr1	1400000	1500000	1.145813878361721
 
 ### Nucleosomes
 
-For **ATAC-Seq data**, users should provide a file with p-values in BigWig format. The `pyBigWig` library is required, which does not work on Windows systems.
+For ATAC-Seq data, users must provide a BigWig file containing p-values. The pyBigWig library is required to read BigWig files. Note: pyBigWig is not compatible with Windows systems.
 
 ### Definition of a region based on a gene (optional)
 
-In case that you would like to model a region around a gene, it is enough if you load a `.tsv` file with genes and determine either the gene name or the gene id.
+To model a genomic region around a specific gene, you can load a `.tsv` file containing gene information. Specify either the gene name or the gene ID.
 
-The file should look like as the following one,
+The `.tsv` file should be formatted as follows:
 
 ```text
 gene_id	gene_name	chromosome	start	end
@@ -99,7 +105,7 @@ ENSG00000260972		chr1	5492978	5494674
 ENSG00000224340		chr1	10054445	10054781
 ```
 
-> **Note:** At present, MultiMM only works for human genome data. The code may run for other organisms with some debugging and modifications. We hope that it will be generalized in future versions. *MultiMM can run for different types of datasets. It is possible to call loops from any kind of experiment: Hi-C, scHi-C, ChIA-PET, Hi-ChIP. However, we cannot guarantee that the default choice of parameters is the most appropriate one for any dataset. Therefore, the user should test it and check the convergence of the algorithm for their own data. Before making any changes in the parameters, read the method paper carefully and try to understand the function of each force.*
+> **Note:** Currently, MultiMM is designed to work with human genome data. While it may be possible to run the code on other organisms with additional debugging and modifications, full support for other species is planned for future versions. MultiMM can process various types of datasets. It is capable of calling loops from a range of experiments, including Hi-C, scHi-C, ChIA-PET, and Hi-ChIP. However, we cannot guarantee that the default parameters are optimal for every dataset. Therefore, users are encouraged to test the software carefully and verify the convergence of the algorithm with their own data.Before adjusting any parameters, please read the method paper thoroughly to understand the role and impact of each force.*
 
 ## Usage
 All the model's parameters are specified in a `config.ini` file. This file should have the following format:
@@ -262,10 +268,10 @@ Therefore, it is advisable to read the paper and understand well the meaning of 
 | SIM_TEMPERATURE              | Quantity     | 310  | kelvin        | Simulation temperature |
 | TRJ_FRAMES                   | int          | 2000        | None          | Number of trajectory frames to save. |
 
-## Copyrights
+## Citation and Cotribution
 
-The software is freely distributed under the GNU license and everybody is free to use it for their research interests following the open-source lisence of MultiMM. In case that the software would be used for research or any other activity, the method paper should be cited:
+The software is freely distributed under the GNU license and is available for use in research, in accordance with the open-source license of MultiMM. If you use the software for research or other purposes, please cite the following paper:
 
-- Korsak, Sevastianos, Krzysztof Banecki, and Dariusz Plewczynski. "Multiscale molecular modeling of chromatin with MultiMM: From nucleosomes to the whole genome." Computational and Structural Biotechnology Journal 23 (2024): 3537-3548.
+- Korsak, Sevastianos, Krzysztof Banecki, and Dariusz Plewczynski. "Multiscale molecular modeling of chromatin with MultiMM: From nucleosomes to the whole genome." Computational and Structural Biotechnology Journal 23 (2024): 3537–3548.
 
-Please, communicate with the authors in case that you would like to contribute in this model and you would like to improve it. In case, that you have problems to run it, your feedback is very valuable to us and we are open to help you.
+If you would like to contribute to the development of this model or suggest improvements, we encourage you to contact the authors. Additionally, if you encounter any issues while running the software, your feedback is highly appreciated, and we are happy to assist you.
