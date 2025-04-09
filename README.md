@@ -312,7 +312,7 @@ In the `model` is the resulted minimized structure and the structure after the M
 
 In `plots` directory you can find plots of the structures. Note that the initial structure plot is only to see the initial stucture used in the simulation. Initial structure does not have direct biological meaning.
 
-## Citation and Cotribution
+## Citation and Contribution
 
 The software is freely distributed under the GNU license and is available for use in research, in accordance with the open-source license of MultiMM. If you use the software for research or other purposes, please cite the following paper:
 
