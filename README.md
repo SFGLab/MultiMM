@@ -274,6 +274,44 @@ Therefore, it is advisable to read the paper and understand well the meaning of 
 | SIM_TEMPERATURE              | Quantity     | 310  | kelvin        | Simulation temperature |
 | TRJ_FRAMES                   | int          | 2000        | None          | Number of trajectory frames to save. |
 
+## Output Directory
+The output directory is organized in the following folders,
+
+```
+config_auto.ini
+├── md_frames
+│   ├── frame_1_100.cif
+├── metadata
+│   ├── chimera_gene_coloring.cmd
+│   ├── chrom_idxs.npy
+│   ├── chrom_lengths.npy
+│   ├── ds.npy
+│   ├── ms.npy
+│   ├── MultiMM_annealing.dcd
+│   ├── MultiMM_init.cif
+│   ├── MultiMM.psf
+│   ├── ns.npy
+│   └── parameters.txt
+├── model
+│   ├── MultiMM_afterMD.cif
+│   └── MultiMM_minimized.cif
+├── plots
+│   ├── initial_structure_gene_coloring.png
+│   ├── initial_structure.png
+│   ├── minimized_structure_gene_coloring.png
+│   ├── minimized_structure.png
+│   ├── structure_afterMD_gene_coloring.png
+│   └── structure_afterMD.png
+```
+
+In `md_frames`, the frames of md dynamics can be found in case that md simulation is enabled. 
+
+In `metadata` you can find the initial structure and other produced numpy arrays. For example, `ms`, `ns`, are the left and right locations of loops in the region of interest. `ds` is the loop strength converted to distance. `psf` and `dcd` files are for the visualization of the trajectory in UCSF chimera software: https://www.cgl.ucsf.edu/chimera/, and `chimera_gene_coloring.cmd` is genetrated to give the coloring with the red region to be the gene of interest.
+
+In the `model` is the resulted minimized structure and the structure after the MD simulation. If it is genomewide simulation, it would output the structures of each chromosome in a folder `chromosomes`.
+
+In `plots` directory you can find plots of the structures. Note that the initial structure plot is only to see the initial stucture used in the simulation. Initial structure does not have direct biological meaning.
+
 ## Citation and Cotribution
 
 The software is freely distributed under the GNU license and is available for use in research, in accordance with the open-source license of MultiMM. If you use the software for research or other purposes, please cite the following paper:
