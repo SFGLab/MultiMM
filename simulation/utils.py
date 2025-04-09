@@ -433,8 +433,9 @@ def get_gene_region(gene_tsv, gene_id=None, gene_name=None, window_size = 200000
         start = genes[genes['gene_name']==gene_name]['start'].values[0]
         end = genes[genes['gene_name']==gene_name]['end'].values[0]
     
+    gene_region = [start,end]
     region = [max(0,int(start-window_size)), int(end+window_size)]
-    return chrom, region
+    return chrom, region, gene_region
 
 def discretize_array(arr, thresholds):
     """

@@ -31,10 +31,10 @@ class MultiMM:
         # Create main save directory and subdirectories if they don't exist
         os.makedirs(os.path.join(self.save_path, 'md_frames'), exist_ok=True)
         os.makedirs(os.path.join(self.save_path, 'plots'), exist_ok=True)
-        if args.GENE_ID==None and args.GENE_NAME==None and args.LOC_START==None: os.makedirs(os.path.join(self.save_path, 'plots','chromosomes'), exist_ok=True)
+        if args.GENE_ID==None and args.GENE_NAME==None and args.LOC_START==None: os.makedirs(os.path.join(self.save_path,'plots','chromosomes'), exist_ok=True)
         os.makedirs(os.path.join(self.save_path, 'metadata'), exist_ok=True)
         os.makedirs(os.path.join(self.save_path, 'model'), exist_ok=True)
-        if args.GENE_ID==None and args.GENE_NAME==None and args.LOC_START==None: os.makedirs(os.path.join(self.save_path, 'model','chromosomes'), exist_ok=True)
+        if args.GENE_ID==None and args.GENE_NAME==None and args.LOC_START==None: os.makedirs(os.path.join(self.save_path,'model','chromosomes'), exist_ok=True)
         save_args_to_txt(self.args,args.OUT_PATH+'/metadata/parameters.txt')
         
         chrom = args.CHROM
@@ -43,11 +43,13 @@ class MultiMM:
         if (args.GENE_TSV!=None):
             if args.GENE_ID!=None:
                 print('Gene ID:',args.GENE_ID)
-                chrom, coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_id=args.GENE_ID,window_size=args.GENE_WINDOW)
+                chrom, coords, gene_coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_id=args.GENE_ID,window_size=args.GENE_WINDOW)
+                self.gene_start, self.gene_end = ((gene_coords[0]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0]), ((gene_coords[1]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0])
                 print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_ID}.\n')
             elif args.GENE_NAME!=None:
                 print('Gene name:',args.GENE_NAME)
-                chrom, coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_name=args.GENE_NAME,window_size=args.GENE_WINDOW)
+                chrom, coords, gene_coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_name=args.GENE_NAME,window_size=args.GENE_WINDOW)
+                self.gene_start, self.gene_end = ((gene_coords[0]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0]), ((gene_coords[1]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0])
                 print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_NAME}.\n')
             else:
                 raise InterruptedError('You did not provide gene name or ID.')
@@ -61,18 +63,21 @@ class MultiMM:
         elif args.COMPARTMENT_PATH!=None:
             if args.COMPARTMENT_PATH.lower().endswith('.bed'):
                 self.Cs, self.chr_ends, self.chrom_idxs = import_bed(bed_file=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
-                                                                        chrom=chrom,coords=coords,\
-                                                                        save_path=self.save_path,\
-                                                                        shuffle=args.SHUFFLE_CHROMS,seed=args.SHUFFLING_SEED)
+                                                                    chrom=chrom,coords=coords,\
+                                                                    save_path=self.save_path,\
+                                                                    shuffle=args.SHUFFLE_CHROMS,\
+                                                                    seed=args.SHUFFLING_SEED)
             else:
                 raise InterruptedError('Compartments file should be in .bed format.')
 
         # Loops
         if args.LOOPS_PATH.lower().endswith('.bedpe'):
             self.ms, self.ns, self.ds, self.chr_ends, self.chrom_idxs = import_mns_from_bedpe(bedpe_file = args.LOOPS_PATH,N_beads=self.args.N_BEADS,\
-                                                                            coords = coords, chrom=chrom,\
-                                                                            path=self.save_path,\
-                                                                            shuffle=args.SHUFFLE_CHROMS,seed=args.SHUFFLING_SEED,down_prob=args.DOWNSAMPLING_PROB)
+                                                                                              coords = coords, chrom=chrom,\
+                                                                                              path=self.save_path,\
+                                                                                              shuffle=args.SHUFFLE_CHROMS,\
+                                                                                              seed=args.SHUFFLING_SEED,\
+                                                                                              down_prob=args.DOWNSAMPLING_PROB)
         else:
             raise InterruptedError('You did not provide appropriate loop file. Loop .bedpe file is obligatory.')
 
@@ -365,6 +370,33 @@ class MultiMM:
             self.r_comp = self.args.SCB_DISTANCE
         else:
             self.r_comp = (self.radius2-self.radius1)/20
+
+    def make_plots(self):
+        is_gw = self.args.GENE_ID==None and self.args.GENE_NAME==None and self.args.LOC_START==None
+        is_comp = np.any(self.Cs!=None)
+        if is_gw:
+            if is_comp: plot_projection(get_coordinates_mm(self.state.getPositions()),self.Cs,save_path=self.save_path)
+            viz_chroms(self.save_path,r=0.2,comps=is_comp)
+            for i in range(len(self.chr_ends)-1):
+                V = get_coordinates_cif(self.save_path+f'model/chromosomes/MultiMM_minimized_{chrs[self.chrom_idxs[i]]}.cif')
+                viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+f'plots/chromosomes/{chrs[self.chrom_idxs[i]]}_minimized_structure.png')
+        else:
+            if args.GENE_ID!=None or args.GENE_NAME!=None:
+                save_chimera_cmd(self.gene_start, self.gene_end, self.args.N_BEADS, cmd_filename=self.save_path+"metadata/chimera_gene_coloring.cmd")
+                V = get_coordinates_cif(self.save_path+'metadata/MultiMM_init.cif')
+                viz_gene_structure(V, self.gene_start, self.gene_end, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/initial_structure_gene_coloring.png')
+                V = get_coordinates_cif(self.save_path+'model/MultiMM_minimized.cif')
+                viz_gene_structure(V, self.gene_start, self.gene_end, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/minimized_structure_gene_coloring.png')
+                if self.args.SIM_RUN_MD:
+                    V = get_coordinates_cif(self.save_path+'model/MultiMM_afterMD.cif')
+                    viz_gene_structure(V, self.gene_start, self.gene_end, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/structure_afterMD_gene_coloring.png')
+            V = get_coordinates_cif(self.save_path+'metadata/MultiMM_init.cif')
+            viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/initial_structure.png')
+            V = get_coordinates_cif(self.save_path+'model/MultiMM_minimized.cif')
+            viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/minimized_structure.png')
+            if self.args.SIM_RUN_MD:
+                V = get_coordinates_cif(self.save_path+'model/MultiMM_afterMD.cif')
+                viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/structure_afterMD.png')
     
     def run(self):
         '''
@@ -389,22 +421,7 @@ class MultiMM:
         # Make diagnostic plots
         if self.args.SAVE_PLOTS:
             print('Creating and saving plots...')
-            is_gw = args.GENE_ID==None and args.GENE_NAME==None and args.LOC_START==None
-            is_comp = np.any(self.Cs!=None)
-            if is_gw:
-                if is_comp: plot_projection(get_coordinates_mm(self.state.getPositions()),self.Cs,save_path=self.save_path)
-                viz_chroms(self.save_path,r=0.2,comps=is_comp)
-                for i in range(len(self.chr_ends)-1):
-                    V = get_coordinates_cif(self.save_path+f'model/chromosomes/MultiMM_minimized_{chrs[self.chrom_idxs[i]]}.cif')
-                    viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+f'plots/chromosomes/{chrs[self.chrom_idxs[i]]}_minimized_structure.png')
-            else:
-                V = get_coordinates_cif(self.save_path+'metadata/MultiMM_init.cif')
-                viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/initial_structure.png')
-                V = get_coordinates_cif(self.save_path+'model/MultiMM_minimized.cif')
-                viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/minimized_structure.png')
-                if self.args.SIM_RUN_MD:
-                    V = get_coordinates_cif(self.save_path+'model/MultiMM_afterMD.cif')
-                    viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/structure_afterMD.png')
+            self.make_plots()
             print('Done! :)\n')
         
         # Run nucleosome interpolation

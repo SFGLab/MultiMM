@@ -98,6 +98,54 @@ def viz_structure(V, colors=None, r=0.1, cmap='coolwarm', save_path=None):
     else:
         plotter.show()
 
+def save_chimera_cmd(start, end, total_residues, cmd_filename="coloring.cmd"):
+    """
+    Create a Chimera .cmd file:
+    - Color residues outside the given region blue.
+    - Color residues inside the region red.
+    """
+    with open(cmd_filename, "w") as f:
+        # Color all residues blue first (except the highlighted region)
+        if start > 1:
+            f.write(f"color blue :1-{start-1}\n")
+        if end < total_residues:
+            f.write(f"color blue :{end+1}-{total_residues}\n")
+        
+        # Color the selected region red
+        f.write(f"color red :{start}-{end}\n")
+        
+        f.write("focus\n")
+
+def viz_gene_structure(V, start, end, r=0.1, cmap='coolwarm', save_path=None):
+    """Visualize structure V, highlight a continuous region in red, rest in blue."""
+    polyline = polyline_from_points(V)
+    polyline["scalars"] = np.arange(polyline.n_points)
+
+    # Create colors: 0 for blue, 1 for red
+    colors = np.zeros(len(V))
+    colors[start:end+1] = 1  # Mark the highlighted region
+
+    polyline["colors"] = colors
+
+    # Create tube
+    polymer = polyline.tube(radius=r)
+
+    # Create plotter
+    plotter = pv.Plotter(off_screen=True if save_path else False)
+    plotter.add_mesh(
+        polymer, 
+        smooth_shading=True, 
+        scalars="colors", 
+        cmap=["blue", "red"],  # Explicit color map
+        show_scalar_bar=False,
+        clim=[0, 1]  # Force colors 0 and 1
+    )
+
+    if save_path:
+        plotter.show(screenshot=save_path)
+    else:
+        plotter.show()
+
 def viz_chroms(sim_path,r=0.1,comps=True):
     cif_path = sim_path + 'model/MultiMM_minimized.cif'
     chrom_idxs_path = sim_path + 'metadata/chrom_idxs.npy'
