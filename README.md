@@ -105,7 +105,7 @@ ENSG00000260972		chr1	5492978	5494674
 ENSG00000224340		chr1	10054445	10054781
 ```
 
-In case that you specify the gene, MultiMM will output a visualization with the gene as well.
+In case that you specify the gene, MultiMM will output a visualization with the gene as well. For example, in the folowing region we can see the polymer structure that is modelled (around the gene) and the gene with red color.
 
 ![minimized_structure_gene_coloring](https://github.com/user-attachments/assets/15666286-0162-4fdd-a875-6b50b65049fb)
 
