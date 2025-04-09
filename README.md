@@ -215,7 +215,7 @@ Therefore, it is advisable to read the paper and understand well the meaning of 
 | GENE_TSV      | str  | ''    | None   | A .tsv with genes and their locations in the genome. |
 | GENE_NAME     | str  | ''    | None   | The name of the gene of interest. |
 | GENE_ID       | str  | ''    | None   | The id of the gene of interest. |
-| GENE_WINDOW   | int  | 200000| bp     | The window around the area of the gene of interest. |
+| GENE_WINDOW   | int  | 500000| bp     | The window around the area of the gene of interest. |
 | LOC_START                    | int          | None        | None          | Starting region coordinate (*in case that you do not want to model the whole genome*). |
 | LOC_END                      | int          | None        | None          | Ending region coordinate (*in case that you do not want to model the whole genome*). |
 | CHROM                        | str          | None        | None          | Chromosome that corresponds the the modelling region of interest (*in case that you do not want to model the whole genome*). |

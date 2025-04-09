@@ -289,6 +289,8 @@ def import_mns_from_bedpe(bedpe_file, N_beads, coords=None, chrom=None, threshol
     mns, cs = np.vstack((loops['ms'].values[counts>threshold], loops['ns'].values[counts>threshold])), counts[counts>threshold]
     mns, idxs = np.unique(mns,axis=1,return_index=True)
     cs = cs[idxs]
+    if cs.size == 0:
+        raise ValueError("The region of interest does not include loops. Please try with longer modelling region or increase the window around the gene.")
     ms, ns = mns[0,:], mns[1,:]
     ms[ms>=N_beads],ns[ns>=N_beads]=N_beads-1, N_beads-1
     ms,ns,cs = ms[ns>ms+min_loop_dist], ns[ns>ms+min_loop_dist], cs[ns>ms+min_loop_dist]
