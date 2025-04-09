@@ -101,7 +101,7 @@ class MultiMM:
     def convenient_argument_changer(self):
         self.args.NUC_DO_INTERPOLATION = False
         self.args.ATACSEQ_PATH = None
-        if self.args.MAGIC_ARGUMENT=='GENE' or self.args.MAGIC_ARGUMENT=='REGION' or self.args.MAGIC_ARGUMENT=='TAD':
+        if self.args.MODELLING_LEVEL=='GENE' or self.args.MODELLING_LEVEL=='REGION' or self.args.MODELLING_LEVEL=='TAD':
             print('\033[91m' + 'MAGIC COMMENT: For gene level it is needed to provide a loops_path, a gene_tsv file, and a gene_name or gene_id to specify the target gene of interest.'+ '\033[0m')
             self.args.N_BEADS=1000
             self.args.SC_USE_SPHERICAL_CONTAINER=False
@@ -113,7 +113,7 @@ class MultiMM:
             self.args.SHUFFLE_CHROMS=False
             self.args.SIM_RUN_MD=True
             self.args.SIM_N_STEPS=10000
-        elif self.args.MAGIC_ARGUMENT=='CHROMOSOME' or self.args.MAGIC_ARGUMENT=='CHROM' or self.args.MAGIC_ARGUMENT=='COMP':
+        elif self.args.MODELLING_LEVEL=='CHROMOSOME' or self.args.MODELLING_LEVEL=='CHROM' or self.args.MODELLING_LEVEL=='COMP':
             print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beggining and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an eigenvector_tsv to include block-copolymer forces.'+ '\033[0m')
             self.args.N_BEADS=20000
             self.args.SC_USE_SPHERICAL_CONTAINER=False
@@ -124,7 +124,7 @@ class MultiMM:
             self.args.CF_USE_CENTRAL_FORCE=False
             self.args.SIM_RUN_MD=True
             self.args.SIM_N_STEPS=10000
-        elif self.args.MAGIC_ARGUMENT=='GW' or self.args.MAGIC_ARGUMENT=='GENOME':
+        elif self.args.MODELLING_LEVEL=='GW' or self.args.MODELLING_LEVEL=='GENOME':
             print('\033[91m' + 'MAGIC COMMENT: For gw level it is needed to provide a loops_path. You can optionally add an eigenvector_tsv to include block-copolymer forces.'+ '\033[0m')
             self.args.N_BEADS=200000
             self.args.SC_USE_SPHERICAL_CONTAINER=True
