@@ -35,7 +35,6 @@ class MultiMM:
         os.makedirs(os.path.join(self.save_path, 'metadata'), exist_ok=True)
         os.makedirs(os.path.join(self.save_path, 'model'), exist_ok=True)
         if args.GENE_ID==None and args.GENE_NAME==None and args.LOC_START==None: os.makedirs(os.path.join(self.save_path,'model','chromosomes'), exist_ok=True)
-        save_args_to_txt(self.args,args.OUT_PATH+'/metadata/parameters.txt')
         
         chrom = args.CHROM
         coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
@@ -53,6 +52,8 @@ class MultiMM:
                 print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_NAME}.\n')
             else:
                 raise InterruptedError('You did not provide gene name or ID.')
+            self.args.LOC_START, self.args.LOC_END = coords[0], coords[1]
+            save_args_to_txt(self.args,self.args.OUT_PATH+'/metadata/parameters.txt')
         
         # Compartments
         if args.EIGENVECTOR_TSV!=None:
