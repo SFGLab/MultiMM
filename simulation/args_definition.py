@@ -133,6 +133,7 @@ available_platforms = [mm.Platform.getPlatform(i).getName() for i in range(mm.Pl
 args = ListOfArgs([
     # Platform settings
     Arg('PLATFORM', help=f"name of the platform. Available choices: {' '.join(available_platforms)}", type=str, default='CPU', val='CPU'),
+    Arg('CPU_THREADS', help=f"The number of CPU threads (in case you would like to specify them).", type=int, default='', val=''),
     Arg('DEVICE', help="device index for CUDA or OpenCL (count from 0)", type=str, default='', val=''),
     Arg('MAGIC_ARGUMENT', help="Choose 'GENE' or 'REGION' for gene or TAD level, 'CHROM' for chromosome leve, and 'GW' for genome level. It will setup some parameters for you and print you helpful comments.", type=str, default='', val=''),
     

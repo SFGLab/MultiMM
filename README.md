@@ -196,6 +196,7 @@ Therefore, it is advisable to read the paper and understand well the meaning of 
 | Argument Name                | Type         | Value       | Units         | Description |
 |------------------------------|--------------|-------------|---------------|-------------|
 | PLATFORM                     | str          | CPU        | CPU          | name of the platform. Available choices: CPU, OpenCL, CUDA. |
+| CPU_THREADS                  | int          | None        | None          | Number of CPU threads (in case that CPU is chosen as platform). |
 | DEVICE                       | str          | None        | None          | device index for CUDA or OpenCL (count from 0) |
 | MAGIC_ARGUMENT               | str          | None        | None          | Helping function to specify parameters of simulation. Choose 'GENE', 'CHROM' or 'GW' depending on the resolution of interest. |
 | INITIAL_STRUCTURE_PATH       | str          | None        | None          | Path to CIF file. |

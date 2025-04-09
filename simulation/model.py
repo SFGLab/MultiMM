@@ -309,6 +309,8 @@ class MultiMM:
         except Exception as e:
             print(f"Failed to find {self.args.PLATFORM}: {e}. Falling back to CPU.")
             platform = mm.Platform.getPlatformByName('CPU')
+        if self.args.PLATFORM=='CPU' and self.args.CPU_THREADS!=None:
+            platform.setPropertyDefaultValue('Threads', f'{self.args.CPU_THREADS}')
         
         # Run the simulation
         self.simulation = Simulation(self.pdb.topology, self.system, self.integrator, platform)     
