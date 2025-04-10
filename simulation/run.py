@@ -177,7 +177,7 @@ def main():
     args_tests(args)
 
     # Create output directory if it doesn't exist
-    log_dir = os.path.join(args.OUT_PATH, 'other')
+    log_dir = os.path.join(args.OUT_PATH, 'metadata')
     os.makedirs(log_dir, exist_ok=True)
 
     # Redirect stdout and stderr to both terminal and file
