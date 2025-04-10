@@ -21,7 +21,6 @@ class MultiMM:
         '''
         # Import args
         self.args  = args
-        self.convenient_argument_changer()
 
         # Output folder
         self.ms, self.ns, self.ds, self.chr_ends, self.Cs = None, None, None, None, None
@@ -51,9 +50,7 @@ class MultiMM:
                 self.gene_start, self.gene_end = ((gene_coords[0]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0]), ((gene_coords[1]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0])
                 print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_NAME}.\n')
             else:
-                raise InterruptedError('You did not provide gene name or ID.')
-            self.args.LOC_START, self.args.LOC_END = coords[0], coords[1]
-            save_args_to_txt(self.args,self.args.OUT_PATH+'/metadata/parameters.txt')
+                raise InterruptedError('You did not provide gene name or ID.')        
         
         # Compartments
         if args.EIGENVECTOR_TSV!=None:
@@ -64,10 +61,10 @@ class MultiMM:
         elif args.COMPARTMENT_PATH!=None:
             if args.COMPARTMENT_PATH.lower().endswith('.bed'):
                 self.Cs, self.chr_ends, self.chrom_idxs = import_bed(bed_file=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
-                                                                    chrom=chrom,coords=coords,\
-                                                                    save_path=self.save_path,\
-                                                                    shuffle=args.SHUFFLE_CHROMS,\
-                                                                    seed=args.SHUFFLING_SEED)
+                                                                     chrom=chrom,coords=coords,\
+                                                                     save_path=self.save_path,\
+                                                                     shuffle=args.SHUFFLE_CHROMS,\
+                                                                     seed=args.SHUFFLING_SEED)
             else:
                 raise InterruptedError('Compartments file should be in .bed format.')
 
@@ -99,44 +96,6 @@ class MultiMM:
                 self.chrom_spin[self.chr_ends[i]:self.chr_ends[i+1]] = self.chrom_idxs[i]
                 self.chrom_strength[self.chr_ends[i]:self.chr_ends[i+1]] = chrom_strength[i]
 
-    def convenient_argument_changer(self):
-        self.args.NUC_DO_INTERPOLATION = False
-        self.args.ATACSEQ_PATH = None
-        if self.args.MODELLING_LEVEL=='GENE' or self.args.MODELLING_LEVEL=='REGION' or self.args.MODELLING_LEVEL=='TAD':
-            print('\033[91m' + 'MAGIC COMMENT: For gene level it is needed to provide a loops_path, a gene_tsv file, and a gene_name or gene_id to specify the target gene of interest.'+ '\033[0m')
-            self.args.N_BEADS=1000
-            self.args.SC_USE_SPHERICAL_CONTAINER=False
-            self.args.CHB_USE_CHROMOSOMAL_BLOCKS=False
-            self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS=False
-            self.args.COB_USE_COMPARTMENT_BLOCKS=False
-            self.args.IBL_USE_B_LAMINA_INTERACTION=False
-            self.args.CF_USE_CENTRAL_FORCE=False
-            self.args.SHUFFLE_CHROMS=False
-            self.args.SIM_RUN_MD=True
-            self.args.SIM_N_STEPS=10000
-        elif self.args.MODELLING_LEVEL=='CHROMOSOME' or self.args.MODELLING_LEVEL=='CHROM' or self.args.MODELLING_LEVEL=='COMP':
-            print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beggining and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an eigenvector_tsv to include block-copolymer forces.'+ '\033[0m')
-            self.args.N_BEADS=20000
-            self.args.SC_USE_SPHERICAL_CONTAINER=False
-            self.args.CHB_USE_CHROMOSOMAL_BLOCKS=False
-            self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS=False
-            self.args.COB_USE_COMPARTMENT_BLOCKS=True if self.args.EIGENVECTOR_TSV!=None or self.args.COMPARTMENT_PATH!=None else False
-            self.args.IBL_USE_B_LAMINA_INTERACTION=False
-            self.args.CF_USE_CENTRAL_FORCE=False
-            self.args.SIM_RUN_MD=True
-            self.args.SIM_N_STEPS=10000
-        elif self.args.MODELLING_LEVEL=='GW' or self.args.MODELLING_LEVEL=='GENOME':
-            print('\033[91m' + 'MAGIC COMMENT: For gw level it is needed to provide a loops_path. You can optionally add an eigenvector_tsv to include block-copolymer forces.'+ '\033[0m')
-            self.args.N_BEADS=200000
-            self.args.SC_USE_SPHERICAL_CONTAINER=True
-            self.args.CHB_USE_CHROMOSOMAL_BLOCKS=False
-            self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS=False
-            self.args.COB_USE_COMPARTMENT_BLOCKS=True if self.args.eigenvec_tsv!=None or self.args.COMPARTMENT_PATH!=None else False
-            self.args.IBL_USE_B_LAMINA_INTERACTION=True
-            self.args.CF_USE_CENTRAL_FORCE=True
-            self.args.SIM_RUN_MD=False
-            self.args.SIM_N_STEPS=10000
-
     def add_evforce(self):
         sigma = self.args.LE_HARMONIC_BOND_R0
         self.ev_force = mm.CustomNonbondedForce(f'epsilon*(sigma/(r+r_small))^{self.args.EV_POWER}')
@@ -149,7 +108,7 @@ class MultiMM:
         self.system.addForce(self.ev_force)
     
     def add_compartment_blocks(self):
-        self.comp_force = mm.CustomNonbondedForce('-E*exp(-r^2/(2*rc^2)); E=(Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2))+Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2))')
+        self.comp_force = mm.CustomNonbondedForce('-E*exp(-r^2/(2*rc^2)); E=(Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2))+Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2)))')
         self.comp_force.setForceGroup(1)
         self.comp_force.addGlobalParameter('rc',defaultValue=self.r_comp)
         self.comp_force.addGlobalParameter('Ea',defaultValue=self.args.COB_EA)
@@ -316,7 +275,7 @@ class MultiMM:
         # Run the simulation
         self.simulation = Simulation(self.pdb.topology, self.system, self.integrator, platform)     
         self.simulation.context.setPositions(self.pdb.positions)
-        self.simulation.context.setVelocitiesToTemperature(self.args.SIM_TEMPERATURE, 0)
+        self.simulation.context.setVelocitiesToTemperature(self.args.SIM_TEMPERATURE, self.args.SHUFFLING_SEED)
 
         # Report which platform is being used
         current_platform = self.simulation.context.getPlatform()
@@ -329,8 +288,7 @@ class MultiMM:
         # Save the minimized structure
         self.state = self.simulation.context.getState(getPositions=True)
         PDBxFile.writeFile(self.pdb.topology, self.state.getPositions(), open(self.save_path+'model/MultiMM_minimized.cif', 'w'))
-        print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)//3600:.0f} hours, {(time.time() - start_time)%3600//60:.0f} minutes and  {(time.time() - start_time)%60:.0f} seconds. :D ---\n")
-        print('---Done!---')
+        print(f"--- Energy minimization done!! Executed in {(time.time() - start_time)//3600:.0f} hours, {(time.time() - start_time)%3600//60:.0f} minutes and  {(time.time() - start_time)%60:.0f} seconds. :D ---")
 
     def save_chromosomes(self):
         V = get_coordinates_mm(self.state.getPositions())
@@ -430,3 +388,5 @@ class MultiMM:
         # Run nucleosome interpolation
         if self.args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH!=None:
             self.nuc_interpolation()
+
+        save_args_to_txt(self.args,self.args.OUT_PATH+'/metadata/parameters.txt')

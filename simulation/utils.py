@@ -419,7 +419,7 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
     
     return genomewide_signal
 
-def get_gene_region(gene_tsv, gene_id=None, gene_name=None, window_size = 200000):
+def get_gene_region(gene_tsv, gene_id = None, gene_name = None, window_size = 200000):
     '''
     Input a gene tsv and ouputs a region around the gene
     '''
