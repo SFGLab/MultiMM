@@ -355,11 +355,11 @@ class MultiMM:
             viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/initial_structure.png')
             V = get_coordinates_cif(self.save_path+'model/MultiMM_minimized.cif')
             viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/minimized_structure.png')
-            if is_comp: viz_structure(V,self.Cs[:len(V)],cmap='coolwarm',r=r,save_path=self.save_path+'plots/minimized_structure_compartment_coloring.png')
+            if is_comp: viz_structure(V,self.Cs[:len(V)],cmap='coolwarm',r=0.2,save_path=self.save_path+'plots/minimized_structure_compartment_coloring.png')
             if self.args.SIM_RUN_MD:
                 V = get_coordinates_cif(self.save_path+'model/MultiMM_afterMD.cif')
                 viz_structure(V, r=0.2, cmap='coolwarm', save_path=self.save_path+'plots/structure_afterMD.png')
-                if is_comp: viz_structure(V,self.Cs[:len(V)],cmap='coolwarm',r=r,save_path=self.save_path+'plots/structure_afterMD_compartment_coloring.png')
+                if is_comp: viz_structure(V,self.Cs[:len(V)],cmap='coolwarm',r=0.2,save_path=self.save_path+'plots/structure_afterMD_compartment_coloring.png')
     
     def run(self):
         '''
