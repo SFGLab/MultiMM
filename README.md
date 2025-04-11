@@ -100,21 +100,6 @@ The MultiMM model targets the gene file automatically, so you do not have to pro
 
 > **Note:** Currently, MultiMM is designed to work with human genome data. While it may be possible to run the code on other organisms with additional debugging and modifications, full support for other species is planned for future versions. MultiMM can process various types of datasets. It is capable of calling loops from a range of experiments, including Hi-C, scHi-C, ChIA-PET, and Hi-ChIP. However, we cannot guarantee that the default parameters are optimal for every dataset. Therefore, users are encouraged to test the software carefully and verify the convergence of the algorithm with their own data.Before adjusting any parameters, please read the method paper thoroughly to understand the role and impact of each force.
 
-## Helper argument based on modelling levels
-
-In the newer version of MultiMM, we have included the `MODELLING_LEVEL` argument. This is a magic argument that helps users who are new to molecular modelling to specify the parameters of the model depending on the resolution they would like to model.
-
-Therefore, we have the following modelling levels:
-
-- `GENE`: The user should provide the gene of interest and a `.bedpe` file path, and MultiMM will model the gene (with the default gene_window). In this modelling level compartment forces are neglected.
-- `REGION`: The user has to povide the chromosome and the coordinates of interest. They can provide compartment interactions as well (optionally). MultiMM models only the specified region in the genome.
-- `CHROMOSOME`: If the user would like to model a whole chromosome. Then the user provides the chromosome number, and the model internally specifies the start and ending coordinates. The user can import compartments as well.
-- `GW`: For genome-wide simulation. In this case, MultiMM models all chromosomes, and thus users do not have to provide any chromosome or coordinates. This is the most computationally expensive option and the computation can take from minutes to hours depending on the hardware.
-
-This argument specifies the number of simulation beads appropriatelly as well. No matter what number of beads the user will give, if `MODELLING_LEVEL` is specified, `N_BEADS` will change to the default one. Namely, for gene it is 1000 beads, for a region it is 5000 beads, for chromosome 20000 beads and for the whole genome 200000 beads.
-
-This is a convenient argument for new users. Nevertheness, we suggest more advanced users to not use this arguent, if they need more freedom in the definition of the parameters of their choice.
-
 ## Usage
 All the model's parameters are specified in a `config.ini` file. This file should have the following format:
 
@@ -161,6 +146,21 @@ The software will output a folder with the resulting structure and plots showing
 Example data can be found on Google Drive: https://drive.google.com/drive/folders/1nFAPE4pCaHpeL5nw6nq0VvfUFoc24aXm?usp=sharing. Note that this data is publicly available from Rao et al. The subcompartment predictions were made using CALDER, and the ATAC-Seq data is from ENCODE.
 
 In the `examples` folder, we provide example configuration files for different modeling scenarios.
+
+## Helper argument based on modelling levels
+
+In the newer version of MultiMM, we have included the `MODELLING_LEVEL` argument. This is a magic argument that helps users who are new to molecular modelling to specify the parameters of the model depending on the resolution they would like to model.
+
+Therefore, we have the following modelling levels:
+
+- `GENE`: The user should provide the gene of interest and a `.bedpe` file path, and MultiMM will model the gene (with the default gene_window). In this modelling level compartment forces are neglected.
+- `REGION`: The user has to povide the chromosome and the coordinates of interest. They can provide compartment interactions as well (optionally). MultiMM models only the specified region in the genome.
+- `CHROMOSOME`: If the user would like to model a whole chromosome. Then the user provides the chromosome number, and the model internally specifies the start and ending coordinates. The user can import compartments as well.
+- `GW`: For genome-wide simulation. In this case, MultiMM models all chromosomes, and thus users do not have to provide any chromosome or coordinates. This is the most computationally expensive option and the computation can take from minutes to hours depending on the hardware.
+
+This argument specifies the number of simulation beads appropriatelly as well. No matter what number of beads the user will give, if `MODELLING_LEVEL` is specified, `N_BEADS` will change to the default one. Namely, for gene it is 1000 beads, for a region it is 5000 beads, for chromosome 20000 beads and for the whole genome 200000 beads.
+
+This is a convenient argument for new users. Nevertheness, we suggest more advanced users to not use this arguent, if they need more freedom in the definition of the parameters of their choice.
 
 ## Vizualization
 
@@ -214,7 +214,7 @@ Therefore, it is advisable to read the paper and understand well the meaning of 
 | LOOPS_PATH                   | str          | None        | None          | A `.bedpe` file path with loops. It is required. |
 | ATACSEQ_PATH                 | str          | None        | None          | A `.bw` or `.BigWig` file path with atacseq data for nucleosome interpolation. It is not required. |
 | OUT_PATH                     | str          | results     | None          | Output folder name. |
-| GENE_TSV      | str  | ''    | None   | A .tsv with genes and their locations in the genome. |
+| GENE_TSV      | str  | ''    | default_path   | A .tsv with genes and their locations in the genome. This targets in the interan directory by default. |
 | GENE_NAME     | str  | ''    | None   | The name of the gene of interest. |
 | GENE_ID       | str  | ''    | None   | The id of the gene of interest. |
 | GENE_WINDOW   | int  | 100000| bp     | The window around the area of the gene of interest. |
