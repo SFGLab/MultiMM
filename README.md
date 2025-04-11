@@ -214,7 +214,7 @@ Therefore, it is advisable to read the paper and understand well the meaning of 
 | LOOPS_PATH                   | str          | None        | None          | A `.bedpe` file path with loops. It is required. |
 | ATACSEQ_PATH                 | str          | None        | None          | A `.bw` or `.BigWig` file path with atacseq data for nucleosome interpolation. It is not required. |
 | OUT_PATH                     | str          | results     | None          | Output folder name. |
-| GENE_TSV      | str  | ''    | default_path   | A .tsv with genes and their locations in the genome. This targets in the interan directory by default. |
+| GENE_TSV      | str  | ''    | default_path   | A .tsv with genes and their locations in the genome. This targets in the internal directory by default. |
 | GENE_NAME     | str  | ''    | None   | The name of the gene of interest. |
 | GENE_ID       | str  | ''    | None   | The id of the gene of interest. |
 | GENE_WINDOW   | int  | 100000| bp     | The window around the area of the gene of interest. |
