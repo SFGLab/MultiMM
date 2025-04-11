@@ -37,7 +37,7 @@ class MultiMM:
         
         chrom = args.CHROM
         coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
-
+        
         if (args.GENE_TSV!=None) and (args.MODELLING_LEVEL.lower()=='gene'):
             if args.GENE_ID!=None and str(args.GENE_ID).lower()!='none' and str(args.GENE_ID).lower()!='':
                 print('Gene ID:',args.GENE_ID)

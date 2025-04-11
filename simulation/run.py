@@ -89,7 +89,7 @@ class ArgumentChanger:
             self.set_arg('CHB_USE_CHROMOSOMAL_BLOCKS', False)
             self.set_arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', False)
             self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '' and str(self.args.COMPARTMENT_PATH).lower() != 'none')
-            self.set_arg('IBL_USE_B_LAMINA_INTERACTION', True)
+            self.set_arg('IBL_USE_B_LAMINA_INTERACTION', self.args.COMPARTMENT_PATH != '' and str(self.args.COMPARTMENT_PATH).lower() != 'none')
             self.set_arg('CF_USE_CENTRAL_FORCE', True)
             self.set_arg('SIM_RUN_MD', False)
             self.set_arg('SIM_N_STEPS', 10000)
