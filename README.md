@@ -67,20 +67,6 @@ chr1	1400001	1850000	A.1.1.1.1.2.1.2.2.2.1	1	.	1400001	1850000	#FF0000
 chr1	1850001	2100000	B.1.1.2.2.1.2.1	0.5	.	1850001	2100000	#DADAFF
 ```
 
-Alternatively, the user can provide a file in `.tsv` format with the first eigenvector. MultiMM would discretise it and convert it to compartments. Here we assume that positive values correspond to A compartment.
-
-```txt
-chrom	start	end	E1
-chr1	600000	700000	0.05836110001861745
-chr1	800000	900000	0.8317623736592369
-chr1	900000	1000000	0.9789303554074167
-chr1	1000000	1100000	1.060977133694018
-chr1	1100000	1200000	1.0742104160308021
-chr1	1200000	1300000	0.9966570829436122
-chr1	1300000	1400000	1.032129387572702
-chr1	1400000	1500000	1.145813878361721
-```
-
 ### Nucleosomes
 
 For ATAC-Seq data, users must provide a BigWig file containing p-values. The pyBigWig library is required to read BigWig files. Note: pyBigWig is not compatible with Windows systems.
@@ -107,10 +93,23 @@ ENSG00000224340		chr1	10054445	10054781
 
 In case that you specify the gene, MultiMM will output a visualization with the gene as well. For example, in the folowing region we can see the polymer structure that is modelled (around the gene) and the gene with red color.
 
+The MultiMM model targets the gene file automatically, so you do not have to provide it. However, you can optionally change it.
+
 ![minimized_structure_gene_coloring](https://github.com/user-attachments/assets/15666286-0162-4fdd-a875-6b50b65049fb)
 
 
 > **Note:** Currently, MultiMM is designed to work with human genome data. While it may be possible to run the code on other organisms with additional debugging and modifications, full support for other species is planned for future versions. MultiMM can process various types of datasets. It is capable of calling loops from a range of experiments, including Hi-C, scHi-C, ChIA-PET, and Hi-ChIP. However, we cannot guarantee that the default parameters are optimal for every dataset. Therefore, users are encouraged to test the software carefully and verify the convergence of the algorithm with their own data.Before adjusting any parameters, please read the method paper thoroughly to understand the role and impact of each force.
+
+## Helper argument based on modelling levels
+
+In the newer version of MultiMM, we have included the `MODELLING_LEVEL` argument. This is a magic argument that helps users who are new to molecular modelling to specify the parameters of the model depending on the resolution they would like to model.
+
+Therefore, we have the following modelling levels:
+
+- `GENE`: The user should provide the gene of interest and a `.bedpe` file path, and MultiMM will model the gene (with the default gene_window). In this modelling level compartment forces are neglected.
+- `REGION`: The user has to povide the chromosome and the coordinates of interest. They can provide compartment interactions as well (optionally). MultiMM models only the specified region in the genome.
+- `CHROMOSOME`: If the user would like to model a whole chromosome. Then the user provides the chromosome number, and the model internally specifies the start and ending coordinates. The user can import compartments as well.
+- `GW`: For genome-wide simulation. In this case, MultiMM models all chromosomes, and thus users do not have to provide any chromosome or coordinates. This is the most computationally expensive option and the computation can take from minutes to hours depending on the hardware.  
 
 ## Usage
 All the model's parameters are specified in a `config.ini` file. This file should have the following format:
@@ -209,13 +208,12 @@ Therefore, it is advisable to read the paper and understand well the meaning of 
 | N_BEADS                      | int          | 50000       | None          | Number of Simulation Beads. |
 | COMPARTMENT_PATH             | str          | None        | None          | It should be  a `.bed` file with subcompartments from Calder. |
 | LOOPS_PATH                   | str          | None        | None          | A `.bedpe` file path with loops. It is required. |
-| EIGENVECTOR_TSV   | str  | ''    | None   | Compartmentalization in the format of the first eigenvector of Hi-C in TSV data. |
 | ATACSEQ_PATH                 | str          | None        | None          | A `.bw` or `.BigWig` file path with atacseq data for nucleosome interpolation. It is not required. |
 | OUT_PATH                     | str          | results     | None          | Output folder name. |
 | GENE_TSV      | str  | ''    | None   | A .tsv with genes and their locations in the genome. |
 | GENE_NAME     | str  | ''    | None   | The name of the gene of interest. |
 | GENE_ID       | str  | ''    | None   | The id of the gene of interest. |
-| GENE_WINDOW   | int  | 500000| bp     | The window around the area of the gene of interest. |
+| GENE_WINDOW   | int  | 100000| bp     | The window around the area of the gene of interest. |
 | LOC_START                    | int          | None        | None          | Starting region coordinate (*in case that you do not want to model the whole genome*). |
 | LOC_END                      | int          | None        | None          | Ending region coordinate (*in case that you do not want to model the whole genome*). |
 | CHROM                        | str          | None        | None          | Chromosome that corresponds the the modelling region of interest (*in case that you do not want to model the whole genome*). |
