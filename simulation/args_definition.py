@@ -88,17 +88,7 @@ class ListOfArgs(list):
                 if i.val.lower() in ['true', '1', 'y', 'yes']:
                     i.val = True
                 elif i.val.lower() in ['false', '0', 'n', 'no']:
-                    i.val = False
-                else:
-                    raise ValueError(f"Can't convert {i.val} into bool type.")
-            elif i.type == Quantity:
-                try:
-                    i.val = self.parse_quantity(i.val)
-                except AttributeError:
-                    raise ValueError(f"Can't parse: {i.name} = {i.val}")
-            else:
-                raise ValueError(f"Can't parse: {i.name} = {i.val}")
-
+                    i.val = False`MODELLING_LEVEL`
     def get_complete_config(self) -> str:
         w = "####################\n"
         w += "#   MultiMM Model   #\n"
