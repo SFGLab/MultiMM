@@ -149,18 +149,25 @@ In the `examples` folder, we provide example configuration files for different m
 
 ## Helper argument based on modelling levels
 
-In the newer version of MultiMM, we have included the `MODELLING_LEVEL` argument. This is a magic argument that helps users who are new to molecular modelling to specify the parameters of the model depending on the resolution they would like to model.
+In the latest version of MultiMM, we have introduced the `MODELLING_LEVEL` argument. This is a *magic* parameter designed to help users—especially those new to molecular modelling—easily configure model parameters based on the desired resolution.
 
-Therefore, we have the following modelling levels:
+The following modelling levels are available:
+* **GENE**: The user provides a gene of interest along with a `.bedpe` file path. MultiMM then models the gene using a default (+\- 10kb) `gene_window` . At this level, compartment forces are not considered.
 
-- `GENE`: The user should provide the gene of interest and a `.bedpe` file path, and MultiMM will model the gene (with the default gene_window). In this modelling level compartment forces are neglected.
-- `REGION`: The user has to povide the chromosome and the coordinates of interest. They can provide compartment interactions as well (optionally). MultiMM models only the specified region in the genome.
-- `CHROMOSOME`: If the user would like to model a whole chromosome. Then the user provides the chromosome number, and the model internally specifies the start and ending coordinates. The user can import compartments as well.
-- `GW`: For genome-wide simulation. In this case, MultiMM models all chromosomes, and thus users do not have to provide any chromosome or coordinates. This is the most computationally expensive option and the computation can take from minutes to hours depending on the hardware.
+* **REGION**: The user specifies a chromosome and genomic coordinates. Compartment interactions can also be included optionally. MultiMM models only the selected genomic region.
 
-This argument specifies the number of simulation beads appropriatelly as well. No matter what number of beads the user will give, if `MODELLING_LEVEL` is specified, `N_BEADS` will change to the default one. Namely, for gene it is 1000 beads, for a region it is 5000 beads, for chromosome 20000 beads and for the whole genome 200000 beads.
+* **CHROMOSOME**: The user specifies a chromosome number, and MultiMM determines the start and end coordinates internally. Compartment data can also be imported.
 
-This is a convenient argument for new users. Nevertheness, we suggest more advanced users to not use this arguent, if they need more freedom in the definition of the parameters of their choice.
+* **GW** (Genome-Wide): This option models the entire genome. No input for chromosome or coordinates is needed. This is the most computationally intensive option and may take from minutes to hours, depending on the hardware.
+
+
+Additionally, this argument automatically sets the number of simulation beads. Regardless of the user-defined `N_BEADS` value, specifying `MODELLING_LEVEL` overrides it with a default setting:
+* GENE: 1,000 beads
+* REGION: 5,000 beads
+* CHROMOSOME: 20,000 beads
+* GW: 200,000 beads
+
+This feature offers a convenient starting point for new users. Nevertheless, we recommend that advanced users avoid using this argument if they require finer control over simulation parameters.
 
 ## Vizualization
 

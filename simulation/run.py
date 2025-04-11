@@ -57,24 +57,24 @@ class ArgumentChanger:
             self.set_arg('SIM_N_STEPS', 10000)
 
         elif modelling_level.lower() in ('region','loc'):
-            print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beginning and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an eigenvector_tsv to include block-copolymer forces.' + '\033[0m')
+            print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beginning and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an compartment_path to include block-copolymer forces.' + '\033[0m')
             self.set_arg('N_BEADS', 5000)
             self.set_arg('SC_USE_SPHERICAL_CONTAINER', False)
             self.set_arg('CHB_USE_CHROMOSOMAL_BLOCKS', False)
             self.set_arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', False)
-            self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '')
+            self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '' and str(self.args.COMPARTMENT_PATH).lower() != 'none')
             self.set_arg('IBL_USE_B_LAMINA_INTERACTION', False)
             self.set_arg('CF_USE_CENTRAL_FORCE', False)
             self.set_arg('SIM_RUN_MD', True)
             self.set_arg('SIM_N_STEPS', 10000)
 
         elif modelling_level.lower() in ('chromosome', 'chrom'):
-            print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beginning and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an eigenvector_tsv to include block-copolymer forces.' + '\033[0m')
+            print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beginning and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an compartment_path to include block-copolymer forces.' + '\033[0m')
             self.set_arg('N_BEADS', 20000)
             self.set_arg('SC_USE_SPHERICAL_CONTAINER', False)
             self.set_arg('CHB_USE_CHROMOSOMAL_BLOCKS', False)
             self.set_arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', False)
-            self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '')
+            self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '' and str(self.args.COMPARTMENT_PATH).lower() != 'none')
             self.set_arg('IBL_USE_B_LAMINA_INTERACTION', False)
             self.set_arg('CF_USE_CENTRAL_FORCE', False)
             self.set_arg('SIM_RUN_MD', True)
@@ -83,12 +83,12 @@ class ArgumentChanger:
             self.set_arg('LOC_END', self.chrom_sizes[self.args.CHROM])
         
         elif modelling_level.lower() in ('gw', 'genome'):
-            print('\033[91m' + 'MAGIC COMMENT: For gw level it is needed to provide a loops_path. You can optionally add an eigenvector_tsv to include block-copolymer forces.' + '\033[0m')
+            print('\033[91m' + 'MAGIC COMMENT: For gw level it is needed to provide a loops_path. You can optionally add an compartment_path to include block-copolymer forces.' + '\033[0m')
             self.set_arg('N_BEADS', 200000)
             self.set_arg('SC_USE_SPHERICAL_CONTAINER', True)
             self.set_arg('CHB_USE_CHROMOSOMAL_BLOCKS', False)
             self.set_arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', False)
-            self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '')
+            self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '' and str(self.args.COMPARTMENT_PATH).lower() != 'none')
             self.set_arg('IBL_USE_B_LAMINA_INTERACTION', True)
             self.set_arg('CF_USE_CENTRAL_FORCE', True)
             self.set_arg('SIM_RUN_MD', False)
@@ -178,10 +178,25 @@ def get_config():
     changer = ArgumentChanger(args, chrom_sizes)
     changer.convenient_argument_changer()
 
-    # Step 6: Save final arguments to config file
-    args.write_config_file()
+    # Step 5: Save final arguments to config file
+    write_config(args)
 
     return args
+
+def write_config(args):
+    """Write the automatically generated config to the metadata directory."""
+    metadata_dir = os.path.join(args.OUT_PATH, 'metadata')
+    os.makedirs(metadata_dir, exist_ok=True)
+    config_path = os.path.join(metadata_dir, 'config_auto.ini')
+
+    config = configparser.ConfigParser()
+    for arg in args:
+        config['DEFAULT'][arg.name] = str(arg.val)
+
+    with open(config_path, 'w') as config_file:
+        config.write(config_file)
+
+    print(f"Configuration saved to {config_path}")
             
 def main():
     # Input data

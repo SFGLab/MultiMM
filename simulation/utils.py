@@ -419,24 +419,30 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
     
     return genomewide_signal
 
-def get_gene_region(gene_tsv, gene_id = None, gene_name = None, window_size = 200000):
+def get_gene_region(gene_tsv, gene_id=None, gene_name=None, window_size=200000):
     '''
-    Input a gene tsv and ouputs a region around the gene
+    Input a gene tsv and outputs a region around the gene
     '''
-    genes = pd.read_csv(gene_tsv,sep='\t')
-    if gene_id!=None:
-        print('Region will be define based on gene ID.')
-        chrom = genes[genes['gene_id']==gene_id]['chromosome'].values[0]
-        start = genes[genes['gene_id']==gene_id]['start'].values[0]
-        end = genes[genes['gene_id']==gene_id]['end'].values[0]
-    elif gene_name!=None:
-        print('Region will be define based on gene name.')
-        chrom = genes[genes['gene_name']==gene_name]['chromosome'].values[0]
-        start = genes[genes['gene_name']==gene_name]['start'].values[0]
-        end = genes[genes['gene_name']==gene_name]['end'].values[0]
-    
-    gene_region = [start,end]
-    region = [max(0,int(start-window_size)), int(end+window_size)]
+    genes = pd.read_csv(gene_tsv, sep='\t')
+    if gene_id is not None:
+        if gene_id not in genes['gene_id'].values:
+            raise ValueError(f"Gene ID '{gene_id}' not found in the provided TSV file.")
+        print('Region will be defined based on gene ID.')
+        chrom = genes[genes['gene_id'] == gene_id]['chromosome'].values[0]
+        start = genes[genes['gene_id'] == gene_id]['start'].values[0]
+        end = genes[genes['gene_id'] == gene_id]['end'].values[0]
+    elif gene_name is not None:
+        if gene_name not in genes['gene_name'].values:
+            raise ValueError(f"Gene name '{gene_name}' not found in the provided TSV file.")
+        print('Region will be defined based on gene name.')
+        chrom = genes[genes['gene_name'] == gene_name]['chromosome'].values[0]
+        start = genes[genes['gene_name'] == gene_name]['start'].values[0]
+        end = genes[genes['gene_name'] == gene_name]['end'].values[0]
+    else:
+        raise ValueError("Either 'gene_id' or 'gene_name' must be provided.")
+
+    gene_region = [start, end]
+    region = [max(0, int(start - window_size)), int(end + window_size)]
     return chrom, region, gene_region
 
 def discretize_array(arr, thresholds):

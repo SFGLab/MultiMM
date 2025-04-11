@@ -38,7 +38,7 @@ class MultiMM:
         chrom = args.CHROM
         coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
 
-        if (args.GENE_TSV!=None) and (args.MODELLING_LEVEL=='gene'):
+        if (args.GENE_TSV!=None) and (args.MODELLING_LEVEL.lower()=='gene'):
             if args.GENE_ID!=None:
                 print('Gene ID:',args.GENE_ID)
                 chrom, coords, gene_coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_id=args.GENE_ID,window_size=args.GENE_WINDOW)
