@@ -6,7 +6,7 @@ with open('README.md', 'r', encoding='utf-8') as f:
 
 setup(
     name='MultiMM',  # Package name
-    version='1.1.1',  # Version of the software
+    version='1.1.2',  # Version of the software
     description='A tool for chromatin modeling from nucleosomes to chromosomal territories.',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -16,7 +16,7 @@ setup(
     license='GNU General Public License v3.0',
     packages=find_packages(include=['simulation', 'simulation.*']),
     package_data={
-    'simulation': ['forcefields/*,data/*'],
+    'simulation': ['forcefields/*','data/*'],
     },
     include_package_data=True,
     install_requires=[  # List your package dependencies here
