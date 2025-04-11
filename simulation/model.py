@@ -39,12 +39,12 @@ class MultiMM:
         coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
 
         if (args.GENE_TSV!=None) and (args.MODELLING_LEVEL.lower()=='gene'):
-            if args.GENE_ID!=None:
+            if args.GENE_ID!=None and str(args.GENE_ID).lower()!='none' and str(args.GENE_ID).lower()!='':
                 print('Gene ID:',args.GENE_ID)
                 chrom, coords, gene_coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_id=args.GENE_ID,window_size=args.GENE_WINDOW)
                 self.gene_start, self.gene_end = ((gene_coords[0]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0]), ((gene_coords[1]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0])
                 print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_ID}.\n')
-            elif args.GENE_NAME!=None:
+            elif args.GENE_NAME!=None and str(args.GENE_NAME).lower()!='none' and str(args.GENE_NAME).lower()!='':
                 print('Gene name:',args.GENE_NAME)
                 chrom, coords, gene_coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_name=args.GENE_NAME,window_size=args.GENE_WINDOW)
                 self.gene_start, self.gene_end = ((gene_coords[0]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0]), ((gene_coords[1]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0])
