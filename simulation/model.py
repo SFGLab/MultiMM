@@ -38,7 +38,7 @@ class MultiMM:
         chrom = args.CHROM
         coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
 
-        if (args.GENE_TSV!=None):
+        if (args.GENE_TSV!=None) and (args.MODELLING_LEVEL=='gene'):
             if args.GENE_ID!=None:
                 print('Gene ID:',args.GENE_ID)
                 chrom, coords, gene_coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_id=args.GENE_ID,window_size=args.GENE_WINDOW)
@@ -50,15 +50,15 @@ class MultiMM:
                 self.gene_start, self.gene_end = ((gene_coords[0]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0]), ((gene_coords[1]-coords[0])*self.args.N_BEADS)//(coords[1]-coords[0])
                 print(f'We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_NAME}.\n')
             else:
-                raise InterruptedError('You did not provide gene name or ID.')        
+                raise ValueError('You did not provide gene name or ID.')        
         
         # Compartments
-        if args.EIGENVECTOR_TSV!=None:
-            if args.EIGENVECTOR_TSV.lower().endswith('.tsv'):
-                self.Cs, self.chr_ends = get_eigenvector(args.EIGENVECTOR_TSV, args.N_BEADS, chrom, coords)
-            else:
-                raise InterruptedError('Eigenvector should be in tsv format.')
-        elif args.COMPARTMENT_PATH!=None:
+        # if args.EIGENVECTOR_TSV!=None and args.EIGENVECTOR_TSV.lower()!='none' and args.EIGENVECTOR_TSV.lower()!='':
+        #     if args.EIGENVECTOR_TSV.lower().endswith('.tsv'):
+        #         self.Cs, self.chr_ends = get_eigenvector(args.EIGENVECTOR_TSV, args.N_BEADS, chrom, coords)
+        #     else:
+        #         raise ValueError('Eigenvector should be in tsv format.')
+        if args.COMPARTMENT_PATH!=None and str(args.COMPARTMENT_PATH).lower()!='none' and str(args.COMPARTMENT_PATH).lower()!='':
             if args.COMPARTMENT_PATH.lower().endswith('.bed'):
                 self.Cs, self.chr_ends, self.chrom_idxs = import_bed(bed_file=args.COMPARTMENT_PATH,N_beads=self.args.N_BEADS,\
                                                                      chrom=chrom,coords=coords,\
@@ -66,10 +66,10 @@ class MultiMM:
                                                                      shuffle=args.SHUFFLE_CHROMS,\
                                                                      seed=args.SHUFFLING_SEED)
             else:
-                raise InterruptedError('Compartments file should be in .bed format.')
+                raise ValueError('Compartments file should be in .bed format.')
 
         # Loops
-        if args.LOOPS_PATH.lower().endswith('.bedpe'):
+        if str(args.LOOPS_PATH).lower().endswith('.bedpe'):
             self.ms, self.ns, self.ds, self.chr_ends, self.chrom_idxs = import_mns_from_bedpe(bedpe_file = args.LOOPS_PATH,N_beads=self.args.N_BEADS,\
                                                                                               coords = coords, chrom=chrom,\
                                                                                               path=self.save_path,\
@@ -77,7 +77,7 @@ class MultiMM:
                                                                                               seed=args.SHUFFLING_SEED,\
                                                                                               down_prob=args.DOWNSAMPLING_PROB)
         else:
-            raise InterruptedError('You did not provide appropriate loop file. Loop .bedpe file is obligatory.')
+            raise ValueError('You did not provide appropriate loop file. Loop .bedpe file is obligatory.')
 
         # Nucleosomes
         if args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH!=None:
@@ -85,13 +85,13 @@ class MultiMM:
                 self.atacseq = import_bw(args.ATACSEQ_PATH,self.args.N_BEADS,chrom=self.args.CHROM,coords=coords,\
                                          shuffle=args.SHUFFLE_CHROMS,seed=args.SHUFFLING_SEED)
             else:
-                raise InterruptedError('ATAC-Seq file should be in .bw or .BigWig format.')
+                raise ValueError('ATAC-Seq file should be in .bw or .BigWig format.')
         
         if self.args.CHROM=='': write_chrom_colors(self.chr_ends,self.chrom_idxs,name=self.save_path+'metadata/MultiMM_chromosome_colors.cmd')
 
         # Chromosomes
         self.chrom_spin, self.chrom_strength = np.zeros(self.args.N_BEADS), np.zeros(self.args.N_BEADS)
-        if self.args.CHROM==None or self.args.CHROM=='':
+        if self.args.CHROM==None or self.args.CHROM=='' or self.args.CHROM.lower()=='none':
             for i in range(len(self.chr_ends)-1):
                 self.chrom_spin[self.chr_ends[i]:self.chr_ends[i+1]] = self.chrom_idxs[i]
                 self.chrom_strength[self.chr_ends[i]:self.chr_ends[i+1]] = chrom_strength[i]

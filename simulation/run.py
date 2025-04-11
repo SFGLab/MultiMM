@@ -43,8 +43,8 @@ class ArgumentChanger:
 
         modelling_level = self.args.MODELLING_LEVEL
 
-        if modelling_level in ('GENE', 'REGION', 'TAD'):
-            print('\033[91m' + 'MAGIC COMMENT: For gene level it is needed to provide a loops_path, a gene_tsv file, and a gene_name or gene_id to specify the target gene of interest.' + '\033[0m')
+        if modelling_level.lower() in ('gene'):
+            print('\033[91m' + 'MAGIC COMMENT: For gene level it is needed to provide a loops_path, and a gene_name or gene_id to specify the target gene of interest.' + '\033[0m')
             self.set_arg('N_BEADS', 1000)
             self.set_arg('SC_USE_SPHERICAL_CONTAINER', False)
             self.set_arg('CHB_USE_CHROMOSOMAL_BLOCKS', False)
@@ -56,27 +56,39 @@ class ArgumentChanger:
             self.set_arg('SIM_RUN_MD', True)
             self.set_arg('SIM_N_STEPS', 10000)
 
-        elif modelling_level in ('CHROMOSOME', 'CHROM', 'COMP'):
+        elif modelling_level.lower() in ('region','loc'):
+            print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beginning and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an eigenvector_tsv to include block-copolymer forces.' + '\033[0m')
+            self.set_arg('N_BEADS', 5000)
+            self.set_arg('SC_USE_SPHERICAL_CONTAINER', False)
+            self.set_arg('CHB_USE_CHROMOSOMAL_BLOCKS', False)
+            self.set_arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', False)
+            self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '')
+            self.set_arg('IBL_USE_B_LAMINA_INTERACTION', False)
+            self.set_arg('CF_USE_CENTRAL_FORCE', False)
+            self.set_arg('SIM_RUN_MD', True)
+            self.set_arg('SIM_N_STEPS', 10000)
+
+        elif modelling_level.lower() in ('chromosome', 'chrom'):
             print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beginning and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an eigenvector_tsv to include block-copolymer forces.' + '\033[0m')
             self.set_arg('N_BEADS', 20000)
             self.set_arg('SC_USE_SPHERICAL_CONTAINER', False)
             self.set_arg('CHB_USE_CHROMOSOMAL_BLOCKS', False)
             self.set_arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', False)
-            self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.EIGENVECTOR_TSV != '')
+            self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '')
             self.set_arg('IBL_USE_B_LAMINA_INTERACTION', False)
             self.set_arg('CF_USE_CENTRAL_FORCE', False)
             self.set_arg('SIM_RUN_MD', True)
             self.set_arg('SIM_N_STEPS', 10000)
             self.set_arg('LOC_START', 1)
             self.set_arg('LOC_END', self.chrom_sizes[self.args.CHROM])
-
-        elif modelling_level in ('GW', 'GENOME'):
+        
+        elif modelling_level.lower() in ('gw', 'genome'):
             print('\033[91m' + 'MAGIC COMMENT: For gw level it is needed to provide a loops_path. You can optionally add an eigenvector_tsv to include block-copolymer forces.' + '\033[0m')
             self.set_arg('N_BEADS', 200000)
             self.set_arg('SC_USE_SPHERICAL_CONTAINER', True)
             self.set_arg('CHB_USE_CHROMOSOMAL_BLOCKS', False)
             self.set_arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', False)
-            self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.EIGENVECTOR_TSV != '')
+            self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '')
             self.set_arg('IBL_USE_B_LAMINA_INTERACTION', True)
             self.set_arg('CF_USE_CENTRAL_FORCE', True)
             self.set_arg('SIM_RUN_MD', False)
@@ -85,15 +97,15 @@ class ArgumentChanger:
 def args_tests(args):
     if args.LOOPS_PATH==None or args.LOOPS_PATH=='':
         raise ValueError('\033[91mMultiMM cannot run without providing interactions in .bedpe format!!!\033[0m')
-    elif ((args.COMPARTMENT_PATH==None or args.COMPARTMENT_PATH=='') and (args.EIGENVECTOR_TSV==None or args.EIGENVECTOR_TSV=='')) and args.COB_USE_COMPARTMENT_BLOCKS:
+    elif (args.COMPARTMENT_PATH==None or args.COMPARTMENT_PATH=='') and args.COB_USE_COMPARTMENT_BLOCKS:
         raise ValueError('\033[91mYou cannot model compartments without providing a file in .bed format. Either disable COB_USE_COMPARTMENT_BLOCKS or import data from some compartment caller according to the documentation.\033[0m')
     elif args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH==None:
         raise ValueError('\033[91mYou enabled nucleosome simulation without providing nucleosome data. Either import a .bigwig file that shows nucleosome occupancy or disable NUC_DO_INTERPOLATION.\033[0m')
-    elif ((args.COMPARTMENT_PATH==None or args.COMPARTMENT_PATH=='') and (args.EIGENVECTOR_TSV==None or args.EIGENVECTOR_TSV=='')) and args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
+    elif (args.COMPARTMENT_PATH==None or args.COMPARTMENT_PATH=='') and args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
         raise ValueError('\033[91mYou cannot model subcompartments without providing a file in .bed format. Either disable SCB_USE_SUBCOMPARTMENT_BLOCKS or import data from some compartment caller according to the documentation.\033[0m')
     elif args.COMPARTMENT_PATH==None and args.IBL_USE_B_LAMINA_INTERACTION:
         raise ValueError('\033[91mLamina interactions are compartment specific, but you did not provide a .bed file for compartments. Maybe you should disable the IBL_USE_B_LAMINA_INTERACTION?\033[0m')
-    elif args.IBL_USE_B_LAMINA_INTERACTION and not (args.SCB_USE_SUBCOMPARTMENT_BLOCKS or COB_USE_COMPARTMENT_BLOCKS):
+    elif args.IBL_USE_B_LAMINA_INTERACTION and not (args.SCB_USE_SUBCOMPARTMENT_BLOCKS or args.COB_USE_COMPARTMENT_BLOCKS):
         raise ValueError('\033[91mYou have enabled lamina interactions which are compartment specific, but you did not enable compartment or subcompartment forces. Please, read the documentation and the paper to understand better the forcefield!\033[0m')
     elif args.CF_USE_CENTRAL_FORCE and args.CHROM!=None:
         raise ValueError('\033[91mOoo00ops! You enabled chromosome-specific attraction to the nucleolus, but you want to model only one chromosome. Maybe disable CF_USE_CENTRAL_FORCE?')
@@ -181,7 +193,7 @@ def main():
     os.makedirs(log_dir, exist_ok=True)
 
     # Redirect stdout and stderr to both terminal and file
-    log_path = os.path.join(log_dir, 'error.log')
+    log_path = os.path.join(log_dir, 'output.log')
     log_file = open(log_path, 'w')
 
     sys.stdout = Tee(sys.__stdout__, log_file)

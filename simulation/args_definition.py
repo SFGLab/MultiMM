@@ -15,6 +15,13 @@ try:
 except FileNotFoundError:
     default_xml_path = 'simulation/forcefields/ff.xml'
 
+# Dynamically set the default path to the XML file in the package
+try:
+    with importlib.resources.path('simulation.data', 'hg38_gtf_annotations.tsv') as default_gene_path:
+        default_gene_path = str(default_gene_path)
+except FileNotFoundError:
+    default_gene_path = 'simulation/data/hg38_gtf_annotations.tsv'
+
 @dataclass
 class Arg(object):
     name: str
@@ -147,9 +154,9 @@ args = ListOfArgs([
     Arg('FORCEFIELD_PATH', help="Path to XML file with forcefield.", type=str, default=default_xml_path, val=default_xml_path),
     Arg('N_BEADS', help="Number of Simulation Beads.", type=int, default='50000', val='50000'),
     Arg('COMPARTMENT_PATH', help="It should be a .bed file with subcompartments from Calder (or something in the same format).", type=str, default='', val=''),
-    Arg('EIGENVECTOR_TSV', help="Compartmentalization in the format of the first eigenvector of Hi-C in tsv data.", type=str, default='', val=''),
+    # Arg('EIGENVECTOR_TSV', help="Compartmentalization in the format of the first eigenvector of Hi-C in tsv data.", type=str, default='', val=''),
     Arg('LOOPS_PATH', help="A .bedpe file path with loops. It is required.", type=str, default='', val=''),
-    Arg('GENE_TSV', help="A .tsv with genes and their locations in the genome.", type=str, default='', val=''),
+    Arg('GENE_TSV', help="A .tsv with genes and their locations in the genome.", type=str, default=default_gene_path , val=default_gene_path),
     Arg('GENE_NAME', help="The name of the gene of interest.", type=str, default='', val=''),
     Arg('GENE_ID', help="The id of the gene of interest.", type=str, default='', val=''),
     Arg('GENE_WINDOW', help="The window around of the area around the gene of interest.", type=int, default='500000', val='500000'),

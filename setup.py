@@ -16,7 +16,7 @@ setup(
     license='GNU General Public License v3.0',
     packages=find_packages(include=['simulation', 'simulation.*']),
     package_data={
-    'simulation': ['forcefields/*'],
+    'simulation': ['forcefields/*,data/*'],
     },
     include_package_data=True,
     install_requires=[  # List your package dependencies here
