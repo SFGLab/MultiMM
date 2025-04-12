@@ -334,7 +334,7 @@ class MultiMM:
 
     def make_plots(self):
         is_gw = self.args.GENE_ID==None and self.args.GENE_NAME==None and self.args.LOC_START==None and self.args.LOC_END==None
-        is_comp = np.any(self.Cs!=None)
+        is_comp = np.any(self.Cs != None).item()
         if is_gw:
             if is_comp: plot_projection(get_coordinates_mm(self.state.getPositions()),self.Cs,save_path=self.save_path)
             viz_chroms(self.save_path,r=0.2,comps=is_comp)
