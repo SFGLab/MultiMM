@@ -159,7 +159,7 @@ args = ListOfArgs([
     Arg('GENE_TSV', help="A .tsv with genes and their locations in the genome.", type=str, default=default_gene_path , val=default_gene_path),
     Arg('GENE_NAME', help="The name of the gene of interest.", type=str, default='', val=''),
     Arg('GENE_ID', help="The id of the gene of interest.", type=str, default='', val=''),
-    Arg('GENE_WINDOW', help="The window around of the area around the gene of interest.", type=int, default='10000', val='10000'),
+    Arg('GENE_WINDOW', help="The window around of the area around the gene of interest.", type=int, default='100000', val='100000'),
     Arg('ATACSEQ_PATH', help="A .bw or .BigWig file path with atacseq data. It is not required.", type=str, default='', val=''),
     Arg('OUT_PATH', help="Output folder name.", type=str, default='results', val='results'),
     Arg('LOC_START', help="Starting region coordinate.", type=int, default='', val=''),
@@ -222,7 +222,7 @@ args = ListOfArgs([
     
     # Central Force for Smaller Chromosomes Attraction to the Nucleolus
     Arg('CF_USE_CENTRAL_FORCE', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),
-    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='100.0', val='100.0'),
+    Arg('CF_STRENGTH', help='Strength of Interaction', type=float, default='10.0', val='10.0'),
 
     # Nucleosome interpolation
     Arg('NUC_DO_INTERPOLATION', help='Attraction of smaller chromosomes.', type=bool, default='False', val='False'),

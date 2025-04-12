@@ -67,7 +67,7 @@ class ArgumentChanger:
             self.set_arg('CF_USE_CENTRAL_FORCE', False)
             self.set_arg('SIM_RUN_MD', True)
             self.set_arg('SIM_N_STEPS', 10000)
-
+        
         elif str(modelling_level).lower() in ('chromosome', 'chrom'):
             print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beginning and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an compartment_path to include block-copolymer forces.' + '\033[0m')
             self.set_arg('N_BEADS', 20000)
@@ -90,7 +90,7 @@ class ArgumentChanger:
             self.set_arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', False)
             self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '' and str(self.args.COMPARTMENT_PATH).lower() != 'none')
             self.set_arg('IBL_USE_B_LAMINA_INTERACTION', self.args.COMPARTMENT_PATH != '' and str(self.args.COMPARTMENT_PATH).lower() != 'none')
-            self.set_arg('CF_USE_CENTRAL_FORCE', True)
+            self.set_arg('CF_USE_CENTRAL_FORCE', False)
             self.set_arg('SIM_RUN_MD', False)
             self.set_arg('SIM_N_STEPS', 10000)
 
