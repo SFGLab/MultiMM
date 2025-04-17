@@ -20,7 +20,7 @@ setup(
     },
     include_package_data=True,
     install_requires=[  # List your package dependencies here
-        'numpy',
+        'numpy>1.2,<2.0',
         'scipy',
         'pandas',
         'argparse',
