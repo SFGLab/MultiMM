@@ -6,7 +6,7 @@ with open('README.md', 'r', encoding='utf-8') as f:
 
 setup(
     name='MultiMM',  # Package name
-    version='1.1.5',  # Version of the software
+    version='1.1.0.0.0',  # Version of the software
     description='A tool for chromatin modeling from nucleosomes to chromosomal territories.',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -35,6 +35,7 @@ setup(
         'tqdm',
         'pyvista[all]',
         'OpenMM',
+        'openmm-cuda',
     ],
     entry_points={
         'console_scripts': [

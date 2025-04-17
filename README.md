@@ -152,7 +152,7 @@ In the `examples` folder, we provide example configuration files for different m
 In the latest version of MultiMM, we have introduced the `MODELLING_LEVEL` argument. This is a *magic* parameter designed to help users—especially those new to molecular modelling—easily configure model parameters based on the desired resolution.
 
 The following modelling levels are available:
-* **GENE**: The user provides a gene of interest along with a `.bedpe` file path. MultiMM then models the gene using a default (+\- 10kb) `gene_window` . At this level, compartment forces are not considered.
+* **GENE**: The user provides a gene of interest along with a `.bedpe` file path. MultiMM then models the gene using a default (+\- 100kb) `gene_window` . At this level, compartment forces are not considered.
 
 * **REGION**: The user specifies a chromosome and genomic coordinates. Compartment interactions can also be included optionally. MultiMM models only the selected genomic region.
 

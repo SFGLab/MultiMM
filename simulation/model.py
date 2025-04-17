@@ -38,7 +38,7 @@ class MultiMM:
         chrom = args.CHROM
         coords = [args.LOC_START,args.LOC_END] if args.LOC_START!=None else None
         
-        if (args.GENE_TSV!=None) and (args.MODELLING_LEVEL.lower()=='gene'):
+        if (args.GENE_TSV!=None) and (str(args.MODELLING_LEVEL).lower()=='gene'):
             if args.GENE_ID!=None and str(args.GENE_ID).lower()!='none' and str(args.GENE_ID).lower()!='':
                 print('Gene ID:',args.GENE_ID)
                 chrom, coords, gene_coords = get_gene_region(gene_tsv=args.GENE_TSV,gene_id=args.GENE_ID,window_size=args.GENE_WINDOW)
@@ -91,7 +91,7 @@ class MultiMM:
 
         # Chromosomes
         self.chrom_spin, self.chrom_strength = np.zeros(self.args.N_BEADS), np.zeros(self.args.N_BEADS)
-        if self.args.CHROM==None or self.args.CHROM=='' or self.args.CHROM.lower()=='none':
+        if self.args.CHROM==None or self.args.CHROM=='' or str(self.args.CHROM).lower()=='none':
             for i in range(len(self.chr_ends)-1):
                 self.chrom_spin[self.chr_ends[i]:self.chr_ends[i+1]] = self.chrom_idxs[i]
                 self.chrom_strength[self.chr_ends[i]:self.chr_ends[i+1]] = chrom_strength[i]
@@ -334,7 +334,7 @@ class MultiMM:
 
     def make_plots(self):
         is_gw = self.args.GENE_ID==None and self.args.GENE_NAME==None and self.args.LOC_START==None and self.args.LOC_END==None
-        is_comp = np.any(self.Cs!=None)
+        is_comp = np.any(self.Cs != None).item()
         if is_gw:
             if is_comp: plot_projection(get_coordinates_mm(self.state.getPositions()),self.Cs,save_path=self.save_path)
             viz_chroms(self.save_path,r=0.2,comps=is_comp)

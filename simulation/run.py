@@ -43,7 +43,7 @@ class ArgumentChanger:
 
         modelling_level = self.args.MODELLING_LEVEL
 
-        if modelling_level.lower() in ('gene'):
+        if str(modelling_level).lower() in ('gene'):
             print('\033[91m' + 'MAGIC COMMENT: For gene level it is needed to provide a loops_path, and a gene_name or gene_id to specify the target gene of interest.' + '\033[0m')
             self.set_arg('N_BEADS', 1000)
             self.set_arg('SC_USE_SPHERICAL_CONTAINER', False)
@@ -56,7 +56,7 @@ class ArgumentChanger:
             self.set_arg('SIM_RUN_MD', True)
             self.set_arg('SIM_N_STEPS', 10000)
 
-        elif modelling_level.lower() in ('region','loc'):
+        elif str(modelling_level).lower() in ('region','loc'):
             print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beginning and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an compartment_path to include block-copolymer forces.' + '\033[0m')
             self.set_arg('N_BEADS', 5000)
             self.set_arg('SC_USE_SPHERICAL_CONTAINER', False)
@@ -67,8 +67,8 @@ class ArgumentChanger:
             self.set_arg('CF_USE_CENTRAL_FORCE', False)
             self.set_arg('SIM_RUN_MD', True)
             self.set_arg('SIM_N_STEPS', 10000)
-
-        elif modelling_level.lower() in ('chromosome', 'chrom'):
+        
+        elif str(modelling_level).lower() in ('chromosome', 'chrom'):
             print('\033[91m' + 'MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beginning and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an compartment_path to include block-copolymer forces.' + '\033[0m')
             self.set_arg('N_BEADS', 20000)
             self.set_arg('SC_USE_SPHERICAL_CONTAINER', False)
@@ -82,7 +82,7 @@ class ArgumentChanger:
             self.set_arg('LOC_START', 1)
             self.set_arg('LOC_END', self.chrom_sizes[self.args.CHROM])
         
-        elif modelling_level.lower() in ('gw', 'genome'):
+        elif str(modelling_level).lower() in ('gw', 'genome'):
             print('\033[91m' + 'MAGIC COMMENT: For gw level it is needed to provide a loops_path. You can optionally add an compartment_path to include block-copolymer forces.' + '\033[0m')
             self.set_arg('N_BEADS', 200000)
             self.set_arg('SC_USE_SPHERICAL_CONTAINER', True)
@@ -90,7 +90,7 @@ class ArgumentChanger:
             self.set_arg('SCB_USE_SUBCOMPARTMENT_BLOCKS', False)
             self.set_arg('COB_USE_COMPARTMENT_BLOCKS', self.args.COMPARTMENT_PATH != '' and str(self.args.COMPARTMENT_PATH).lower() != 'none')
             self.set_arg('IBL_USE_B_LAMINA_INTERACTION', self.args.COMPARTMENT_PATH != '' and str(self.args.COMPARTMENT_PATH).lower() != 'none')
-            self.set_arg('CF_USE_CENTRAL_FORCE', True)
+            self.set_arg('CF_USE_CENTRAL_FORCE', False)
             self.set_arg('SIM_RUN_MD', False)
             self.set_arg('SIM_N_STEPS', 10000)
 

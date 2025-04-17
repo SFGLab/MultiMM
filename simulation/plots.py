@@ -152,7 +152,7 @@ def viz_chroms(sim_path,r=0.1,comps=True):
     chrom_comps_path = sim_path + 'metadata/compartments.npy'
     chrom_ends_path = sim_path + 'metadata/chrom_lengths.npy'
     chrom_idxs = np.load(chrom_idxs_path)
-    if comps: comps = np.load(chrom_comps_path)
+    if comps is not None: comps = np.load(chrom_comps_path)
     chrom_ends = np.load(chrom_ends_path)
     V = get_coordinates_cif(cif_path)
     N = len(V)
@@ -161,7 +161,7 @@ def viz_chroms(sim_path,r=0.1,comps=True):
         start, end = chrom_ends[i], chrom_ends[i+1]
         chroms[start:end] = chrom_idxs[i]
     viz_structure(V,chroms[:len(V)],cmap='gist_ncar',r=r,save_path=sim_path+'plots/minimized_structure_chromosomes.png')
-    if comps: viz_structure(V,comps[:len(V)],cmap='coolwarm',r=r,save_path=sim_path+'plots/minimized_structure_compartments.png')
+    if comps is not None: viz_structure(V,comps[:len(V)],cmap='coolwarm',r=r,save_path=sim_path+'plots/minimized_structure_compartments.png')
 
 def get_heatmap(cif_file,viz=False,th=1,save=False,save_path=None,vmax=1,vmin=0):
     '''
