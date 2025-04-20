@@ -223,9 +223,9 @@ Below is a categorized description of the simulation arguments and their default
 | ATACSEQ_PATH                 | str          | None        | None          | Path to `.bw` or `.BigWig` file with ATAC-Seq data (optional). |
 | OUT_PATH                     | str          | results     | None          | Output folder name. |
 | INITIAL_STRUCTURE_PATH       | str          | None        | None          | Path to CIF file for the initial structure. |
-| GENE_TSV                     | str          | ''          | default_path  | Path to a `.tsv` file with gene locations in the genome. |
-| GENE_NAME                    | str          | ''          | None          | Name of the gene of interest. |
-| GENE_ID                      | str          | ''          | None          | ID of the gene of interest. |
+| GENE_TSV                     | str          | None        | default_path  | Path to a `.tsv` file with gene locations in the genome. |
+| GENE_NAME                    | str          | None        | None          | Name of the gene of interest. |
+| GENE_ID                      | str          | None        | None          | ID of the gene of interest. |
 
 #### Initial Structure Configuration
 | Argument Name                | Type         | Value       | Units         | Description |
