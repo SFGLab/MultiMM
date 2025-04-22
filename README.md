@@ -10,7 +10,7 @@ After running the MultiMM model, users obtain a genome-wide structure. Users can
 ![MultiMM_scales](https://github.com/user-attachments/assets/a0d14ddc-41bf-4d14-8a8c-aa418fe575b5)
 
 ## A swiss-army-knife of chromatin 3D modelling
-The primary goal of the MultiMM model is to provide an open-source, user-friendly tool for 3D chromatin modeling. Designed with accessibility in mind, it caters to researchers without extensive backgrounds in physics or molecular modeling. Built upon the flexible and high-performance OpenMM engine, MultiMM offers advanced users the capability to customize simulation parameters to suit specific research needs. Functioning as a versatile "Swiss Army knife" for chromatin modeling, it empowers users to define their application domain, integrate their data, and select their preferred scale of analysis.​
+The MultiMM model is an open-source tool designed for both beginners and experienced researchers in 3D chromatin modeling. It offers an intuitive interface for those new to the field, while also providing advanced users the flexibility to customize simulation parameters through its integration with OpenMM. Think of MultiMM as a versatile "Swiss Army knife" for chromatin modeling—allowing you to choose your application area, input your data, and select your scale of interest.
 
 <div align="center">
   <img src="https://github.com/user-attachments/assets/d44d4cf8-3cfe-4f69-b027-801f22be7045" alt="Logo" width="300" />
