@@ -16,6 +16,14 @@ The MultiMM model is an open-source tool designed for both beginners and experie
   <img src="https://github.com/user-attachments/assets/d44d4cf8-3cfe-4f69-b027-801f22be7045" alt="Logo" width="300" />
 </div>
 
+The workflow of MultiMM is illustrated in the following schematic. The user first provides a set of interactions from a 3C-type experiment, representing chromatin loops, and optionally supplies compartment annotations. The user can also specify a region or chromosome of interest. MultiMM then imports an initial structure, performs basic preprocessing on the input data, and applies a force field corresponding to the provided interactions. All simulation parameters and user preferences must be specified in the `config.ini` file. Afterward, the software generates the 3D chromatin structures, and, if ATAC-Seq data are provided, applies nucleosome interpolation to refine the model.
+
+
+![image](https://github.com/user-attachments/assets/4a446111-241d-427d-b568-c03e7a2c63c4)
+
+
+
+
 ## Key Features
 
 - OpenMM based.
