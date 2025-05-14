@@ -9,13 +9,6 @@ After running the MultiMM model, users obtain a genome-wide structure. Users can
 
 ![MultiMM_scales](https://github.com/user-attachments/assets/a0d14ddc-41bf-4d14-8a8c-aa418fe575b5)
 
-## A swiss-army-knife of chromatin 3D modelling
-The MultiMM model is an open-source tool designed for both beginners and experienced researchers in 3D chromatin modeling. It offers an intuitive interface for those new to the field, while also providing advanced users the flexibility to customize simulation parameters through its integration with OpenMM. Think of MultiMM as a versatile "Swiss Army knife" for chromatin modeling—allowing you to choose your application area, input your data, and select your scale of interest.
-
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/d44d4cf8-3cfe-4f69-b027-801f22be7045" alt="Logo" width="300" />
-</div>
-
 The workflow of MultiMM is illustrated in the following schematic. The user first provides a set of interactions from a 3C-type experiment, representing chromatin loops, and optionally supplies compartment annotations. The user can also specify a region or chromosome of interest. MultiMM then imports an initial structure, performs basic preprocessing on the input data, and applies a force field corresponding to the provided interactions. All simulation parameters and user preferences must be specified in the `config.ini` file. Afterward, the software generates the 3D chromatin structures, and, if ATAC-Seq data are provided, applies nucleosome interpolation to refine the model.
 
 
