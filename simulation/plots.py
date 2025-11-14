@@ -98,6 +98,8 @@ def viz_structure(V, colors=None, r=0.1, cmap='coolwarm', save_path=None):
     else:
         plotter.show()
 
+    plotter.close()
+
 def save_chimera_cmd(start, end, total_residues, cmd_filename="coloring.cmd"):
     """
     Create a Chimera .cmd file:
@@ -191,7 +193,7 @@ def get_heatmap(cif_file,viz=False,th=1,save=False,save_path=None,vmax=1,vmin=0)
         figure(figsize=(15, 12),dpi=500)
         plt.imshow(mat,cmap="Reds",vmax=vmax,vmin=vmin)
         if save: plt.savefig(save_path,format='svg',dpi=500)
-        plt.colorbar()
-        plt.show()
         if save: np.save(save_path.replace("svg", "npy"),mat)
+        plt.colorbar()
+        plt.close()
     return mat

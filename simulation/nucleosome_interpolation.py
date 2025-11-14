@@ -9,7 +9,6 @@ from .initial_structure_tools import *
 from .plots import *
 from tqdm import tqdm
 
-
 def makeUnit(x):
     """Normalize vector to norm 1"""
     return x / np.linalg.norm(x)

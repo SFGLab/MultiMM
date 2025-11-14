@@ -5,8 +5,6 @@ import argparse
 import configparser
 import os
 import sys
-from typing import List
-from sys import stdout
 from .args_definition import *
 from .model import *
 
@@ -199,34 +197,46 @@ def write_config(args):
     print(f"Configuration saved to {config_path}")
             
 def main():
-    # Input data
-    args = get_config()
-    args_tests(args)
+    try:
+        # Input data
+        args = get_config()
+        args_tests(args)
 
-    # Create output directory if it doesn't exist
-    log_dir = os.path.join(args.OUT_PATH, 'metadata')
-    os.makedirs(log_dir, exist_ok=True)
+        # Create output directory if it doesn't exist
+        log_dir = os.path.join(args.OUT_PATH, 'metadata')
+        os.makedirs(log_dir, exist_ok=True)
 
-    # Redirect stdout and stderr to both terminal and file
-    log_path = os.path.join(log_dir, 'output.log')
-    log_file = open(log_path, 'w')
+        # Redirect stdout and stderr to both terminal and file safely
+        log_path = os.path.join(log_dir, 'output.log')
+        with open(log_path, 'w') as log_file:
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            sys.stdout = Tee(original_stdout, log_file)
+            sys.stderr = Tee(original_stderr, log_file)
 
-    sys.stdout = Tee(sys.__stdout__, log_file)
-    sys.stderr = Tee(sys.__stderr__, log_file)
+            # Run simulation
+            name = args.OUT_PATH
+            if args.GENERATE_ENSEMBLE:
+                for i in range(args.N_ENSEMBLE):
+                    args.SHUFFLING_SEED = i
+                    args.OUT_PATH = name + f'_{i+1}'
+                    md = MultiMM(args)
+                    md.run()
+            else:
+                md = MultiMM(args)
+                md.run()
 
-    # Run simulation
-    name = args.OUT_PATH
-    if args.GENERATE_ENSEMBLE:
-        for i in range(args.N_ENSEMBLE):
-            args.SHUFFLING_SEED = i
-            args.OUT_PATH = name + f'_{i+1}'
-            md = MultiMM(args)
-            md.run()
-    else:
-        md = MultiMM(args)
-        md.run()
+            # Restore original streams before exiting 'with'
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
 
-    log_file.close()
+        # Normal exit
+        sys.exit(0)
+
+    except Exception as e:
+        # Print error to original stderr and exit with code 1
+        print(f"\033[91mERROR: {e}\033[0m", file=sys.stderr)
+        sys.exit(1)
 
 if __name__=='__main__':
     main()
