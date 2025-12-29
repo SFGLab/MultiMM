@@ -39,6 +39,107 @@ pip install MultiMM
 
 PyPI software: https://pypi.org/project/MultiMM/.
 
+## Mathematical Model
+
+We model chromatin as a coarse grained polymer confined inside the nucleus. The system is described by an effective energy functional
+
+$$
+E = E_{\text{pol}} + E_{\text{lamina}} + E_{\text{loop}} + E_{\text{block}} .
+$$
+
+Each bead represents a chromatin segment of fixed genomic length. The equilibrium structure is obtained by energy minimization or short relaxation dynamics.
+
+### Polymer Backbone
+
+Polymer connectivity, stiffness, and excluded volume are enforced by
+
+$$
+\begin{aligned}
+E_{\text{pol}} &= \sum_i k_b (r_{i,i+1} - \ell)^2 \\
+&\quad + \sum_i k_s (\theta_i - \pi)^2 \\
+&\quad + \sum_{i<j} \epsilon \left(\frac{\sigma}{r_{ij}}\right)^\alpha
+\end{aligned}
+$$
+
+The first term fixes bond lengths, the second controls bending rigidity, and the third is a purely repulsive Lennard-Jones interaction.
+
+
+### Looping Interactions
+
+Chromatin loops detected experimentally are modeled as harmonic restraints
+
+$$E_{\text{loop}} =
+k_\ell \sum_{(i,j)\in \text{loops}} (r_{ij} - d_{ij})^2 .$$
+
+The equilibrium loop length depends on interaction strength $S_{ij}$ as
+
+$$d_{ij} \propto S_{ij}^{-2/3},
+\qquad
+d_{ij} \in [0.1, 0.2] .$$
+
+For single cell data all loops have the same equilibrium distance.
+
+### Block Copolymer Compartmentalization
+
+Long range compartmentalization is described by a Gaussian attraction between beads of the same compartment
+
+$$E_{\text{block}} =
+\sum_c E_c
+\exp\!\left(-\frac{r^2}{2 r_0^2}\right).$$
+
+Only beads sharing the same compartment label interact. The interaction strength satisfies $|E_B| > |E_A|$, enforcing stronger attraction for inactive chromatin. The interaction range is
+
+$$r_0 = \frac{R_2 - R_1}{20}.$$
+
+Subcompartments are treated by assigning distinct energy levels.
+
+### Nuclear Geometry and Lamina
+
+Chromatin is confined between two concentric spherical boundaries with radii $R_1$ (nucleolus) and $R_2$ (lamina). Soft boundary conditions are imposed by
+
+$$E_{\text{bc}} =
+C\bigl[\max(0,r-R_2)^2 + \max(0,R_1-r)^2\bigr].$$
+
+#### B Compartment Lamina Attraction
+
+Inactive compartments are attracted to the nuclear lamina via
+
+$$E_{Bl} =
+B\Bigl(\sin^8\!\frac{r-R_1}{R_2-R_1}-1\Bigr)
+\left[\delta(s+1)+\delta(s+2)\right].$$
+
+This potential has minima near both inner and outer boundaries.
+
+### Chromosome Size Dependent Nucleolar Attraction
+
+Smaller chromosomes experience a weak attraction toward the nucleolus
+
+$$
+\begin{aligned}
+E_G &= G\, s_c \Biggl[
+\sin\!\frac{r-R_1}{\ell_G} \;-\; 
+\left(\frac{r-R_1}{\ell_G}\right)^2
+\Biggr]
+\end{aligned}
+$$
+
+where $s_c \in [0,1]$ encodes chromosome size ranking.
+
+
+### Optional Chromosome Globularization
+
+When loop or compartment information is insufficient, an optional weak confining potential can be applied
+
+$$E_{\text{chrom}} =
+\sum E_n \left(k_C r^4 - b r^3 + c r^2\right).$$
+
+This term has no direct biological interpretation and is disabled by default.
+
+### Nucleosome Scale Interpolation
+
+After coarse grained optimization, nucleosome positions are interpolated using a beads on the string zigzag model. Each nucleosome is represented as a helix with 1.65 DNA turns. The number of nucleosomes per bead is derived from normalized ATAC Seq signal, enforcing nucleosome rich regions in low accessibility chromatin.
+
+
 ## Input Data
 
 MultiMM relies on three types of datasets:
