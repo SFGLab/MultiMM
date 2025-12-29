@@ -41,27 +41,43 @@ PyPI software: https://pypi.org/project/MultiMM/.
 
 ## Mathematical Model
 
-We model chromatin as a coarse grained polymer confined inside the nucleus. The system is described by an effective energy functional
+We model chromatin as a coarse-grained polymer confined inside the nucleus. The system is described by an effective energy functional
 
-$$
-E = E_{\text{pol}} + E_{\text{lamina}} + E_{\text{loop}} + E_{\text{block}} .
-$$
+$$E = E_{\text{pol}} + E_{\text{lamina}} + E_{\text{loop}} + E_{\text{block}}$$
 
 Each bead represents a chromatin segment of fixed genomic length. The equilibrium structure is obtained by energy minimization or short relaxation dynamics.
 
 ### Polymer Backbone
 
-Polymer connectivity, stiffness, and excluded volume are enforced by
+Polymer connectivity, stiffness, and excluded volume are enforced by the following potential energy terms:
 
 $$
-\begin{aligned}
-E_{\text{pol}} &= \sum_i k_b (r_{i,i+1} - \ell)^2 \\
-&\quad + \sum_i k_s (\theta_i - \pi)^2 \\
-&\quad + \sum_{i<j} \epsilon \left(\frac{\sigma}{r_{ij}}\right)^\alpha
-\end{aligned}
+E_{\text{pol}} = E_{\text{bond}} + E_{\text{bend}} + E_{\text{rep}}
 $$
 
-The first term fixes bond lengths, the second controls bending rigidity, and the third is a purely repulsive Lennard-Jones interaction.
+where
+
+$$
+E_{\text{bond}} = \sum_i k_b (r_{i,i+1} - \ell)^2
+$$
+
+is the harmonic bond potential that keeps consecutive beads at distance ≈ ℓ,
+
+$$
+E_{\text{bend}} = \sum_i k_s (\theta_i - \pi)^2
+$$
+
+is the bending energy that controls chain stiffness (θᵢ is the angle between bonds i−1→i and i→i+1),
+
+and
+
+$$
+E_{\text{rep}} = \sum_{i < j} \epsilon \left( \frac{\sigma}{r_{ij}} \right)^\alpha
+$$
+
+is the purely repulsive long-range interaction that enforces excluded volume.
+
+The first term fixes bond lengths, the second controls bending rigidity, and the third prevents unphysical monomer overlap.
 
 
 ### Looping Interactions
@@ -83,9 +99,9 @@ For single cell data all loops have the same equilibrium distance.
 
 Long range compartmentalization is described by a Gaussian attraction between beads of the same compartment
 
-$$E_{\text{block}} =
-\sum_c E_c
-\exp\!\left(-\frac{r^2}{2 r_0^2}\right).$$
+$$
+E_{\text{block}} = \sum_c E_c \exp\left(-\frac{r^2}{2 r_0^2}\right)
+$$
 
 Only beads sharing the same compartment label interact. The interaction strength satisfies $|E_B| > |E_A|$, enforcing stronger attraction for inactive chromatin. The interaction range is
 
@@ -104,27 +120,22 @@ C\bigl[\max(0,r-R_2)^2 + \max(0,R_1-r)^2\bigr].$$
 
 Inactive compartments are attracted to the nuclear lamina via
 
-$$E_{Bl} =
-B\Bigl(\sin^8\!\frac{r-R_1}{R_2-R_1}-1\Bigr)
-\left[\delta(s+1)+\delta(s+2)\right].$$
+$$
+E_{Bl} = B \left( \sin^8 \frac{r-R_1}{R_2-R_1} - 1 \right) 
+\left[ \delta(s+1) + \delta(s+2) \right]
+$$
 
 This potential has minima near both inner and outer boundaries.
 
-### Chromosome Size Dependent Nucleolar Attraction
+#### Chromosome Size Dependent Nucleolar Attraction
 
 Smaller chromosomes experience a weak attraction toward the nucleolus
 
 $$
-\begin{aligned}
-E_G &= G\, s_c \Biggl[
-\sin\!\frac{r-R_1}{\ell_G} \;-\; 
-\left(\frac{r-R_1}{\ell_G}\right)^2
-\Biggr]
-\end{aligned}
+E_G = G s_c \left( \sin\frac{r-R_1}{\ell_G} - \left(\frac{r-R_1}{\ell_G}\right)^2 \right)
 $$
 
 where $s_c \in [0,1]$ encodes chromosome size ranking.
-
 
 ### Optional Chromosome Globularization
 
