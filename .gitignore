@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 *.python-version
+*.egg-info
 
 # Jupyter
 .ipynb_checkpoints/

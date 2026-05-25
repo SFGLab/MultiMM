@@ -3,9 +3,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
 import pandas as pd
-from .utils import *
+from .utils import get_coordinates_cif
+from scipy.spatial import distance
 from sklearn.decomposition import PCA
 import pyvista as pv
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 pv.set_jupyter_backend("server")
 color_dict = {-2:'#bf0020', -1:'#e36a24', 1:'#20c8e6',2:'#181385',0:'#ffffff'}
@@ -21,8 +26,7 @@ def plot_projection(struct_3D,Cs,save_path):
         comps.append(comp_dict[c])
     
     # Calculate Distances
-    dists = list()
-    for vec in struct_3D: dists.append(np.linalg.norm(vec))
+    dists = [np.linalg.norm(vec) for vec in struct_3D]
     dists = np.array(dists)
 
     # Make dataframe
@@ -154,7 +158,8 @@ def viz_chroms(sim_path,r=0.1,comps=True):
     chrom_comps_path = sim_path + 'metadata/compartments.npy'
     chrom_ends_path = sim_path + 'metadata/chrom_lengths.npy'
     chrom_idxs = np.load(chrom_idxs_path)
-    if comps: comps_array = np.load(chrom_comps_path)
+    if comps:
+        comps_array = np.load(chrom_comps_path)
     chrom_ends = np.load(chrom_ends_path)
     V = get_coordinates_cif(cif_path)
     N = len(V)
@@ -163,7 +168,8 @@ def viz_chroms(sim_path,r=0.1,comps=True):
         start, end = chrom_ends[i], chrom_ends[i+1]
         chroms[start:end] = chrom_idxs[i]
     viz_structure(V,chroms[:len(V)],cmap='gist_ncar',r=r,save_path=sim_path+'plots/minimized_structure_chromosomes.png')
-    if comps: viz_structure(V,comps_array[:len(V)],cmap='coolwarm',r=r,save_path=sim_path+'plots/minimized_structure_compartments.png')
+    if comps:
+        viz_structure(V,comps_array[:len(V)],cmap='coolwarm',r=r,save_path=sim_path+'plots/minimized_structure_compartments.png')
 
 def get_heatmap(cif_file,viz=False,th=1,save=False,save_path=None,vmax=1,vmin=0):
     '''
@@ -185,15 +191,16 @@ def get_heatmap(cif_file,viz=False,th=1,save=False,save_path=None,vmax=1,vmin=0)
     H (np.array): a heatmap of the 3D structure.
     '''
     V = get_coordinates_cif(cif_file)
-    print('Matrix shape:',V.shape)
+    logger.info('Matrix shape:',V.shape)
     mat = distance.cdist(V, V, 'euclidean') # this is the way \--/
     mat = 1/(mat+1)
 
     if viz:
         figure(figsize=(15, 12),dpi=500)
         plt.imshow(mat,cmap="Reds",vmax=vmax,vmin=vmin)
-        if save: plt.savefig(save_path,format='svg',dpi=500)
-        if save: np.save(save_path.replace("svg", "npy"),mat)
+        if save:
+            plt.savefig(save_path,format='svg',dpi=500)
+            np.save(save_path.replace("svg", "npy"),mat)
         plt.colorbar()
         plt.close()
     return mat

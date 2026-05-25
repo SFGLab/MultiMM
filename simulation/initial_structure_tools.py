@@ -4,7 +4,13 @@ from scipy import interpolate
 import matplotlib.pyplot as plt
 from hilbertcurve.hilbertcurve import HilbertCurve
 import warnings
-from .utils import *
+from tqdm import tqdm
+
+from .utils import digits_upper, digits_lower, digits_upper_values, digits_lower_values, random_versor
+import logging
+
+logger = logging.getLogger(__name__)
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 subcomp_dict={-2:'B1',-1:'B2',0:'O',1:'A1',2:'A2'}
@@ -98,8 +104,6 @@ def find_element_indexes(arr, elem):
     return ', '.join(ranges)
 
 def write_cmm(comps,name='MultiMM_compartment_colors.cmd'):
-    comp_old = 2
-    counter, start = 0, 0
     comp_dict = {-2:'#bf0020', -1:'#ba5062', 1:'#4e4c87',2:'#181385',0:'#fafcfc'}
     spins = np.unique(comps)
     lines = []
@@ -140,14 +144,14 @@ def generate_hilbert_curve(n_points,p=8,n=3,displacement_sigma=0.1,scale=6,viz=F
     points = np.array(hilbert_curve.points_from_distances(distances))
     if add_noise:
         displacement = np.random.normal(loc=0.0, scale=displacement_sigma, size=n_points*3).reshape(n_points,3)
-        V_interpol = V_interpol + displacement
+        points = points + displacement
     
     return points
 
 def polymer_circle(n: int, z_stretch: float = 1.0, radius: float = 5.0) -> np.ndarray:
     points = []
     angle_increment = 360 / float(n)
-    radius = 1 / (2 * np.sin(np.radians(angle_increment) / 2.)) if radius==None else radius
+    radius = 1 / (2 * np.sin(np.radians(angle_increment) / 2.)) if radius is None else radius
     z_stretch = z_stretch / n
     z = 0
     for i in range(n):
@@ -256,7 +260,8 @@ def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',curve='hilbert',scale=5):
     ## DNA beads
     for i in range(n_dna):
         chain_idx = np.searchsorted(chrom_ends,i)
-        if i in chrom_ends: chain_idx+=1
+        if i in chrom_ends:
+            chain_idx+=1
         [atom_type,res_name, atom_name, cl] = ['HETATM','ALB', 'CB', chr(65+chain_idx)] if (i in chrom_ends) | (i in chrom_ends-1) else ['ATOM','ALA', 'CA', chr(65+chain_idx)]
         atoms += ('{0:} {1:} {2:} {3:} {4:} {5:} {6:} {7:} {8:} '
                   '{9:} {10:.3f} {11:.3f} {12:.3f}\n'.format(atom_type, i+1, 'D', atom_name,\
@@ -268,7 +273,8 @@ def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',curve='hilbert',scale=5):
     
     for i in range(n_dna-1):
         chain_idx = np.searchsorted(chrom_ends,i)
-        if i in chrom_ends: chain_idx+=1
+        if i in chrom_ends:
+            chain_idx+=1
         if i not in chrom_ends-1:
             [atom_type1,res_name1, atom_name1, cl1] = ['HETATM','ALB', 'CB', chr(65+chain_idx)] if (i in chrom_ends) else ['ATOM','ALA', 'CA', chr(65+chain_idx)]
             [atom_type2,res_name2, atom_name2, cl2] = ['HETATM','ALB', 'CB', chr(65+chain_idx)] if (i+1 in chrom_ends-1) else ['ATOM','ALA', 'CA', chr(65+chain_idx)]
@@ -286,7 +292,7 @@ def build_init_mmcif(n_dna,chrom_ends,psf=True,path='',curve='hilbert',scale=5):
     if psf:
         generate_psf(n_dna,path+'MultiMM.psf')
 
-    print("File {} saved...".format(mmcif_file_name))
+    logger.info("File {} saved...".format(mmcif_file_name))
 
 def write_mmcif(coords,chrom_ends,path):
     # Write the positions in .mmcif file
@@ -295,7 +301,8 @@ def write_mmcif(coords,chrom_ends,path):
     ## DNA beads
     for i in range(len(coords)):
         chain_idx = np.searchsorted(chrom_ends,i)
-        if i in chrom_ends: chain_idx+=1
+        if i in chrom_ends:
+            chain_idx+=1
         [res_name, atom_name, cl] = ['ALB', 'CB', chr(65+chain_idx)] if (i in chrom_ends) | (i in chrom_ends-1) else ['ALA', 'CA', chr(65+chain_idx)]
         atoms += ('{0:} {1:} {2:} {3:} {4:} {5:} {6:} {7:} {8:} '
                   '{9:} {10:.3f} {11:.3f} {12:.3f}\n'.format('ATOM', i+1, 'D', atom_name,\
@@ -307,7 +314,8 @@ def write_mmcif(coords,chrom_ends,path):
     
     for i in range(len(coords)-1):
         chain_idx = np.searchsorted(chrom_ends,i)
-        if i in chrom_ends: chain_idx+=1
+        if i in chrom_ends:
+            chain_idx+=1
         if i not in chrom_ends-1:
             [res_name1, atom_name1, cl1] = ['ALB', 'CB', chr(65+chain_idx)] if (i in chrom_ends) else ['ALA', 'CA', chr(65+chain_idx)]
             [res_name2, atom_name2, cl2] = ['ALB', 'CB', chr(65+chain_idx)] if (i+1 in chrom_ends-1) else ['ALA', 'CA', chr(65+chain_idx)]
@@ -316,7 +324,6 @@ def write_mmcif(coords,chrom_ends,path):
     # Save files
     ## .pdb
     atomhead = mmcif_atomhead()
-    conhead = mmcif_connecthead()
     mmcif_file_content = atomhead+atoms#+conhead+connects
     
     f = open(path, "w")
@@ -505,7 +512,7 @@ def self_avoiding_random_walk(n: int, step: float = 1.0, bead_radius: float = 0.
                 if two_dimensions:
                     potential_new_step[2] = 0
                 for j in points:
-                    d = dist(j, potential_new_step)
+                    d = np.linalg.norm(j - potential_new_step)
                     if d < 2 * bead_radius - epsilon:
                         trials += 1
                         break

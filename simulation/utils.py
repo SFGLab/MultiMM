@@ -14,9 +14,24 @@ import pyBigWig
 import random as rd
 from itertools import groupby
 import warnings
+import logging
+
+logger = logging.getLogger(__name__)
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 pd.options.mode.chained_assignment = None
+
+digits_upper = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+digits_lower = "0123456789abcdefghijklmnopqrstuvwxyz"
+digits_upper_values = {c: i for i, c in enumerate(digits_upper)}
+digits_lower_values = {c: i for i, c in enumerate(digits_lower)}
+
+def random_versor():
+    """Generate a random 3D unit vector."""
+    v = np.random.normal(0, 1, 3)
+    norm = np.linalg.norm(v)
+    return v / norm if norm > 0 else np.array([1.0, 0.0, 0.0])
 
 chrs = {0:'chr1',1:'chr2',2:'chr3',3:'chr4',4:'chr5',5:'chr6',6:'chr7',7:'chr8',
           8:'chr9',9:'chr10',10:'chr11',11:'chr12',12:'chr13',13:'chr14',14:'chr15',
@@ -127,7 +142,8 @@ def get_heatmap(mm_vec,viz=False,save=False,path=''):
     mat = distance.cdist(V, V, 'euclidean') # this is the way \--/
     mat = 1/(mat+1)
     
-    if save: np.save('sim_heat.npy',mat)
+    if save:
+        np.save('sim_heat.npy',mat)
     
     if viz:
         figure(figsize=(25, 20))
@@ -155,30 +171,31 @@ def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path='',shuffle=Fals
     comps_df = pd.read_csv(bed_file,header=None,sep='\t')
 
     # Find maximum coordinate of each chromosome
-    print('Cleaning and transforming subcompartments dataframe...')
-    if chrom!=None:
+    logger.info('Cleaning and transforming subcompartments dataframe...')
+    if chrom is not None:
         comps_df = comps_df[(comps_df[0]==chrom)&(comps_df[1]>coords[0]) & (comps_df[2]<coords[1])].reset_index(drop=True)
     chrom_idxs = np.arange(n_chroms).astype(int)
-    if shuffle: np.random.shuffle(chrom_idxs)
-    chrom_ends = np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0)) if chrom==None else np.array([0,chrom_sizes[chrom]])
+    if shuffle:
+        np.random.shuffle(chrom_idxs)
+    chrom_ends = np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0)) if chrom is None else np.array([0,chrom_sizes[chrom]])
     
     # Sum bigger chromosomes with the maximum values of previous chromosomes
-    if chrom==None:
+    if chrom is None:
         for count, i in enumerate(chrom_idxs):
             comps_df[1][comps_df[0]==chrs[i]]=comps_df[1][comps_df[0]==chrs[i]]+chrom_ends[count]
             comps_df[2][comps_df[0]==chrs[i]]=comps_df[2][comps_df[0]==chrs[i]]+chrom_ends[count]
 
     # Convert genomic coordinates to simulation beads
-    resolution = chrom_ends[-1]//N_beads if chrom==None else (coords[1]-coords[0])//N_beads
+    resolution = chrom_ends[-1]//N_beads if chrom is None else (coords[1]-coords[0])//N_beads
     chrom_ends = np.array(chrom_ends)//resolution
     chrom_ends[-1] = N_beads
     np.save(save_path+'metadata/chrom_lengths.npy',chrom_ends)
-    if chrom!=None:
+    if chrom is not None:
         comps_df[1], comps_df[2] = comps_df[1]-coords[0], comps_df[2]-coords[0]
     comps_df[1], comps_df[2] = comps_df[1]//resolution, comps_df[2]//resolution
     
     # Convert compartemnts to vector
-    print('Building subcompartments_array...')
+    logger.info('Building subcompartments_array...')
     comps_array = np.zeros(N_beads)
     for i in tqdm(range(len(comps_df))):
         if comps_df[3][i].startswith('A.1') or comps_df[3][i].startswith('A1'):
@@ -193,7 +210,7 @@ def import_bed(bed_file,N_beads,coords=None,chrom=None,save_path='',shuffle=Fals
 
     np.save(save_path+'metadata/compartments.npy',comps_array)
     np.save(save_path+'metadata/chrom_idxs.npy',chrom_idxs)
-    print('Done')
+    logger.info('Done')
     return comps_array.astype(int), chrom_ends.astype(int), chrom_idxs.astype(int)
 
 def align_comps(comps,ms,chrom_ends):
@@ -203,7 +220,8 @@ def align_comps(comps,ms,chrom_ends):
         comps_with_loops = comps[mms]
         Aloops = np.count_nonzero(comps_with_loops>0)
         Bloops = np.count_nonzero(comps_with_loops<0)
-        if Aloops>Bloops: comps[start:end] = -comps[start:end]
+        if Aloops>Bloops:
+            comps[start:end] = -comps[start:end]
     return comps
 
 def integers_to_hex_colors(start, end):
@@ -257,14 +275,15 @@ def import_mns_from_bedpe(bedpe_file, N_beads, coords=None, chrom=None, threshol
     np.random.seed(seed)
     loops = pd.read_csv(bedpe_file,header=None,sep='\t')
     chrom_idxs = np.arange(n_chroms).astype(int)
-    if shuffle: np.random.shuffle(chrom_idxs)
-    if chrom!=None:
+    if shuffle:
+        np.random.shuffle(chrom_idxs)
+    if chrom is not None:
         loops = loops[(loops[0]==chrom)&(loops[1]>coords[0])&(loops[2]<coords[1])&(loops[4]>coords[0])&(loops[5]<coords[1])].reset_index(drop=True)
-    chrom_ends = np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0)) if chrom==None else np.array([0,chrom_sizes[chrom]])
-    print('Cleaning and transforming loops dataframe...')
+    chrom_ends = np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0)) if chrom is None else np.array([0,chrom_sizes[chrom]])
+    logger.info('Cleaning and transforming loops dataframe...')
     
     # Sum bigger chromosomes with the maximum values of previous chromosomes
-    if chrom==None:
+    if chrom is None:
         for count, i in enumerate(chrom_idxs):
             mask_0 = loops[0] == chrs[i]
             mask_3 = loops[3] == chrs[i]
@@ -274,11 +293,11 @@ def import_mns_from_bedpe(bedpe_file, N_beads, coords=None, chrom=None, threshol
             loops.loc[mask_3, 5] = loops.loc[mask_3, 5] + chrom_ends[count]
     
     # Convert genomic coordinates to simulation beads
-    resolution = int(np.max(loops[5].values))//N_beads if chrom==None else (coords[1]-coords[0])//N_beads
+    resolution = int(np.max(loops[5].values))//N_beads if chrom is None else (coords[1]-coords[0])//N_beads
     chrom_ends = np.array(chrom_ends)//resolution
     chrom_ends[-1] = N_beads
     np.save(path+'metadata/chrom_lengths.npy',chrom_ends)
-    if chrom!=None:
+    if chrom is not None:
         loops[1], loops[2], loops[4], loops[5] = loops[1]-coords[0], loops[2]-coords[0], loops[4]-coords[0], loops[5]-coords[0]
     loops[1], loops[2], loops[4], loops[5] = loops[1]//resolution, loops[2]//resolution, loops[4]//resolution, loops[5]//resolution
     loops['ms'] = (loops[1].values+loops[2].values)//2
@@ -287,7 +306,7 @@ def import_mns_from_bedpe(bedpe_file, N_beads, coords=None, chrom=None, threshol
     counts = loops['Total Count'].values
     
     # Filter the ones above the threshold
-    print('Importing loops...')
+    logger.info('Importing loops...')
     mns, cs = np.vstack((loops['ms'].values[counts>threshold], loops['ns'].values[counts>threshold])), counts[counts>threshold]
     mns, idxs = np.unique(mns,axis=1,return_index=True)
     cs = cs[idxs]
@@ -309,22 +328,22 @@ def import_mns_from_bedpe(bedpe_file, N_beads, coords=None, chrom=None, threshol
         ms, ns, cs, ds = downsample_arrays(ms, ns, cs, ds, down_prob)
 
     avg_ls = np.average(ns-ms)
-    print('Average loop size:',avg_ls)
+    logger.info('Average loop size:',avg_ls)
 
     N_loops = len(ms)
     np.save(path+'metadata/chrom_idxs.npy',chrom_idxs)
     np.save(path+'metadata/ms.npy',ms)
     np.save(path+'metadata/ns.npy',ns)
     np.save(path+'metadata/ds.npy',ds)
-    print('Done! Number of loops is ',N_loops)
+    logger.info('Done! Number of loops is ',N_loops)
     return ms.astype(int), ns.astype(int), ds, chrom_ends.astype(int), chrom_idxs.astype(int)
 
-def generate_arrays(N_loops, N, l=6):
+def generate_arrays(N_loops, N, l_val=6):
     # Generate array ms with random integers between 0 and N (exclusive)
     ms = np.random.randint(0, N, size=N_loops)
 
-    # Generate array ns by adding a random integer from an exponential distribution with average l
-    ns = ms + np.round(np.random.exponential(l, size=N_loops)).astype(int)
+    # Generate array ns by adding a random integer from an exponential distribution with average l_val
+    ns = ms + np.round(np.random.exponential(l_val, size=N_loops)).astype(int)
     ns = np.maximum(ns, 3)
     ns = np.minimum(ns, N-1)
 
@@ -357,11 +376,12 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
     np.random.seed(seed)
     bw = pyBigWig.open(bw_path)
     chrom_idxs = np.arange(n_chroms).astype(int)
-    if shuffle: np.random.shuffle(chrom_idxs)
-    print('Number of chromosomes:',n_chroms)
+    if shuffle:
+        np.random.shuffle(chrom_idxs)
+    logger.info('Number of chromosomes:',n_chroms)
 
     # Compute the total length of chromosomes
-    if chrom==None:
+    if chrom is None:
         chrom_length = 0
         lengths = list()
         for i in range(n_chroms):
@@ -373,8 +393,8 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
         np.save(path+'metadata/chrom_lengths.npy',polymer_lengths)
 
     # Import the downgraded signal
-    print('Importing bw signal...')
-    if chrom==None:
+    logger.info('Importing bw signal...')
+    if chrom is None:
         genomewide_signal = list()
         for i in tqdm(range(n_chroms)):
             signal = bw.values(chrs[chrom_idxs[i]],0,-1, numpy=True)
@@ -387,7 +407,8 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
     bw.close()
 
     genomewide_signal = compute_averages(genomewide_signal,N_beads)
-    if norm: genomewide_signal = (genomewide_signal-np.mean(genomewide_signal)+3*np.std(genomewide_signal))/np.std(genomewide_signal)
+    if norm:
+        genomewide_signal = (genomewide_signal-np.mean(genomewide_signal)+3*np.std(genomewide_signal))/np.std(genomewide_signal)
     
     # Transform signal to binary or adjuct it to have zero mean
     if binary:
@@ -400,7 +421,7 @@ def import_bw(bw_path,N_beads,coords=None,chrom=None,viz=False,binary=False,path
         nums = np.array(rd.choices([-1,1],k=n_zeros))
         genomewide_signal[mask] = nums
     
-    print('Done!\n')
+    logger.info('Done!\n')
 
     # Plotting
     if viz:
@@ -429,14 +450,14 @@ def get_gene_region(gene_tsv, gene_id=None, gene_name=None, window_size=200000):
     if gene_id is not None:
         if gene_id not in genes['gene_id'].values:
             raise ValueError(f"Gene ID '{gene_id}' not found in the provided TSV file.")
-        print('Region will be defined based on gene ID.')
+        logger.info('Region will be defined based on gene ID.')
         chrom = genes[genes['gene_id'] == gene_id]['chromosome'].values[0]
         start = genes[genes['gene_id'] == gene_id]['start'].values[0]
         end = genes[genes['gene_id'] == gene_id]['end'].values[0]
     elif gene_name is not None:
         if gene_name not in genes['gene_name'].values:
             raise ValueError(f"Gene name '{gene_name}' not found in the provided TSV file.")
-        print('Region will be defined based on gene name.')
+        logger.info('Region will be defined based on gene name.')
         chrom = genes[genes['gene_name'] == gene_name]['chromosome'].values[0]
         start = genes[genes['gene_name'] == gene_name]['start'].values[0]
         end = genes[genes['gene_name'] == gene_name]['end'].values[0]
@@ -495,7 +516,7 @@ def get_eigenvector(eigenvec_tsv, N_beads, chrom=None, region=None, viz=False):
     eigenvector['s'] = s_array
 
     # Keep only the region of interest
-    if chrom!=None:
+    if chrom is not None:
         resolution = (region[1]-region[0])//N_beads
         eigenvector = eigenvector[(eigenvector['end']>region[0])&(eigenvector['start']<region[1])].reset_index(drop=True)
         eigenvector['start'] = (eigenvector['start']-region[0])//resolution

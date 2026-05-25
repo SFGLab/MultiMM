@@ -7,6 +7,10 @@ import argparse
 import importlib.resources
 import openmm as mm
 from openmm.unit import Quantity
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # Dynamically set the default path to the XML file in the package
 try:
@@ -78,20 +82,20 @@ class ListOfArgs(list):
                 i.val = None
             elif i.name == "HR_K_PARAM":  # Workaround for complex unit
                 i.val = Quantity(float(i.val), mm.unit.kilojoule_per_mole / mm.unit.nanometer ** 2)
-            elif i.type == str:
+            elif i.type is str:
                 continue
-            elif i.type == int:
+            elif i.type is int:
                 i.val = int(i.val)
-            elif i.type == float:
+            elif i.type is float:
                 i.val = float(i.val)
-            elif i.type == bool:
+            elif i.type is bool:
                 if i.val.lower() in ['true', '1', 'y', 'yes']:
                     i.val = True
                 elif i.val.lower() in ['false', '0', 'n', 'no']:
                     i.val = False
                 else:
                     raise ValueError(f"Can't convert {i.val} into bool type.")
-            elif i.type == Quantity:
+            elif i.type is Quantity:
                 try:
                     i.val = self.parse_quantity(i.val)
                 except AttributeError:
@@ -132,7 +136,7 @@ class ListOfArgs(list):
         auto_config_filename = 'config_auto.ini'
         with open(auto_config_filename, 'w') as f:
             f.write(self.get_complete_config())
-        print(f"Automatically generated config file saved in {auto_config_filename}")
+        logger.info(f"Automatically generated config file saved in {auto_config_filename}")
 
 
 available_platforms = [mm.Platform.getPlatform(i).getName() for i in range(mm.Platform.getNumPlatforms())]
@@ -140,7 +144,7 @@ available_platforms = [mm.Platform.getPlatform(i).getName() for i in range(mm.Pl
 args = ListOfArgs([
     # Platform settings
     Arg('PLATFORM', help=f"name of the platform. Available choices: {' '.join(available_platforms)}", type=str, default='CPU', val='CPU'),
-    Arg('CPU_THREADS', help=f"The number of CPU threads (in case you would like to specify them).", type=int, default='', val=''),
+    Arg('CPU_THREADS', help="The number of CPU threads (in case you would like to specify them).", type=int, default='', val=''),
     Arg('DEVICE', help="device index for CUDA or OpenCL (count from 0)", type=str, default='', val=''),
     Arg('MODELLING_LEVEL', help="Choose 'GENE' or 'REGION' for gene or TAD level, 'CHROM' for chromosome leve, and 'GW' for genome level. It will setup some parameters for you and print you helpful comments.", type=str, default='', val=''),
     

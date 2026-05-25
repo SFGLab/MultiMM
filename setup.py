@@ -1,5 +1,4 @@
 from setuptools import setup, find_packages
-from pathlib import Path
 
 with open('README.md', 'r', encoding='utf-8') as f:
     long_description = f.read()
@@ -20,7 +19,7 @@ setup(
     },
     include_package_data=True,
     install_requires=[  # List your package dependencies here
-        'numpy>1.2,<2.0',
+        'numpy',
         'scipy',
         'pandas',
         'argparse',
@@ -37,6 +36,14 @@ setup(
         'OpenMM',
         'openmm-cuda',
     ],
+    extras_require={
+        "dev": [
+            "ruff",
+            "black",
+            "isort",
+            "docformatter",
+        ],
+    },
     entry_points={
         'console_scripts': [
             'MultiMM=simulation.run:main',  # MultiMM command points to run.py's main function

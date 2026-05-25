@@ -1,20 +1,18 @@
-from utils import *
+from .utils import get_coordinates_cif
 from tqdm import tqdm
-from scipy.stats import pearsonr, spearmanr
-from scipy.spatial import distance
-from scipy.spatial.distance import pdist, squareform
-from scipy.sparse import csr_matrix
 from scipy.stats import pearsonr
+from scipy.spatial import distance
 import scipy.ndimage as ndimage
-from scipy.spatial.distance import cdist
 from scipy.spatial import KDTree
 import numpy as np
-from sklearn.neighbors import NearestNeighbors
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans
 from scipy.sparse.linalg import eigsh
 import seaborn as sns
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # Metrics for comparisons
 def calculate_correlation(matrix1, matrix2):
@@ -226,7 +224,7 @@ def generate_self_avoiding_walk(N, step_size=1.0, max_backtracks=50):
 
             # If the number of backtracks exceeds the limit, stop to avoid infinite loops
             if backtracks > max_backtracks:
-                print(f"Exceeded maximum backtracks. Unable to complete the walk with {N} points.")
+                logger.info(f"Exceeded maximum backtracks. Unable to complete the walk with {N} points.")
                 return walk[:current_index]  # Return the walk up to the last valid point
 
     return walk
@@ -452,10 +450,10 @@ def compare_matrices(m,mr,exp_m, viz=True):
     corr_rw2, pvalue_rw2 = pearsonr(eignvec_rw, eignvec_exp2)
 
     if viz:
-        print('Correlation of simulation with the first eigenvector:',corr_sim1)
-        print('Correlation of random walk with the first eigenvector:',corr_rw1)
-        print('Correlation of simulation with the second eigenvector:',corr_sim2)
-        print('Correlation of random walk with the second eigenvector:',corr_rw2)
+        logger.info('Correlation of simulation with the first eigenvector:',corr_sim1)
+        logger.info('Correlation of random walk with the first eigenvector:',corr_rw1)
+        logger.info('Correlation of simulation with the second eigenvector:',corr_sim2)
+        logger.info('Correlation of random walk with the second eigenvector:',corr_rw2)
 
     return np.abs(corr_sim1), np.abs(corr_rw1), np.abs(corr_sim2), np.abs(corr_rw2)
 
@@ -482,8 +480,8 @@ def ensemble_pipeline_boxplot(ensemble_path, exp_path, N_chroms=22, N_ens=20, vi
         L = len(exp_m)
         
         # Calculate heatmaps from experimental structures
-        print(f'Chromosome {i+1}:')
-        print('Calculating heatmaps from experimental structures...')
+        logger.info(f'Chromosome {i+1}:')
+        logger.info('Calculating heatmaps from experimental structures...')
         corrs_sim, corrs_rw = [], []
         for j in tqdm(range(N_ens)):
             V = get_coordinates_cif(ensemble_path + f'/ens_{j+1}/chromosomes/MultiMM_minimized_chr{i+1}.cif')
@@ -501,7 +499,7 @@ def ensemble_pipeline_boxplot(ensemble_path, exp_path, N_chroms=22, N_ens=20, vi
 
         Cs_sim.append(corrs_sim)
         Cs_rw.append(corrs_rw)
-        print(f'Chromosome {i+1} done!\n')
+        logger.info(f'Chromosome {i+1} done!\n')
 
     if viz:
         # Box plot for each chromosome
@@ -536,8 +534,8 @@ def ensemble_pipeline_bars(ensemble_path,exp_path,N_chroms=22,N_ens=20,viz=True)
 
         # Average the heatmaps of each ensemble
         avg_m = 0
-        print(f'Chromosome {i+1}:')
-        print('Calculating heatmaps from experimental structures...')
+        logger.info(f'Chromosome {i+1}:')
+        logger.info('Calculating heatmaps from experimental structures...')
         for j in tqdm(range(N_ens)):
             V = get_coordinates_cif(ensemble_path+f'/ens_{j+1}/chromosomes/MultiMM_minimized_chr{i+1}.cif')
             V_reduced = mean_downsample(V, L)
@@ -547,7 +545,7 @@ def ensemble_pipeline_bars(ensemble_path,exp_path,N_chroms=22,N_ens=20,viz=True)
 
         # Average the heatmaps of each random walk
         avg_mr = 0
-        print('Calculating heatmaps from random structures...')
+        logger.info('Calculating heatmaps from random structures...')
         for j in tqdm(range(N_ens)):
             Vr = random_walk_3d(len(V))
             Vr_reduced = mean_downsample(Vr, L)
@@ -567,11 +565,11 @@ def ensemble_pipeline_bars(ensemble_path,exp_path,N_chroms=22,N_ens=20,viz=True)
         Cs_rw2.append(corr_rw2)
 
         if viz:
-            print('Correlation of simulation with the first eigenvector:',corr_sim1)
-            print('Correlation of random walk with the first eigenvector:',corr_rw1)
-            print('Correlation of simulation with the second eigenvector:',corr_sim2)
-            print('Correlation of random walk with the second eigenvector:',corr_rw2)
-        print(f'Chromosome {i+1} done!\n')
+            logger.info('Correlation of simulation with the first eigenvector:',corr_sim1)
+            logger.info('Correlation of random walk with the first eigenvector:',corr_rw1)
+            logger.info('Correlation of simulation with the second eigenvector:',corr_sim2)
+            logger.info('Correlation of random walk with the second eigenvector:',corr_rw2)
+        logger.info(f'Chromosome {i+1} done!\n')
 
     if viz:
         chroms = ['chr'+str(i) for i in range(1,N_chroms+1)]
@@ -608,20 +606,19 @@ def regions_pipeline(regions_dir,chroms,starts,ends,N_ens=1000):
     ps_rw, ints_rw = [], []
 
     # Average the heatmaps of each ensemble
-    avg_m = 0
-    print('Calculating heatmaps from experimental structures...')
+    logger.info('Calculating heatmaps from experimental structures...')
     for i in tqdm(range(N_ens)):
         try:
             exp_m = np.nan_to_num(np.load(f'/home/skorsak/Data/Rao/regs/primary+replicate_ice_norm_25kb_chrom{chroms[i]}_{starts[i]}_{ends[i]}.npy'))
             L = len(exp_m)
-        except:
-            print(f"Problem with chromosome {chroms[i]}_{starts[i]}_{ends[i]} experimental data")
+        except Exception:
+            logger.info(f"Problem with chromosome {chroms[i]}_{starts[i]}_{ends[i]} experimental data")
             continue
         
         try:
             V = get_coordinates_cif(regions_dir+f'/regens_chrom{chroms[i]}_region_{starts[i]}_{ends[i]}/MultiMM_minimized.cif')
-        except:
-            print(f"Problem with chromosome {chroms[i]}_{starts[i]}_{ends[i]} simulated data")
+        except Exception:
+            logger.info(f"Problem with chromosome {chroms[i]}_{starts[i]}_{ends[i]} simulated data")
             continue
         V_reduced = mean_downsample(V, L)
         m = structure_to_heatmap(V_reduced)

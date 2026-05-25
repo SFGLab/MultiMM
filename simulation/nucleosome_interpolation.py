@@ -4,10 +4,13 @@
 #########################################################
 
 import numpy as np
-from .utils import *
-from .initial_structure_tools import *
-from .plots import *
+from .utils import get_coordinates_cif, import_bw
+from .plots import viz_structure
 from tqdm import tqdm
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def makeUnit(x):
     """Normalize vector to norm 1"""
@@ -82,7 +85,7 @@ class NucleosomeInterpolation:
         interpolated_structure = []
         
         # Interpolate each segment with nucleosomes
-        print('Building nucleosome structure...')
+        logger.info('Building nucleosome structure...')
         prev_zigzag = None
         for i in tqdm(range(len(self.V) - 1)):
             # Get segment endpoints
@@ -104,7 +107,7 @@ class NucleosomeInterpolation:
 
         # Flatten the nested list to get a list of coordinate tuples
         flattened_coords = [coord for sublist in interpolated_structure for coord in sublist]
-        print('Done! You have the whole structure with nucleosomes. ;)')
+        logger.info('Done! You have the whole structure with nucleosomes. ;)')
         return np.array(flattened_coords)
 
     def single_bead_nucgenerator(self, start_point, end_point, num_nucleosomes, prev_zigzag_vec=None, turns=1.65, mode="random"):
@@ -136,7 +139,8 @@ class NucleosomeInterpolation:
         for i in range(num_nucleosomes):
             helix_point = start_point + (i+1)/(num_nucleosomes+1)*segment_vector
             zigzag_vec = linker_len/2*(np.cos(phi)*zigzag_vec1 + np.sin(phi)*zigzag_vec2)
-            if mode == "random": zigzag_vec *= np.random.uniform(0.5, 1.5)
+            if mode == "random":
+                zigzag_vec *= np.random.uniform(0.5, 1.5)
             p1 = helix_point + zigzag_vec - nuc_height/2*segment_vector_norm
             p2 = helix_point + zigzag_vec + nuc_height/2*segment_vector_norm
             helix = self.move_structure_to(nucleosome, helix_point, p1, p2)
@@ -154,11 +158,11 @@ class NucleosomeInterpolation:
 def main():
     # Example data
     V = get_coordinates_cif('/home/skorsak/Data/simulation_results/GM12878_GW/MultiMM_minimized.cif')
-    print('Initial granularity of structure =', len(V))
+    logger.info('Initial granularity of structure =', len(V))
     bw = import_bw('/home/skorsak/Data/encode/ATAC-Seq/ENCSR637XSC_GM12878/ENCFF667MDI_pval.bigWig', len(V))  # Mock self.signal array
 
     # Interpolate structure with nucleosomes
     nuc_interpol = NucleosomeInterpolation(V, bw)
     iV = nuc_interpol.interpolate_structure_with_nucleosomes(mode="random")
-    print('Final Length of Nucleosome Interpolated Structure:', len(iV))
+    logger.info('Final Length of Nucleosome Interpolated Structure:', len(iV))
     viz_structure(iV, r=0.1)
