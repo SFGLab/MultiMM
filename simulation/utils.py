@@ -266,10 +266,12 @@ def import_mns_from_bedpe(bedpe_file, N_beads, coords=None, chrom=None, threshol
     # Sum bigger chromosomes with the maximum values of previous chromosomes
     if chrom==None:
         for count, i in enumerate(chrom_idxs):
-            loops[1][loops[0]==chrs[i]]=loops[1][loops[0]==chrs[i]]+chrom_ends[count]
-            loops[2][loops[0]==chrs[i]]=loops[2][loops[0]==chrs[i]]+chrom_ends[count]
-            loops[4][loops[3]==chrs[i]]=loops[4][loops[3]==chrs[i]]+chrom_ends[count]
-            loops[5][loops[3]==chrs[i]]=loops[5][loops[3]==chrs[i]]+chrom_ends[count]
+            mask_0 = loops[0] == chrs[i]
+            mask_3 = loops[3] == chrs[i]
+            loops.loc[mask_0, 1] = loops.loc[mask_0, 1] + chrom_ends[count]
+            loops.loc[mask_0, 2] = loops.loc[mask_0, 2] + chrom_ends[count]
+            loops.loc[mask_3, 4] = loops.loc[mask_3, 4] + chrom_ends[count]
+            loops.loc[mask_3, 5] = loops.loc[mask_3, 5] + chrom_ends[count]
     
     # Convert genomic coordinates to simulation beads
     resolution = int(np.max(loops[5].values))//N_beads if chrom==None else (coords[1]-coords[0])//N_beads
