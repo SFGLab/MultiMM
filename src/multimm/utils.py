@@ -266,9 +266,13 @@ def import_bed(
         comps_df = comps_df[(comps_df[0] == chrom) & (comps_df[1] > coords[0]) & (comps_df[2] < coords[1])].reset_index(
             drop=True
         )
-    chrom_idxs = np.arange(n_chroms).astype(int)
-    if shuffle:
-        np.random.shuffle(chrom_idxs)
+    if chrom is not None:
+        chrom_idx = next((k for k, v in chrs.items() if v == chrom or v == f"chr{chrom}"), 0)
+        chrom_idxs = np.array([chrom_idx])
+    else:
+        chrom_idxs = np.arange(n_chroms).astype(int)
+        if shuffle:
+            np.random.shuffle(chrom_idxs)
     chrom_ends = (
         np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0))
         if chrom is None
@@ -389,9 +393,13 @@ def import_mns_from_bedpe(
     # Import loops
     np.random.seed(seed)
     loops = pd.read_csv(bedpe_file, header=None, sep="\t")
-    chrom_idxs = np.arange(n_chroms).astype(int)
-    if shuffle:
-        np.random.shuffle(chrom_idxs)
+    if chrom is not None:
+        chrom_idx = next((k for k, v in chrs.items() if v == chrom or v == f"chr{chrom}"), 0)
+        chrom_idxs = np.array([chrom_idx])
+    else:
+        chrom_idxs = np.arange(n_chroms).astype(int)
+        if shuffle:
+            np.random.shuffle(chrom_idxs)
     if chrom is not None:
         loops = loops[
             (loops[0] == chrom)

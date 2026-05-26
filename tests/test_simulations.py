@@ -41,6 +41,29 @@ def test_simulation_chrom1_no_coords(tmp_path):
     assert os.path.exists(os.path.join(str(out_dir), "model", "MultiMM_minimized.cif"))
 
 
+def test_simulation_chrom6_names(tmp_path):
+    out_dir = tmp_path / "sim_chrom6_names"
+    config = SimulationConfig(
+        LOOPS_PATH="tests/fixtures/ENCFF045MJY_simple.bedpe",
+        COMPARTMENT_PATH="tests/fixtures/ENCFF784NCU_reformatted.bed",
+        OUT_PATH=str(out_dir),
+        N_BEADS=1000,
+        CHROM="chr6",
+        SIM_RUN_MD=True,
+        SIM_N_STEPS=10,
+        SAVE_PLOTS=True,
+        COB_USE_COMPARTMENT_BLOCKS=True,
+    )
+    md = MultiMM(config)
+    md.run()
+    assert os.path.exists(os.path.join(str(out_dir), "model", "MultiMM_minimized.cif"))
+    assert os.path.exists(os.path.join(str(out_dir), "model", "chromosomes", "MultiMM_minimized_chr6.cif"))
+    assert not os.path.exists(os.path.join(str(out_dir), "model", "chromosomes", "MultiMM_minimized_chr1.cif"))
+    assert os.path.exists(os.path.join(str(out_dir), "plots", "chromosomes", "chr6_minimized_structure.png"))
+    assert not os.path.exists(os.path.join(str(out_dir), "plots", "chromosomes", "chr1_minimized_structure.png"))
+
+
+
 
 def test_simulation_genome_wide(tmp_path):
     out_dir = tmp_path / "sim_gw"
