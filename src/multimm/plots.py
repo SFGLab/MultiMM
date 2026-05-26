@@ -1,0 +1,240 @@
+import logging
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pyvista as pv
+import seaborn as sns
+from matplotlib.pyplot import figure
+from scipy.spatial import distance
+from sklearn.decomposition import PCA
+
+from .utils import get_coordinates_cif
+
+logger = logging.getLogger(__name__)
+
+
+pv.set_jupyter_backend("server")
+color_dict = {-2: "#bf0020", -1: "#e36a24", 1: "#20c8e6", 2: "#181385", 0: "#ffffff"}
+comp_dict = {-2: "B2", -1: "B1", 1: "A2", 2: "A1", 0: "no compartment"}
+
+
+def plot_projection(struct_3D, Cs, save_path):
+    # Dimensionality Reduction
+    pca = PCA(n_components=2)
+    struct_2d = pca.fit_transform(struct_3D)
+    colors, comps = [], []
+    for c in Cs[: len(struct_3D)]:
+        colors.append(color_dict[c])
+        comps.append(comp_dict[c])
+
+    # Calculate Distances
+    dists = [np.linalg.norm(vec) for vec in struct_3D]
+    dists = np.array(dists)
+
+    # Make dataframe
+    df = pd.DataFrame()
+    df["x"], df["y"], df["z"] = struct_3D[:, 0], struct_3D[:, 1], struct_3D[:, 2]
+    df["x_PCA"], df["y_PCA"] = struct_2d[:, 0], struct_2d[:, 1]
+    df["distance"] = dists
+    df["subcomp"] = Cs
+    df["subcomp_text"] = comps
+    df.drop(df[df["subcomp"] == 0.0].index, inplace=True)
+
+    # Plot Distribution
+    figure(figsize=(8, 8), dpi=100)
+    sns.scatterplot(data=df, x="x_PCA", y="y_PCA", hue="subcomp", palette="coolwarm", alpha=0.5)
+    plt.xlabel("First Pricipal Component")
+    plt.ylabel("Second Pricipal Component")
+    plt.title("Scatter Plot of PCA 2D Projection")
+    plt.savefig(save_path + "plots/PCA.svg", format="svg", dpi=100)
+    plt.close()
+
+    # Plot more stuff
+    figure(figsize=(8, 8), dpi=100)
+    sns.kdeplot(data=df, x="x", y="y", palette="coolwarm", hue="subcomp", bw_adjust=0.5)
+    plt.title("Subcompartment 2D Density Plot")
+    plt.savefig(save_path + "plots/density_subcomp.svg", format="svg", dpi=100)
+    plt.close()
+
+    figure(figsize=(8, 5), dpi=100)
+    sns.kdeplot(data=df, x="distance", hue="subcomp", fill=True, palette="coolwarm")
+    plt.title("Subcompartment Density Plot")
+    plt.savefig(save_path + "plots/kde_subcomp.svg", format="svg", dpi=100)
+    plt.close()
+
+    figure(figsize=(8, 5), dpi=100)
+    sns.kdeplot(data=df, x="distance", fill=True)
+    plt.title("Density Plot")
+    plt.savefig(save_path + "plots/kde.svg", format="svg", dpi=100)
+    plt.close()
+
+    figure(figsize=(10, 8), dpi=100)
+    sns.kdeplot(data=df, x="x_PCA", y="y_PCA", cmap="gnuplot2", shade=True, cbar=True)
+    plt.title("2D Density Plot")
+    plt.savefig(save_path + "plots/density.svg", format="svg", dpi=100)
+    plt.close()
+
+
+def polyline_from_points(points):
+    poly = pv.PolyData()
+    poly.points = points
+    the_cell = np.arange(0, len(points), dtype=np.int_)
+    the_cell = np.insert(the_cell, 0, len(points))
+    poly.lines = the_cell
+    return poly
+
+
+def viz_structure(V, colors=None, r=0.1, cmap="coolwarm", save_path=None):
+    """Visualize structure V and optionally save it to a file."""
+    polyline = polyline_from_points(V)
+    polyline["scalars"] = np.arange(polyline.n_points)
+
+    if colors is not None and len(colors) > 0:
+        colors = np.array(colors[: len(V)])
+        colors_min = np.min(colors)
+        colors_max = np.max(colors)
+        diff = colors_max - colors_min
+        if diff > 0:
+            color_values = (colors - colors_min) / diff  # Normalize colors
+        else:
+            color_values = np.zeros_like(colors, dtype=float)
+        polyline["colors"] = color_values  # Set colors as point scalars
+        polymer = polyline.tube(radius=r)
+    else:
+        polymer = polyline.tube(radius=r)
+
+    # Create plotter
+    plotter = pv.Plotter(off_screen=True if save_path else False)
+    plotter.add_mesh(
+        polymer,
+        smooth_shading=True,
+        cmap=cmap,
+        scalars="colors" if colors is not None else None,
+        show_scalar_bar=False,
+    )
+
+    if save_path:
+        plotter.show(screenshot=save_path)
+    else:
+        plotter.show()
+
+    plotter.close()
+
+
+def save_chimera_cmd(start, end, total_residues, cmd_filename="coloring.cmd"):
+    """
+    Create a Chimera .cmd file:
+    - Color residues outside the given region blue.
+    - Color residues inside the region red.
+    """
+    with open(cmd_filename, "w") as f:
+        # Color all residues blue first (except the highlighted region)
+        if start > 1:
+            f.write(f"color blue :1-{start-1}\n")
+        if end < total_residues:
+            f.write(f"color blue :{end+1}-{total_residues}\n")
+
+        # Color the selected region red
+        f.write(f"color red :{start}-{end}\n")
+
+        f.write("focus\n")
+
+
+def viz_gene_structure(V, start, end, r=0.1, cmap="coolwarm", save_path=None):
+    """Visualize structure V, highlight a continuous region in red, rest in
+    blue."""
+    polyline = polyline_from_points(V)
+    polyline["scalars"] = np.arange(polyline.n_points)
+
+    # Create colors: 0 for blue, 1 for red
+    colors = np.zeros(len(V))
+    colors[start : end + 1] = 1  # Mark the highlighted region
+
+    polyline["colors"] = colors
+
+    # Create tube
+    polymer = polyline.tube(radius=r)
+
+    # Create plotter
+    plotter = pv.Plotter(off_screen=True if save_path else False)
+    plotter.add_mesh(
+        polymer,
+        smooth_shading=True,
+        scalars="colors",
+        cmap=["blue", "red"],  # Explicit color map
+        show_scalar_bar=False,
+        clim=[0, 1],  # Force colors 0 and 1
+    )
+
+    if save_path:
+        plotter.show(screenshot=save_path)
+    else:
+        plotter.show()
+
+
+def viz_chroms(sim_path, r=0.1, comps=True):
+    cif_path = sim_path + "model/MultiMM_minimized.cif"
+    chrom_idxs_path = sim_path + "metadata/chrom_idxs.npy"
+    chrom_comps_path = sim_path + "metadata/compartments.npy"
+    chrom_ends_path = sim_path + "metadata/chrom_lengths.npy"
+    chrom_idxs = np.load(chrom_idxs_path)
+    if comps:
+        comps_array = np.load(chrom_comps_path)
+    chrom_ends = np.load(chrom_ends_path)
+    V = get_coordinates_cif(cif_path)
+    N = len(V)
+    chroms = np.zeros(N)
+    for i in range(len(chrom_ends) - 1):
+        start, end = chrom_ends[i], chrom_ends[i + 1]
+        chroms[start:end] = chrom_idxs[i]
+    viz_structure(
+        V,
+        chroms[: len(V)],
+        cmap="gist_ncar",
+        r=r,
+        save_path=sim_path + "plots/minimized_structure_chromosomes.png",
+    )
+    if comps:
+        viz_structure(
+            V,
+            comps_array[: len(V)],
+            cmap="coolwarm",
+            r=r,
+            save_path=sim_path + "plots/minimized_structure_compartments.png",
+        )
+
+
+def get_heatmap(cif_file, viz=False, th=1, save=False, save_path=None, vmax=1, vmin=0):
+    """It returns the corrdinate matrix V (N,3) of a .pdb file.
+
+    The main problem of this function is that coordiantes are not always in the same
+    column position of a .pdb file. Do changes appropriatelly, in case that the
+    data aren't stored correctly.
+
+    Input:
+    file (Openmm Qunatity): an OpenMM vector of the form
+    Quantity(value=[Vec3(x=0.16963918507099152, y=0.9815883636474609, z=-1.4776774644851685),
+    Vec3(x=0.1548253297805786, y=0.9109517931938171, z=-1.4084612131118774),
+    Vec3(x=0.14006929099559784, y=0.8403329849243164, z=-1.3392155170440674),
+    Vec3(x=0.12535107135772705, y=0.7697405219078064, z=-1.269935131072998),
+    ...,
+    unit=nanometer)
+
+    Output:
+    H (np.array): a heatmap of the 3D structure.
+    """
+    V = get_coordinates_cif(cif_file)
+    logger.info("Matrix shape:", V.shape)
+    mat = distance.cdist(V, V, "euclidean")  # this is the way \--/
+    mat = 1 / (mat + 1)
+
+    if viz:
+        figure(figsize=(15, 12), dpi=500)
+        plt.imshow(mat, cmap="Reds", vmax=vmax, vmin=vmin)
+        if save:
+            plt.savefig(save_path, format="svg", dpi=500)
+            np.save(save_path.replace("svg", "npy"), mat)
+        plt.colorbar()
+        plt.close()
+    return mat
