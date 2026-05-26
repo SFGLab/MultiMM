@@ -19,6 +19,7 @@ from .plots import (
     viz_structure,
 )
 from .utils import (
+    chrom_sizes,
     chrom_strength,
     chrs,
     get_coordinates_cif,
@@ -64,7 +65,12 @@ class MultiMM:
             os.makedirs(os.path.join(self.save_path, "model", "chromosomes"), exist_ok=True)
 
         chrom = args.CHROM
-        coords = [args.LOC_START, args.LOC_END] if args.LOC_START is not None else None
+        if _is_empty(chrom):
+            chrom = None
+        coords = [args.LOC_START, args.LOC_END] if (args.LOC_START is not None and args.LOC_END is not None) else None
+        if chrom is not None and coords is None:
+            if chrom in chrom_sizes:
+                coords = [0, chrom_sizes[chrom]]
 
         if (args.GENE_TSV is not None) and (str(args.MODELLING_LEVEL).lower() == "gene"):
             if args.GENE_ID is not None and str(args.GENE_ID).lower() != "none" and str(args.GENE_ID).lower() != "":
