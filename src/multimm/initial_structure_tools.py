@@ -460,7 +460,6 @@ def generate_psf(n: int, file_name="stochastic_LE.psf", title="No title provided
     :return: List with string records of PSF file.
     """
     assert len(title) < 40, "provided title in psf file is too long."
-    # noinspection PyListCreation
     lines = ["PSF CMAP\n"]
     lines.append("\n")
     lines.append("      1 !NTITLE\n")

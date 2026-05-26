@@ -197,49 +197,41 @@ def get_config():
     """
     logger.info("Reading config...")
 
-    # Step 1: Setup argparse
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("-c", "--config_file", help="Specify config file (ini format)", metavar="FILE")
 
     for field_name, field in SimulationConfig.model_fields.items():
         arg_parser.add_argument(f"--{field_name.lower()}", help=field.description)
 
-    args_ap = arg_parser.parse_args()  # parse command-line arguments
+    args_ap = arg_parser.parse_args()
     args_dict = vars(args_ap)
 
-    # We collect configuration inputs in a raw dictionary
     raw_config = {}
 
-    # Step 2: If config file provided, parse it
     if args_ap.config_file:
         config_parser = configparser.ConfigParser()
         config_parser.read(args_ap.config_file)
         args_cp = my_config_parser(config_parser)
 
-        # Override default args with values from config file
         for cp_arg in args_cp:
             name, value = cp_arg
             raw_config[name.upper()] = value
 
-    # Step 3: Override again with CLI arguments (if present)
     for name, value in args_dict.items():
         if name == "config_file":
             continue
         if value is not None:
             raw_config[name.upper()] = value
 
-    # Step 4: Parse & validate with Pydantic
     try:
         config_obj = SimulationConfig(**raw_config)
     except Exception as e:
         logger.error(f"Configuration validation failed: {e}")
         raise e
 
-    # Assuming chrom_sizes is already available globally
     changer = ArgumentChanger(config_obj, chrom_sizes)
     changer.convenient_argument_changer()
 
-    # Step 5: Save final arguments to config file
     write_config(config_obj)
 
     return config_obj
@@ -256,8 +248,6 @@ def write_config(args):
 
     for name, value in args.model_dump().items():
         if isinstance(value, Quantity):
-            # Format Quantity to string: "value unit"
-            # noinspection PyProtectedMember
             config["DEFAULT"][name] = f"{value._value} {value.unit.get_name()}"
         elif isinstance(value, Enum):
             config["DEFAULT"][name] = value.value
@@ -274,15 +264,12 @@ def write_config(args):
 
 def main():
     try:
-        # Input data
         args = get_config()
         args_tests(args)
 
-        # Create output directory if it doesn't exist
         log_dir = os.path.join(args.OUT_PATH, "metadata")
         os.makedirs(log_dir, exist_ok=True)
 
-        # Redirect stdout and stderr to both terminal and file safely
         log_path = os.path.join(log_dir, "output.log")
         with open(log_path, "w") as log_file:
             original_stdout = sys.stdout
@@ -290,7 +277,6 @@ def main():
             sys.stdout = Tee(original_stdout, log_file)
             sys.stderr = Tee(original_stderr, log_file)
 
-            # Run simulation
             name = args.OUT_PATH
             if args.GENERATE_ENSEMBLE:
                 for i in range(args.N_ENSEMBLE):
@@ -302,15 +288,12 @@ def main():
                 md = MultiMM(args)
                 md.run()
 
-            # Restore original streams before exiting 'with'
             sys.stdout = original_stdout
             sys.stderr = original_stderr
 
-        # Normal exit
         sys.exit(0)
 
     except Exception as e:
-        # Print error to original stderr and exit with code 1
         logger.error(f"ERROR: {e}")
         sys.exit(1)
 

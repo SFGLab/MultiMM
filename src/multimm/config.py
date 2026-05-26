@@ -8,7 +8,6 @@ from typing_extensions import Annotated
 
 from .enums import InitialStructureType
 
-# Dynamically set default paths to resource files in the package
 try:
     default_xml_path = str(pkg_resources.files("multimm.forcefields").joinpath("ff.xml"))
 except Exception:
@@ -116,7 +115,6 @@ class SimulationConfig(BaseModel):
                         if field:
                             annotation = field.annotation
                             args_types = getattr(annotation, "__args__", [])
-                            # Check if None is allowed or if field is Any
                             if type(None) in args_types or annotation is Any:
                                 cleaned[k] = None
                                 continue
