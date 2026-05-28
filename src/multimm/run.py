@@ -48,8 +48,15 @@ class ArgumentChanger:
         self.set_arg("ATACSEQ_PATH", None)
 
         modelling_level = self.args.MODELLING_LEVEL
+        print("The modelling level is: ", modelling_level)
 
-        if str(modelling_level).lower() in ("gene"):
+        # EARLY EXIT: if nothing is defined, do not modify defaults
+        if modelling_level is None or str(modelling_level).strip() == "":
+            logger.warning(
+                "No modelling level specified. Using user-specified parameter configuration."
+            )
+            return
+        elif str(modelling_level).lower() in ("gene"):
             logger.warning(
                 "MAGIC COMMENT: For gene level it is needed to provide a loops_path, and a gene_name or gene_id to specify the target gene of interest."
             )
@@ -235,9 +242,8 @@ def get_config():
         logger.error(f"Configuration validation failed: {e}")
         raise e
 
-    if not config_obj.BYPASS_CHANGER:
-        changer = ArgumentChanger(config_obj, chrom_sizes)
-        changer.convenient_argument_changer()
+    changer = ArgumentChanger(config_obj, chrom_sizes)
+    changer.convenient_argument_changer()
 
     write_config(config_obj)
 

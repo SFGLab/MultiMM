@@ -554,18 +554,20 @@ class MultiMM:
         self.system.addForce(self.bond_force)
 
     def add_loops(self):
-        """Add loop constraints using different possible biophysical bond
-        models.
+        """
+        Loop constraints using stable polymer bond models.
 
         Supported modes:
-        - "harmonic" (default original)
-        - "fene" (polymer physics, soft but finite extensibility)
-        - "lj_soft" (Lennard-Jones-like soft tether)
+        - harmonic (default)
+        - fene_safe (bounded FENE-like)
+        - gaussian_tether (fully smooth bounded well)
         """
+
         mode = getattr(self.args, "LE_LOOP_FORCE_TYPE", "harmonic")
 
-        # 1. Harmonic bond (original)
+        # 1. HARMONIC (unchanged baseline)
         if mode == "harmonic":
+
             self.loop_force = mm.HarmonicBondForce()
             self.loop_force.setForceGroup(1)
 
@@ -574,38 +576,47 @@ class MultiMM:
                 k = self.args.LE_HARMONIC_BOND_K
                 self.loop_force.addBond(m, n, r0, k)
 
-        # 2. FENE bond (recommended for polymers)
-        elif mode == "fene":
-            # U = -0.5 k R0^2 log(1 - (r/R0)^2)
-            self.loop_force = mm.CustomBondForce("-0.5 * k * R0^2 * log(1 - (r/R0)^2)")
-            self.loop_force.addPerBondParameter("R0")
+        # 2. SAFE FENE-LIKE (bounded, no singularity)
+        elif mode == "fene_soft":
+
+            self.loop_force = mm.CustomBondForce(
+                "k * (r - r0)^2 / (1 + alpha * (r - r0)^2)"
+            )
+
+            self.loop_force.addPerBondParameter("r0")
             self.loop_force.addPerBondParameter("k")
+            self.loop_force.addPerBondParameter("alpha")
             self.loop_force.setForceGroup(1)
 
             for i, (m, n) in enumerate(zip(self.ms, self.ns)):
+
                 r0 = self.args.LE_HARMONIC_BOND_R0 if self.args.LE_FIXED_DISTANCES else self.ds[i]
 
-                # interpret harmonic K as effective stiffness
-                R0 = r0 * 1.5  # soft extensibility scale (can tune if needed)
                 k = self.args.LE_HARMONIC_BOND_K
+                alpha = 1.0 / (r0 ** 2)
 
-                self.loop_force.addBond(m, n, [R0, k])
+                self.loop_force.addBond(m, n, [r0, k, alpha])
 
-        # 3. Soft Lennard-Jones tether
-        elif mode == "lj_soft":
-            # Soft minimum around r0 without hard constraint
-            self.loop_force = mm.CustomBondForce("epsilon * ((sigma/r)^12 - 2*(sigma/r)^6)")
+        # 3. GAUSSIAN TETHER (fully smooth bounded interaction)
+        elif mode == "gaussian_tether":
+
+            self.loop_force = mm.CustomBondForce(
+                "k * (1 - exp(-(r - r0)^2 / sigma^2))"
+            )
+
+            self.loop_force.addPerBondParameter("r0")
+            self.loop_force.addPerBondParameter("k")
             self.loop_force.addPerBondParameter("sigma")
-            self.loop_force.addPerBondParameter("epsilon")
             self.loop_force.setForceGroup(1)
 
             for i, (m, n) in enumerate(zip(self.ms, self.ns)):
+
                 r0 = self.args.LE_HARMONIC_BOND_R0 if self.args.LE_FIXED_DISTANCES else self.ds[i]
 
-                sigma = r0 / (2 ** (1 / 6))  # minimum at r0
-                epsilon = self.args.LE_HARMONIC_BOND_K
+                k = self.args.LE_HARMONIC_BOND_K
+                sigma = r0 * 0.5
 
-                self.loop_force.addBond(m, n, [sigma, epsilon])
+                self.loop_force.addBond(m, n, [r0, k, sigma])
 
         else:
             raise ValueError(f"Unknown loop force type: {mode}")
