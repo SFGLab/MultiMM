@@ -173,7 +173,7 @@ class MultiMM:
         """
         Excluded volume force with optional soft-core formulations.
 
-        Default: power-law repulsion (your original model)
+        Default: power-law repulsion (original model)
 
         Alternatives:
             - "soft_lj"
@@ -199,7 +199,7 @@ class MultiMM:
         for _ in range(self.system.getNumParticles()):
             self.ev_force.addParticle()
 
-        # 1. DEFAULT: power-law excluded volume (your current model)
+        # 1. DEFAULT: power-law excluded volume (current model)
         if mode == "powerlaw":
 
             self.ev_force.setEnergyFunction(
@@ -293,6 +293,18 @@ class MultiMM:
             self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
             self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
 
+        # 4. THETA: hard contact compartment model
+        elif mode == "theta":
+
+            self.comp_force.setEnergyFunction(
+                "-E * step(rc - r); "
+                "E = (Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2)) + "
+                "Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2)))"
+            )
+
+            self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
+            self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
+
         else:
             raise ValueError(f"Unknown COB_FORCE_TYPE: {mode}")
 
@@ -302,7 +314,7 @@ class MultiMM:
         """
         Subcompartment interaction model with selectable functional forms.
 
-        Default: Gaussian state-dependent attraction (your original model)
+        Default: Gaussian state-dependent attraction (original model)
         Alternatives:
             - "yukawa"
             - "powerlaw"
@@ -321,7 +333,7 @@ class MultiMM:
         for i in range(self.system.getNumParticles()):
             self.scomp_force.addParticle([self.Cs[i]])
 
-        # 1. DEFAULT: Gaussian state-dependent interaction (your model)
+        # 1. DEFAULT: Gaussian state-dependent interaction (original model)
         if mode == "gaussian":
 
             self.scomp_force.setEnergyFunction(
@@ -373,19 +385,83 @@ class MultiMM:
             self.scomp_force.addGlobalParameter("Eb1", self.args.SCB_EB1)
             self.scomp_force.addGlobalParameter("Eb2", self.args.SCB_EB2)
 
+        # 4. THETA / SQUARE-WELL (block copolymer contact model)
+        elif mode == "theta":
+
+            self.scomp_force.setEnergyFunction(
+                "-E * step(rc - r); "
+                "E = Ea1*delta(s1-2)*delta(s2-2) + "
+                "Ea2*delta(s1-1)*delta(s2-1) + "
+                "Eb1*delta(s1+1)*delta(s2+1) + "
+                "Eb2*delta(s1+2)*delta(s2+2)"
+            )
+
+            self.scomp_force.addGlobalParameter("rc", self.r_comp)
+
+            self.scomp_force.addGlobalParameter("Ea1", self.args.SCB_EA1)
+            self.scomp_force.addGlobalParameter("Ea2", self.args.SCB_EA2)
+            self.scomp_force.addGlobalParameter("Eb1", self.args.SCB_EB1)
+            self.scomp_force.addGlobalParameter("Eb2", self.args.SCB_EB2)
+
         else:
             raise ValueError(f"Unknown SCB_FORCE_TYPE: {mode}")
 
         self.system.addForce(self.scomp_force)
 
     def add_chromosomal_blocks(self):
-        self.chrom_block_force = mm.CustomNonbondedForce("E*(k_C*r^4-r^3+r^2); E=dE*delta(chrom1-chrom2)")
+        """
+        Chromosome-level soft self-attraction for globule formation.
+
+        Default: polynomial (original model)
+
+        Alternatives:
+            - "gaussian"
+            - "saturating"
+        """
+
+        mode = getattr(self.args, "CHB_FORCE_TYPE", "polynomial")
+
+        self.chrom_block_force = mm.CustomNonbondedForce()
         self.chrom_block_force.setForceGroup(2)
-        self.chrom_block_force.addGlobalParameter("k_C", defaultValue=self.args.CHB_KC)
-        self.chrom_block_force.addGlobalParameter("dE", defaultValue=self.args.CHB_DE)
+
+        # ----------------------------------------
+        # shared parameters
+        # ----------------------------------------
+        self.chrom_block_force.addGlobalParameter("k_C", self.args.CHB_KC)
+        self.chrom_block_force.addGlobalParameter("dE", self.args.CHB_DE)
+
         self.chrom_block_force.addPerParticleParameter("chrom")
+
         for i in range(self.system.getNumParticles()):
             self.chrom_block_force.addParticle([self.chrom_spin[i]])
+
+        # 1. DEFAULT: polynomial
+        if mode == "polynomial":
+
+            self.chrom_block_force.setEnergyFunction(
+                "E*(k_C*r^4 - r^3 + r^2); "
+                "E = dE*delta(chrom1-chrom2)"
+            )
+
+        # 2. GAUSSIAN SELF-ATTRACTION (globular collapse kernel)
+        elif mode == "gaussian":
+
+            self.chrom_block_force.setEnergyFunction(
+                "-E * exp(-k_C*r^2); "
+                "E = dE*delta(chrom1-chrom2)"
+            )
+
+        # 3. SATURATING SOFT-CORE ATTRACTION (stable clustering)
+        elif mode == "saturating":
+
+            self.chrom_block_force.setEnergyFunction(
+                "-E / (1 + k_C*r^2); "
+                "E = dE*delta(chrom1-chrom2)"
+            )
+
+        else:
+            raise ValueError(f"Unknown CHB_FORCE_TYPE: {mode}")
+
         self.system.addForce(self.chrom_block_force)
 
     def add_spherical_container(self):
@@ -434,7 +510,7 @@ class MultiMM:
         # radial distance
         r_expr = "r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2);"
 
-        # 1. DEFAULT: sinusoidal shell (your original)
+        # 1. DEFAULT: sinusoidal shell (original)
         if mode == "sin":
 
             self.Blamina_force.setEnergyFunction(
