@@ -261,3 +261,28 @@ class SimulationConfig(BaseModel):
     )
     SIM_TEMPERATURE: OpenMMQuantity = Field(default="310 kelvin", description="Simulation temperature")
     TRJ_FRAMES: int = Field(default=2000, description="Number of trajectory frames to save.")
+
+    EV_FORCE_TYPE: str = Field(
+    default="powerlaw",
+    description="Excluded volume functional form. Options: powerlaw (default), soft_lj, gaussian_core.",
+    )
+
+    COB_FORCE_TYPE: str = Field(
+        default="gaussian",
+        description="Compartment block interaction functional form. Options: gaussian (default), yukawa, powerlaw, multi_gaussian.",
+    )
+
+    SCB_FORCE_TYPE: str = Field(
+        default="gaussian",
+        description="Subcompartment block interaction functional form. Options: gaussian (default), yukawa, powerlaw, gaussian_mixture.",
+    )
+
+    BLAMINA_FORCE_TYPE: str = Field(
+        default="sin",
+        description="B-lamina interaction functional form. Options: sin (default), gaussian_shell, harmonic_shell, logistic_shell.",
+    )
+
+    LE_LOOP_FORCE_TYPE: str = Field(
+        default="harmonic",
+        description="Loop extrusion bond functional form. Options: harmonic (default), fene, lj_soft.",
+)

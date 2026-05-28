@@ -170,46 +170,246 @@ class MultiMM:
                 self.chrom_strength[self.chr_ends[i] : self.chr_ends[i + 1]] = chrom_strength[i]
 
     def add_evforce(self):
+        """
+        Excluded volume force with optional soft-core formulations.
+
+        Default: power-law repulsion (your original model)
+
+        Alternatives:
+            - "soft_lj"
+            - "gaussian_core"
+        """
+
+        mode = getattr(self.args, "EV_FORCE_TYPE", "powerlaw")
+
         sigma = self.args.LE_HARMONIC_BOND_R0
         if isinstance(sigma, Quantity):
             sigma_val = sigma.value_in_unit(nanometers)
         else:
             sigma_val = float(sigma)
-        self.ev_force = mm.CustomNonbondedForce(f"epsilon*(sigma/(r+r_small))^{self.args.EV_POWER}")
+
+        self.ev_force = mm.CustomNonbondedForce("0")
         self.ev_force.setForceGroup(1)
-        self.ev_force.addGlobalParameter("epsilon", defaultValue=self.args.EV_EPSILON)
-        self.ev_force.addGlobalParameter("r_small", defaultValue=self.args.EV_R_SMALL)
-        self.ev_force.addGlobalParameter("sigma", defaultValue=sigma_val)
-        for i in range(self.system.getNumParticles()):
+
+        self.ev_force.addGlobalParameter("epsilon", self.args.EV_EPSILON)
+        self.ev_force.addGlobalParameter("r_small", self.args.EV_R_SMALL)
+        self.ev_force.addGlobalParameter("sigma", sigma_val)
+
+        # add particles
+        for _ in range(self.system.getNumParticles()):
             self.ev_force.addParticle()
+
+        # 1. DEFAULT: power-law excluded volume (your current model)
+        if mode == "powerlaw":
+
+            self.ev_force.setEnergyFunction(
+                "epsilon*(sigma/(r + r_small))^EV_POWER"
+            )
+
+            self.ev_force.addGlobalParameter("EV_POWER", self.args.EV_POWER)
+
+        # 2. SOFT LENNARD-JONES TYPE (no divergence at r→0)
+        elif mode == "soft_lj":
+
+            self.ev_force.setEnergyFunction(
+                "epsilon * (sigma^n / (r^2 + r_small^2)^(n/2))"
+            )
+
+            self.ev_force.addGlobalParameter("n", self.args.EV_POWER)
+
+        # 3. GAUSSIAN CORE (very soft polymer melt limit)
+        elif mode == "gaussian_core":
+
+            self.ev_force.setEnergyFunction(
+                "epsilon * exp(-r^2/(2*sigma^2))"
+            )
+
+        else:
+            raise ValueError(f"Unknown EV_FORCE_TYPE: {mode}")
+
         self.system.addForce(self.ev_force)
 
     def add_compartment_blocks(self):
-        self.comp_force = mm.CustomNonbondedForce(
-            "-E*exp(-r^2/(2*rc^2)); E=(Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2))+Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2)))"
-        )
+        """
+        Compartment interaction model with multiple functional forms.
+
+        Default: Gaussian A/B segregation (original model)
+
+        Alternatives:
+            - "yukawa"
+            - "powerlaw"
+            - "multi_gaussian"
+        """
+
+        mode = getattr(self.args, "COB_FORCE_TYPE", "gaussian")
+
+        self.comp_force = mm.CustomNonbondedForce("0")
         self.comp_force.setForceGroup(1)
-        self.comp_force.addGlobalParameter("rc", defaultValue=self.r_comp)
-        self.comp_force.addGlobalParameter("Ea", defaultValue=self.args.COB_EA)
-        self.comp_force.addGlobalParameter("Eb", defaultValue=self.args.COB_EB)
+
+        # Shared parameters
+        self.comp_force.addGlobalParameter("rc", self.r_comp)
         self.comp_force.addPerParticleParameter("s")
+
         for i in range(self.system.getNumParticles()):
             self.comp_force.addParticle([self.Cs[i]])
+
+        # 1. DEFAULT: Gaussian compartment segregation
+        if mode == "gaussian":
+
+            self.comp_force.setEnergyFunction(
+                "-E * exp(-r^2/(2*rc^2)); "
+                "E = (Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2)) + "
+                "Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2)))"
+            )
+
+            self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
+            self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
+
+        # 2. YUKAWA: screened compartment attraction
+        elif mode == "yukawa":
+
+            self.comp_force.setEnergyFunction(
+                "-E * exp(-r/lambda) / r; "
+                "E = (Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2)) + "
+                "Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2)))"
+            )
+
+            self.comp_force.addGlobalParameter("lambda", self.r_comp)
+            self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
+            self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
+
+        # 3. POWER-LAW: scale-free compartment organization
+        elif mode == "powerlaw":
+
+            self.comp_force.setEnergyFunction(
+                "-E / (r^alpha + eps); "
+                "E = (Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2)) + "
+                "Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2)))"
+            )
+
+            self.comp_force.addGlobalParameter("alpha", 6.0)
+            self.comp_force.addGlobalParameter("eps", 1e-3)
+
+            self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
+            self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
+
+        # 4. MULTI-GAUSSIAN: hierarchical compartment structure
+        elif mode == "multi_gaussian":
+
+            self.comp_force.setEnergyFunction(
+                "-E1*exp(-r^2/(2*s1^2)) - E2*exp(-r^2/(2*s2^2)); "
+                "E1 = (Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2)) + "
+                "Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2)))"
+            )
+
+            self.comp_force.addGlobalParameter("s1", 0.5 * self.r_comp)
+            self.comp_force.addGlobalParameter("s2", 1.5 * self.r_comp)
+
+            self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
+            self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
+
+        else:
+            raise ValueError(f"Unknown COB_FORCE_TYPE: {mode}")
+
         self.system.addForce(self.comp_force)
 
     def add_subcompartment_blocks(self):
-        self.scomp_force = mm.CustomNonbondedForce(
-            "-E*exp(-r^2/(2*rsc^2)); E=Ea1*delta(s1-2)*delta(s2-2)+Ea2*delta(s1-1)*delta(s2-1)+Eb1*delta(s1+1)*delta(s2+1)+Eb2*delta(s1+2)*delta(s2+2)"
-        )
+        """
+        Subcompartment interaction model with selectable functional forms.
+
+        Default: Gaussian state-dependent attraction (your original model)
+        Alternatives:
+            - "yukawa"
+            - "powerlaw"
+            - "gaussian_mixture"
+        """
+
+        mode = getattr(self.args, "SCB_FORCE_TYPE", "gaussian")
+
+        self.scomp_force = mm.CustomNonbondedForce("0")
         self.scomp_force.setForceGroup(1)
-        self.scomp_force.addGlobalParameter("rsc", defaultValue=self.r_comp)
-        self.scomp_force.addGlobalParameter("Ea1", defaultValue=self.args.SCB_EA1)
-        self.scomp_force.addGlobalParameter("Ea2", defaultValue=self.args.SCB_EA2)
-        self.scomp_force.addGlobalParameter("Eb1", defaultValue=self.args.SCB_EB1)
-        self.scomp_force.addGlobalParameter("Eb2", defaultValue=self.args.SCB_EB2)
+
+        # Shared parameters
+        self.scomp_force.addGlobalParameter("rsc", self.r_comp)
         self.scomp_force.addPerParticleParameter("s")
+
         for i in range(self.system.getNumParticles()):
             self.scomp_force.addParticle([self.Cs[i]])
+
+        # 1. DEFAULT: Gaussian state-dependent interaction (your model)
+        if mode == "gaussian":
+
+            self.scomp_force.setEnergyFunction(
+                "-E * exp(-r^2/(2*rsc^2)); "
+                "E = Ea1*delta(s1-2)*delta(s2-2) + "
+                "Ea2*delta(s1-1)*delta(s2-1) + "
+                "Eb1*delta(s1+1)*delta(s2+1) + "
+                "Eb2*delta(s1+2)*delta(s2+2)"
+            )
+
+            self.scomp_force.addGlobalParameter("Ea1", self.args.SCB_EA1)
+            self.scomp_force.addGlobalParameter("Ea2", self.args.SCB_EA2)
+            self.scomp_force.addGlobalParameter("Eb1", self.args.SCB_EB1)
+            self.scomp_force.addGlobalParameter("Eb2", self.args.SCB_EB2)
+
+        # 2. YUKAWA: screened long-range attraction
+        elif mode == "yukawa":
+
+            self.scomp_force.setEnergyFunction(
+                "-E * exp(-r/lambda) / r; "
+                "E = Ea1*delta(s1-2)*delta(s2-2) + "
+                "Ea2*delta(s1-1)*delta(s2-1) + "
+                "Eb1*delta(s1+1)*delta(s2+1) + "
+                "Eb2*delta(s1+2)*delta(s2+2)"
+            )
+
+            self.scomp_force.addGlobalParameter("lambda", self.r_comp)
+            self.scomp_force.addGlobalParameter("Ea1", self.args.SCB_EA1)
+            self.scomp_force.addGlobalParameter("Ea2", self.args.SCB_EA2)
+            self.scomp_force.addGlobalParameter("Eb1", self.args.SCB_EB1)
+            self.scomp_force.addGlobalParameter("Eb2", self.args.SCB_EB2)
+
+        # 3. POWER-LAW: scale-free polymer interaction
+        elif mode == "powerlaw":
+
+            self.scomp_force.setEnergyFunction(
+                "-E / (r^alpha + eps); "
+                "E = Ea1*delta(s1-2)*delta(s2-2) + "
+                "Ea2*delta(s1-1)*delta(s2-1) + "
+                "Eb1*delta(s1+1)*delta(s2+1) + "
+                "Eb2*delta(s1+2)*delta(s2+2)"
+            )
+
+            self.scomp_force.addGlobalParameter("alpha", 6.0)
+            self.scomp_force.addGlobalParameter("eps", 1e-3)
+
+            self.scomp_force.addGlobalParameter("Ea1", self.args.SCB_EA1)
+            self.scomp_force.addGlobalParameter("Ea2", self.args.SCB_EA2)
+            self.scomp_force.addGlobalParameter("Eb1", self.args.SCB_EB1)
+            self.scomp_force.addGlobalParameter("Eb2", self.args.SCB_EB2)
+
+        # 4. GAUSSIAN MULTI-WELL: structured chromatin contacts
+        elif mode == "gaussian_mixture":
+
+            self.scomp_force.setEnergyFunction(
+                "-E1*exp(-(r-r1)^2/(2*s1^2)) - E2*exp(-(r-r2)^2/(2*s2^2)); "
+                "E1 = Ea1*delta(s1-2)*delta(s2-2) + Ea2*delta(s1-1)*delta(s2-1); "
+                "E2 = Eb1*delta(s1+1)*delta(s2+1) + Eb2*delta(s1+2)*delta(s2+2)"
+            )
+
+            self.scomp_force.addGlobalParameter("r1", self.r_comp * 0.8)
+            self.scomp_force.addGlobalParameter("r2", self.r_comp * 1.5)
+            self.scomp_force.addGlobalParameter("s1", 0.3 * self.r_comp)
+            self.scomp_force.addGlobalParameter("s2", 0.5 * self.r_comp)
+
+            self.scomp_force.addGlobalParameter("Ea1", self.args.SCB_EA1)
+            self.scomp_force.addGlobalParameter("Ea2", self.args.SCB_EA2)
+            self.scomp_force.addGlobalParameter("Eb1", self.args.SCB_EB1)
+            self.scomp_force.addGlobalParameter("Eb2", self.args.SCB_EB2)
+
+        else:
+            raise ValueError(f"Unknown SCB_FORCE_TYPE: {mode}")
+
         self.system.addForce(self.scomp_force)
 
     def add_chromosomal_blocks(self):
@@ -238,25 +438,84 @@ class MultiMM:
         self.system.addForce(self.container_force)
 
     def add_Blamina_interaction(self):
-        if self.radius1 != 0.0:
-            self.Blamina_force = mm.CustomExternalForce(
-                "B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)"
-            )
-        else:
-            self.Blamina_force = mm.CustomExternalForce(
-                "B*(sin(pi*(r-R1)/(R2-R1))^8-1)*(delta(s+1)+delta(s+2)); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)"
-            )
+        """
+        B-compartment attraction to nuclear lamina with multiple functional forms.
+
+        Default: sinusoidal shell (original model)
+
+        Alternatives:
+            - "gaussian_shell"
+            - "harmonic_shell"
+            - "logistic_shell"
+        """
+
+        mode = getattr(self.args, "BLAMINA_FORCE_TYPE", "sin")
+
+        self.Blamina_force = mm.CustomExternalForce("0")
         self.Blamina_force.setForceGroup(2)
-        self.Blamina_force.addGlobalParameter("B", defaultValue=self.args.IBL_SCALE)
-        self.Blamina_force.addGlobalParameter("pi", defaultValue=np.pi)
-        self.Blamina_force.addGlobalParameter("R1", defaultValue=self.radius1)
-        self.Blamina_force.addGlobalParameter("R2", defaultValue=self.radius2)
-        self.Blamina_force.addGlobalParameter("x0", defaultValue=self.mass_center[0])
-        self.Blamina_force.addGlobalParameter("y0", defaultValue=self.mass_center[1])
-        self.Blamina_force.addGlobalParameter("z0", defaultValue=self.mass_center[2])
+
+        # Common parameters
+        self.Blamina_force.addGlobalParameter("B", self.args.IBL_SCALE)
+        self.Blamina_force.addGlobalParameter("R1", self.radius1)
+        self.Blamina_force.addGlobalParameter("R2", self.radius2)
+
+        self.Blamina_force.addGlobalParameter("x0", self.mass_center[0])
+        self.Blamina_force.addGlobalParameter("y0", self.mass_center[1])
+        self.Blamina_force.addGlobalParameter("z0", self.mass_center[2])
+
         self.Blamina_force.addPerParticleParameter("s")
+
+        # radial distance
+        r_expr = "r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2);"
+
+        # 1. DEFAULT: sinusoidal shell (your original)
+        if mode == "sin":
+
+            self.Blamina_force.setEnergyFunction(
+                "B*(sin(pi*(r-R1)/(R2-R1))^8 - 1)*(delta(s+1)+delta(s+2)); "
+                + r_expr
+            )
+            self.Blamina_force.addGlobalParameter("pi", np.pi)
+
+        # 2. GAUSSIAN SHELL (two lamina layers)
+        elif mode == "gaussian_shell":
+
+            self.Blamina_force.setEnergyFunction(
+                "-B*(exp(-(r-R1)^2/(2*sigma^2)) + exp(-(r-R2)^2/(2*sigma^2)))"
+                "*(delta(s+1)+delta(s+2)); "
+                + r_expr
+            )
+
+            self.Blamina_force.addGlobalParameter("sigma", 0.1 * (self.radius2 - self.radius1))
+
+        # 3. HARMONIC SHELL (pull to mid-shell)
+        elif mode == "harmonic_shell":
+
+            self.Blamina_force.setEnergyFunction(
+                "B*(r - r0)^2*(delta(s+1)+delta(s+2)); "
+                + r_expr
+            )
+
+            self.Blamina_force.addGlobalParameter("r0", 0.5 * (self.radius1 + self.radius2))
+
+        # 4. LOGISTIC WALLS (smooth boundary attraction)
+        elif mode == "logistic_shell":
+
+            self.Blamina_force.setEnergyFunction(
+                "-B*(1/(1+exp((r-R2)/lambda)) + 1/(1+exp(-(r-R1)/lambda)))"
+                "*(delta(s+1)+delta(s+2)); "
+                + r_expr
+            )
+
+            self.Blamina_force.addGlobalParameter("lambda", 0.05 * (self.radius2 - self.radius1))
+
+        else:
+            raise ValueError(f"Unknown BLAMINA_FORCE_TYPE: {mode}")
+
+        # add particles
         for i in range(self.system.getNumParticles()):
             self.Blamina_force.addParticle(i, [self.Cs[i]])
+
         self.system.addForce(self.Blamina_force)
 
     def add_central_force(self):
@@ -288,15 +547,73 @@ class MultiMM:
         self.system.addForce(self.bond_force)
 
     def add_loops(self):
-        self.loop_force = mm.HarmonicBondForce()
-        self.loop_force.setForceGroup(1)
-        counter = 0
-        for m, n in tqdm(zip(self.ms, self.ns), total=len(self.ms)):
-            if self.args.LE_FIXED_DISTANCES:
-                self.loop_force.addBond(m, n, self.args.LE_HARMONIC_BOND_R0, self.args.LE_HARMONIC_BOND_K)
-            else:
-                self.loop_force.addBond(m, n, self.ds[counter], self.args.LE_HARMONIC_BOND_K)
-            counter += 1
+        """
+        Add loop constraints using different possible biophysical bond models.
+
+        Supported modes:
+        - "harmonic" (default original)
+        - "fene" (polymer physics, soft but finite extensibility)
+        - "lj_soft" (Lennard-Jones-like soft tether)
+        """
+
+        mode = getattr(self.args, "LE_LOOP_FORCE_TYPE", "harmonic")
+
+        # -----------------------------
+        # 1. Harmonic bond (original)
+        # -----------------------------
+        if mode == "harmonic":
+            self.loop_force = mm.HarmonicBondForce()
+            self.loop_force.setForceGroup(1)
+
+            for i, (m, n) in enumerate(zip(self.ms, self.ns)):
+                r0 = self.args.LE_HARMONIC_BOND_R0 if self.args.LE_FIXED_DISTANCES else self.ds[i]
+                k = self.args.LE_HARMONIC_BOND_K
+                self.loop_force.addBond(m, n, r0, k)
+
+        # -----------------------------
+        # 2. FENE bond (recommended for polymers)
+        # -----------------------------
+        elif mode == "fene":
+            # U = -0.5 k R0^2 log(1 - (r/R0)^2)
+            self.loop_force = mm.CustomBondForce(
+                "-0.5 * k * R0^2 * log(1 - (r/R0)^2)"
+            )
+            self.loop_force.addPerBondParameter("R0")
+            self.loop_force.addPerBondParameter("k")
+            self.loop_force.setForceGroup(1)
+
+            for i, (m, n) in enumerate(zip(self.ms, self.ns)):
+                r0 = self.args.LE_HARMONIC_BOND_R0 if self.args.LE_FIXED_DISTANCES else self.ds[i]
+
+                # interpret harmonic K as effective stiffness
+                R0 = r0 * 1.5  # soft extensibility scale (can tune if needed)
+                k = self.args.LE_HARMONIC_BOND_K
+
+                self.loop_force.addBond(m, n, [R0, k])
+
+        # -----------------------------
+        # 3. Soft Lennard-Jones tether
+        # -----------------------------
+        elif mode == "lj_soft":
+            # Soft minimum around r0 without hard constraint
+            self.loop_force = mm.CustomBondForce(
+                "epsilon * ((sigma/r)^12 - 2*(sigma/r)^6)"
+            )
+            self.loop_force.addPerBondParameter("sigma")
+            self.loop_force.addPerBondParameter("epsilon")
+            self.loop_force.setForceGroup(1)
+
+            for i, (m, n) in enumerate(zip(self.ms, self.ns)):
+                r0 = self.args.LE_HARMONIC_BOND_R0 if self.args.LE_FIXED_DISTANCES else self.ds[i]
+
+                sigma = r0 / (2 ** (1/6))  # minimum at r0
+                epsilon = self.args.LE_HARMONIC_BOND_K
+
+                self.loop_force.addBond(m, n, [sigma, epsilon])
+
+        else:
+            raise ValueError(f"Unknown loop force type: {mode}")
+
         self.system.addForce(self.loop_force)
 
     def add_stiffness(self):
