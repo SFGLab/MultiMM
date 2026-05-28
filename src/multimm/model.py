@@ -293,21 +293,6 @@ class MultiMM:
             self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
             self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
 
-        # 4. MULTI-GAUSSIAN: hierarchical compartment structure
-        elif mode == "multi_gaussian":
-
-            self.comp_force.setEnergyFunction(
-                "-E1*exp(-r^2/(2*s1^2)) - E2*exp(-r^2/(2*s2^2)); "
-                "E1 = (Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2)) + "
-                "Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2)))"
-            )
-
-            self.comp_force.addGlobalParameter("s1", 0.5 * self.r_comp)
-            self.comp_force.addGlobalParameter("s2", 1.5 * self.r_comp)
-
-            self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
-            self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
-
         else:
             raise ValueError(f"Unknown COB_FORCE_TYPE: {mode}")
 
@@ -382,25 +367,6 @@ class MultiMM:
 
             self.scomp_force.addGlobalParameter("alpha", 6.0)
             self.scomp_force.addGlobalParameter("eps", 1e-3)
-
-            self.scomp_force.addGlobalParameter("Ea1", self.args.SCB_EA1)
-            self.scomp_force.addGlobalParameter("Ea2", self.args.SCB_EA2)
-            self.scomp_force.addGlobalParameter("Eb1", self.args.SCB_EB1)
-            self.scomp_force.addGlobalParameter("Eb2", self.args.SCB_EB2)
-
-        # 4. GAUSSIAN MULTI-WELL: structured chromatin contacts
-        elif mode == "gaussian_mixture":
-
-            self.scomp_force.setEnergyFunction(
-                "-E1*exp(-(r-r1)^2/(2*s1^2)) - E2*exp(-(r-r2)^2/(2*s2^2)); "
-                "E1 = Ea1*delta(s1-2)*delta(s2-2) + Ea2*delta(s1-1)*delta(s2-1); "
-                "E2 = Eb1*delta(s1+1)*delta(s2+1) + Eb2*delta(s1+2)*delta(s2+2)"
-            )
-
-            self.scomp_force.addGlobalParameter("r1", self.r_comp * 0.8)
-            self.scomp_force.addGlobalParameter("r2", self.r_comp * 1.5)
-            self.scomp_force.addGlobalParameter("s1", 0.3 * self.r_comp)
-            self.scomp_force.addGlobalParameter("s2", 0.5 * self.r_comp)
 
             self.scomp_force.addGlobalParameter("Ea1", self.args.SCB_EA1)
             self.scomp_force.addGlobalParameter("Ea2", self.args.SCB_EA2)
@@ -558,9 +524,7 @@ class MultiMM:
 
         mode = getattr(self.args, "LE_LOOP_FORCE_TYPE", "harmonic")
 
-        # -----------------------------
         # 1. Harmonic bond (original)
-        # -----------------------------
         if mode == "harmonic":
             self.loop_force = mm.HarmonicBondForce()
             self.loop_force.setForceGroup(1)
@@ -570,9 +534,7 @@ class MultiMM:
                 k = self.args.LE_HARMONIC_BOND_K
                 self.loop_force.addBond(m, n, r0, k)
 
-        # -----------------------------
         # 2. FENE bond (recommended for polymers)
-        # -----------------------------
         elif mode == "fene":
             # U = -0.5 k R0^2 log(1 - (r/R0)^2)
             self.loop_force = mm.CustomBondForce(
@@ -591,9 +553,7 @@ class MultiMM:
 
                 self.loop_force.addBond(m, n, [R0, k])
 
-        # -----------------------------
         # 3. Soft Lennard-Jones tether
-        # -----------------------------
         elif mode == "lj_soft":
             # Soft minimum around r0 without hard constraint
             self.loop_force = mm.CustomBondForce(
