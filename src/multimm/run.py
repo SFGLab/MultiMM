@@ -66,7 +66,10 @@ class ArgumentChanger:
 
         elif str(modelling_level).lower() in ("region", "loc"):
             logger.warning(
-                "MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beginning and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an compartment_path to include block-copolymer forces."
+                "Region-level modelling selected. MultiMM will construct a reduced system "
+                "of 5000 beads focused on TAD-scale dynamics, including loop interactions only. "
+                "Compartment and higher-order nuclear organization terms are disabled by default. "
+                "A .bed file defining the region of interest must be provided."
             )
             self.set_arg("N_BEADS", 5000)
             self.set_arg("SC_USE_SPHERICAL_CONTAINER", False)
@@ -83,7 +86,10 @@ class ArgumentChanger:
 
         elif str(modelling_level).lower() in ("chromosome", "chrom"):
             logger.warning(
-                "MAGIC COMMENT: For chromosome level it is needed to provide a loops_path. Do not forget to specify the beginning and end of your chromosome. You can remove the centromers or telomers that are in the boundaries. You can optionally add an compartment_path to include block-copolymer forces."
+                "MAGIC COMMENT: For chromosome level it is needed to provide a loops_path."
+                "Do not forget to specify the beginning and end of your chromosome." 
+                "You can remove the centromers or telomers that are in the boundaries."
+                "You can optionally add an compartment_path to include block-copolymer forces."
             )
             self.set_arg("N_BEADS", 20000)
             self.set_arg("SC_USE_SPHERICAL_CONTAINER", False)

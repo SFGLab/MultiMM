@@ -273,12 +273,12 @@ class SimulationConfig(BaseModel):
 
     COB_FORCE_TYPE: str = Field(
         default="gaussian",
-        description="Compartment block interaction functional form. Options: gaussian (default), yukawa, powerlaw, multi_gaussian.",
+        description="Compartment block interaction functional form. Options: gaussian (default), yukawa, powerlaw, theta.",
     )
 
     SCB_FORCE_TYPE: str = Field(
         default="gaussian",
-        description="Subcompartment block interaction functional form. Options: gaussian (default), yukawa, powerlaw, gaussian_mixture.",
+        description="Subcompartment block interaction functional form. Options: gaussian (default), yukawa, powerlaw, theta.",
     )
 
     BLAMINA_FORCE_TYPE: str = Field(
@@ -290,3 +290,13 @@ class SimulationConfig(BaseModel):
         default="harmonic",
         description="Loop extrusion bond functional form. Options: harmonic (default), fene, lj_soft.",
     )
+
+    CHB_FORCE_TYPE: str = Field(
+        default="polynomial",
+        description=(
+            "Chromosome self-attraction kernel controlling global compaction into globules. "
+            "Options: polynomial (default, handcrafted potential), "
+            "gaussian (soft collapse kernel), "
+            "saturating (soft-core bounded attraction)."
+    )
+)
