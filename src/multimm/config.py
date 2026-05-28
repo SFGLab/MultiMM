@@ -133,6 +133,10 @@ class SimulationConfig(BaseModel):
         default="",
         description="Choose 'GENE' or 'REGION' for gene or TAD level, 'CHROM' for chromosome leve, and 'GW' for genome level. It will setup some parameters for you and print you helpful comments.",
     )
+    BYPASS_CHANGER: Boolean = Field(
+        default=False,
+        description="Bypass hardcoded parameter overrides for MODELLING_LEVEL.",
+    )
     INITIAL_STRUCTURE_PATH: str = Field(default="", description="Path to CIF file.")
     BUILD_INITIAL_STRUCTURE: Boolean = Field(default=True, description="To build a new initial structure.")
     INITIAL_STRUCTURE_TYPE: InitialStructureType = Field(
@@ -263,8 +267,8 @@ class SimulationConfig(BaseModel):
     TRJ_FRAMES: int = Field(default=2000, description="Number of trajectory frames to save.")
 
     EV_FORCE_TYPE: str = Field(
-    default="powerlaw",
-    description="Excluded volume functional form. Options: powerlaw (default), soft_lj, gaussian_core.",
+        default="powerlaw",
+        description="Excluded volume functional form. Options: powerlaw (default), soft_lj, gaussian_core.",
     )
 
     COB_FORCE_TYPE: str = Field(
@@ -285,4 +289,4 @@ class SimulationConfig(BaseModel):
     LE_LOOP_FORCE_TYPE: str = Field(
         default="harmonic",
         description="Loop extrusion bond functional form. Options: harmonic (default), fene, lj_soft.",
-)
+    )
