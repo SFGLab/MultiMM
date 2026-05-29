@@ -105,30 +105,38 @@ $$E_{\text{loops}}^{\text{gaussian}} = \sum_{(m,n)} k \left( 1 - e^{-(r_{mn} - r
 
 which defines a fully smooth, bounded potential well. Close to $r_0$ it is approximately harmonic, while at large distances it saturates to a constant energy, effectively allowing loop breaking without instability.
 
+
 ### Block Copolymer Compartmentalization
 
 The block-copolymer contribution $E_{\text{block}}$ encodes epigenetic segregation via state-dependent pairwise interactions. Each bead carries a label $s_i$ representing its compartment or subcompartment identity. These labels selectively activate interactions, driving chromatin phase separation into distinct domains.
 
 **Compartment level (A/B):** Interactions follow a Gaussian attractive potential:
 
-$$E_{\text{comp}} = -\sum_{i<j} \epsilon(s_i,s_j) \exp\left( -\frac{r_{ij}^2}{2r_c^2} \right)$$
+```math
+E_{\text{comp}} = -\sum_{i<j} \epsilon(s_i,s_j) \exp\left( -\frac{r_{ij}^2}{2r_c^2} \right)
+```
 
 where $r_{ij}$ is the distance between beads and $r_c$ is the interaction range. The coupling $\epsilon(s_i,s_j)$ is attractive for like compartments (A–A, B–B) and weak or repulsive otherwise, reproducing large-scale A/B segregation seen in Hi-C data.
 
 **Subcompartment level:** The model is extended to multiple epigenetic states $\alpha,\beta$:
 
-$$E_{\text{sub}} = -\sum_{i<j} \epsilon_{\alpha\beta} \exp\left( -\frac{r_{ij}^2}{2r_{sc}^2} \right) 
-\quad \text{for } s_i=\alpha,\; s_j=\beta$$
+```math
+E_{\text{sub}} = -\sum_{i<j} \epsilon_{\alpha\beta} \exp\left( -\frac{r_{ij}^2}{2r_{sc}^2} \right) \quad \text{for } s_i=\alpha,\ s_j=\beta
+```
 
 where $r_{sc}$ controls the shorter interaction range. This promotes finer microphase separation inside A/B compartments, creating richer internal chromatin organization.
 
 At the **chromosome level**, a weak self-attraction is introduced to promote territorial segregation:
 
-$$E_{\text{chrom}} = \sum_{i<j} \delta_{\chi_i,\chi_j}V(r_{ij})$$
+```math
+E_{\text{chrom}} = \sum_{i<j} \delta_{\chi_i,\chi_j} V(r_{ij})
+```
 
 where $\chi_i$ denotes chromosome identity and $V(r)$ is a soft attractive potential acting only between beads of the same chromosome. In the default polynomial form,
 
-$$V(r) = dE \left(k_C r^4 - r^3 + r^2\right)$$
+```math
+V(r) = dE \left(k_C r^4 - r^3 + r^2\right)
+```
 
 This stabilizes globular chromosome conformations and enhances intra-chromosomal clustering while suppressing inter-chromosomal mixing, supporting the emergence of chromosome territories.
 
