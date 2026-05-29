@@ -223,7 +223,7 @@ which ties interaction range directly to confinement geometry.
 
 Loop constraints use bond-specific equilibrium distances $r_0^{(i)}$, either fixed globally or derived from experimental loop lengths $d_i$. This introduces heterogeneity in loop architecture:
 
-$r_0^{(i)} \in {r_0^{\text{global}}, d_i}$$
+$$r_0^{(i)} \in (r_0^{\text{global}}, d_i)$$
 
 Each bead carries discrete state variables: compartment labels $s_i$ and chromosome identities $\chi_i$. These do not define geometry directly but gate interactions through selection rules such as
 
