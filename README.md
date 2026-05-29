@@ -105,25 +105,19 @@ $$E_{\text{loops}}^{\text{gaussian}} = \sum_{(m,n)} k \left( 1 - e^{-(r_{mn} - r
 
 which defines a fully smooth, bounded potential well. Close to $r_0$ it is approximately harmonic, while at large distances it saturates to a constant energy, effectively allowing loop breaking without instability.
 
-
-
 ### Block Copolymer Compartmentalization
 
 The block-copolymer contribution $E_{\text{block}}$ encodes epigenetic segregation through state-dependent pairwise interactions. Each bead carries a discrete label $s_i$ representing its compartment or subcompartment identity, and interactions are selectively activated depending on these states, promoting phase separation of chromatin into distinct domains.
 
 At the compartment level (A/B), the interaction is modeled as a Gaussian attractive kernel:
 
-$$
-E_{\text{comp}} = -\sum_{i<j} \epsilon(s_i, s_j) \exp\left(-\frac{r_{ij}^2}{2 r_c^2}\right)
-$$
+$$E_{\text{comp}} = -\sum_{i<j} \epsilon(s_i, s_j) \exp\left( -\frac{r_{ij}^2}{2 r_c^2} \right)$$
 
-where $r_{ij}$ is the Euclidean distance between beads and $r_c$ sets the interaction range. The function $\epsilon(s_i,s_j)$ encodes state-dependent coupling strengths, ensuring that like compartments (A–A and B–B) preferentially attract, while unlike pairs are weak or repulsive. This term generates large-scale A/B segregation consistent with Hi-C plaid patterns.
+where $r_{ij}$ is the Euclidean distance between beads and $r_c$ sets the interaction range. The function $\epsilon(s_i,s_j)$ encodes state-dependent coupling strengths, ensuring that like compartments (A–A and B–B) preferentially attract, while unlike pairs are weak or repulsive.
 
-At subcompartment resolution, this structure is refined by introducing multiple epigenetic states $\alpha,\beta$, leading to
+At subcompartment resolution, this structure is refined by introducing multiple epigenetic states $\alpha, \beta$, leading to
 
-$$
-E_{\text{sub}} = -\sum_{i<j} \epsilon_{\alpha\beta} \exp\left(-\frac{r_{ij}^2}{2 r_{sc}^2}\right) \delta_{s_i,\alpha} \delta_{s_j,\beta}
-$$
+$$E_{\text{sub}} = -\sum_{i<j} \epsilon_{\alpha\beta} \exp\left( -\frac{r_{ij}^2}{2 r_{sc}^2} \right) \delta_{s_i \alpha} \delta_{s_j \beta}$$
 
 where $r_{sc}$ is the subcompartment interaction length scale. The Kronecker deltas enforce strict state selection, enabling finer microphase separation within A/B compartments and producing richer internal organization.
 
