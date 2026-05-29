@@ -107,21 +107,22 @@ which defines a fully smooth, bounded potential well. Close to $r_0$ it is appro
 
 ### Block Copolymer Compartmentalization
 
-The block-copolymer contribution $E_{\text{block}}$ encodes epigenetic segregation through state-dependent pairwise interactions. Each bead carries a discrete label $s_i$ representing its compartment or subcompartment identity, and interactions are selectively activated depending on these states, promoting phase separation of chromatin into distinct domains.
+The block-copolymer contribution $E_{\text{block}}$ encodes epigenetic segregation via state-dependent pairwise interactions. Each bead carries a label $s_i$ representing its compartment or subcompartment identity. These labels selectively activate interactions, driving chromatin phase separation into distinct domains.
 
-At the compartment level (A/B), the interaction is modeled as a Gaussian attractive kernel:
+**Compartment level (A/B):** Interactions follow a Gaussian attractive potential:
 
-$$E_{\text{comp}} = -\sum_{i<j} \epsilon(s_i, s_j) \exp\left( -\frac{r_{ij}^2}{2 r_c^2} \right)$$
+$$E_{\text{comp}} = -\sum_{i<j} \epsilon(s_i,s_j) \exp\left( -\frac{r_{ij}^2}{2r_c^2} \right)$$
 
-where $r_{ij}$ is the Euclidean distance between beads and $r_c$ sets the interaction range. The function $\epsilon(s_i,s_j)$ encodes state-dependent coupling strengths, ensuring that like compartments (A–A and B–B) preferentially attract, while unlike pairs are weak or repulsive.
+where $r_{ij}$ is the distance between beads and $r_c$ is the interaction range. The coupling $\epsilon(s_i,s_j)$ is attractive for like compartments (A–A, B–B) and weak or repulsive otherwise, reproducing large-scale A/B segregation seen in Hi-C data.
 
-At subcompartment resolution, this structure is refined by introducing multiple epigenetic states $\alpha, \beta$, leading to
+**Subcompartment level:** The model is extended to multiple epigenetic states $\alpha,\beta$:
 
-$$E_{\text{sub}} = -\sum_{i<j} \epsilon_{\alpha\beta} \exp\left( -\frac{r_{ij}^2}{2 r_{sc}^2} \right) \delta_{s_i \alpha} \delta_{s_j \beta}$$
+$$E_{\text{sub}} = -\sum_{i<j} \epsilon_{\alpha\beta} \exp\left( -\frac{r_{ij}^2}{2r_{sc}^2} \right) 
+\quad \text{for } s_i=\alpha,\; s_j=\beta$$
 
-where $r_{sc}$ is the subcompartment interaction length scale. The Kronecker deltas enforce strict state selection, enabling finer microphase separation within A/B compartments and producing richer internal organization.
+where $r_{sc}$ controls the shorter interaction range. This promotes finer microphase separation inside A/B compartments, creating richer internal chromatin organization.
 
-At the chromosome level, a weak self-attraction is introduced to promote territorial segregation:
+At the **chromosome level**, a weak self-attraction is introduced to promote territorial segregation:
 
 $$E_{\text{chrom}} = \sum_{i<j} \delta_{\chi_i,\chi_j}V(r_{ij})$$
 
