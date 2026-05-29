@@ -45,9 +45,7 @@ We model chromatin as a coarse-grained polymer where the total energy $E$ is dec
 
 At a generic level, the system is governed by a total energy of the form
 
-$$
-E = E_{\text{backbone}} + E_{\text{block-copolymer}} + E_{\text{loops}} + E_{\text{excluded}} + E_{\text{confinement}} + E_{\text{chromosomal}}
-$$
+$$E = E_{\text{backbone}} + E_{\text{block-copolymer}} + E_{\text{loops}} + E_{\text{excluded}} + E_{\text{confinement}} + E_{\text{chromosomal}}$$
 
 where each contribution controls a different aspect of chromatin folding:
 
@@ -67,25 +65,19 @@ The backbone contribution $E_{\text{backbone}}$ encodes the connectivity and loc
 
 The bond (connectivity) term is given by
 
-$$
-E_{\text{bond}} = \sum_{i} \frac{k_b}{2} \left( r_{i,i+1} - r_0 \right)^2
-$$
+$$E_{\text{bond}} = \sum_{i} \frac{k_b}{2} \left( r_{i,i+1} - r_0 \right)^2$$
 
 where $r_{i,i+1} = |\mathbf{r}_{i+1} - \mathbf{r}_i|$ is the distance between consecutive beads, $r_0$ is the equilibrium bond length, and $k_b$ is the bond stiffness. This term ensures that the polymer remains connected and fluctuates around a preferred contour length.
 
 The stiffness (bending) term is defined as
 
-$$
-E_{\text{angle}} = \sum_{i} \frac{k_\theta}{2} \left( \theta_i - \theta_0 \right)^2
-$$
+$$E_{\text{angle}} = \sum_{i} \frac{k_\theta}{2} \left( \theta_i - \theta_0 \right)^2$$
 
 where $\theta_i$ is the angle formed by three consecutive beads $(i, i+1, i+2)$, $\theta_0$ is the preferred angle, and $k_\theta$ controls the bending rigidity. This term penalizes sharp bends and sets the persistence length of the polymer.
 
 Altogether, the backbone energy reads
 
-$$
-E_{\text{backbone}} = E_{\text{bond}} + E_{\text{angle}}
-$$
+$$E_{\text{backbone}} = E_{\text{bond}} + E_{\text{angle}}$$
 
 which corresponds to a discretized worm-like chain model with harmonic stretching and bending fluctuations.
 
@@ -97,25 +89,19 @@ The loop contribution $E_{\text{loops}}$ introduces long-range interactions betw
 
 The default model uses a harmonic potential
 
-$$
-E_{\text{loops}}^{\text{harmonic}} = \sum_{(m,n)} \frac{k}{2} \left( r_{mn} - r_0 \right)^2
-$$
+$$E_{\text{loops}}^{\text{harmonic}} = \sum_{(m,n)} \frac{k}{2} \left( r_{mn} - r_0 \right)^2$$
 
 where $r_{mn} = |\mathbf{r}_n - \mathbf{r}_m|$, $r_0$ is the preferred loop length, and $k$ is the stiffness. This formulation strongly penalizes deviations from $r_0$, effectively enforcing fixed-distance loops and providing a simple baseline model.
 
 To allow more physical flexibility, two alternative bounded interactions are introduced. The first is a soft FENE-like potential
 
-$$
-E_{\text{loops}}^{\text{fene}} = \sum_{(m,n)} \frac{k (r_{mn} - r_0)^2}{1 + \alpha (r_{mn} - r_0)^2}
-$$
+$$E_{\text{loops}}^{\text{fene}} = \sum_{(m,n)} \frac{k (r_{mn} - r_0)^2}{1 + \alpha (r_{mn} - r_0)^2}$$
 
 which behaves harmonically near equilibrium but saturates at large extensions. This avoids unphysical divergence and models loops as extensible but finite-strength tethers.
 
 The second alternative is a Gaussian tether
 
-$$
-E_{\text{loops}}^{\text{gaussian}} = \sum_{(m,n)} k \left( 1 - e^{-(r_{mn} - r_0)^2 / \sigma^2} \right)
-$$
+$$E_{\text{loops}}^{\text{gaussian}} = \sum_{(m,n)} k \left( 1 - e^{-(r_{mn} - r_0)^2 / \sigma^2} \right)$$
 
 which defines a fully smooth, bounded potential well. Close to $r_0$ it is approximately harmonic, while at large distances it saturates to a constant energy, effectively allowing loop breaking without instability.
 
@@ -127,58 +113,50 @@ The block-copolymer contribution $E_{\text{block-copolymer}}$ captures epigeneti
 
 At the compartment level (A/B), the default interaction is a Gaussian attraction
 
-$$
-E_{\text{comp}} = - \sum_{i<j} , \epsilon(s_i,s_j), \exp\left(-\frac{r_{ij}^2}{2r_c^2}\right)
-$$
+$$E_{\text{comp}} = - \sum_{i<j} , \epsilon(s_i,s_j), \exp\left(-\frac{r_{ij}^2}{2r_c^2}\right)$$
 
 where $r_{ij}$ is the spatial distance and $\epsilon(s_i,s_j)$ selects the interaction strength depending on whether beads belong to A or B compartments. This term promotes segregation into large-scale A/B domains, reproducing the plaid patterns observed in Hi-C maps.
 
 At finer resolution, subcompartment interactions extend this idea by introducing multiple states with distinct affinities
 
-$$
-E_{\text{subcomp}} = - \sum_{i<j} , \epsilon_{\alpha\beta} , \exp\left(-\frac{r_{ij}^2}{2r_{sc}^2}\right), \delta_{s_i,\alpha}\delta_{s_j,\beta}
-$$
+$$E_{\text{subcomp}} = - \sum_{i<j} , \epsilon_{\alpha\beta} , \exp\left(-\frac{r_{ij}^2}{2r_{sc}^2}\right), \delta_{s_i,\alpha}\delta_{s_j,\beta}$$
 
 where $\alpha,\beta$ label subcompartments. This refines the organization within A/B domains, allowing the emergence of richer microphase separation and more detailed structural patterns.
 
 Finally, the chromosome-level interaction introduces a weak, same-chromosome self-attraction
 
-$$
-E_{\text{chrom}} = \sum_{i<j} \delta_{\text{chrom}(i),\text{chrom}(j)} , V(r_{ij})
-$$
+$$E_{\text{chrom}} = \sum_{i<j} \delta_{\text{chrom}(i),\text{chrom}(j)} , V(r_{ij})$$
 
 where $V(r)$ is a soft attractive potential. In the default polynomial form,
 
-$$
-V(r) = dE \left( k_C r^4 - r^3 + r^2 \right)
-$$
+$$V(r) = dE \left( k_C r^4 - r^3 + r^2 \right)$$
 
 this term stabilizes globular conformations and promotes chromosome territories by favoring intra-chromosomal contacts over inter-chromosomal mixing.
 
 Beyond the default Gaussian formulation, several alternative interaction kernels are introduced to test how the *range and functional form* of epigenetic attraction affect chromatin organization.
 
 * The Yukawa form replaces the Gaussian decay with a screened Coulomb-like interaction
-$$
-V(r) \sim -\frac{e^{-r/\lambda}}{r}
-$$
+
+$$V(r) \sim -\frac{e^{-r/\lambda}}{r}$$
+
 introducing a longer-ranged but exponentially screened attraction. This allows compartmental domains to communicate over larger genomic distances and can enhance domain coarsening.
 
 * The power-law interaction
-$$
-V(r) \sim -\frac{1}{r^\alpha + \epsilon}
-$$
+
+$$V(r) \sim -\frac{1}{r^\alpha + \epsilon}$$
+
 removes a characteristic length scale entirely, producing scale-free interactions. This is useful for probing whether compartmental organization can emerge from purely algebraic long-range correlations.
 
 * For subcompartments, the theta (contact) model
-$$
-V(r) \sim -\Theta(r_c - r)
-$$
+
+$$V(r) \sim -\Theta(r_c - r)$$
+
 reduces interactions to a hard cutoff contact rule, where only sufficiently close loci interact. This provides a minimal, binary version of epigenetic attraction, useful as a null model for testing the necessity of smooth potentials.
 
 * For chromosome-level organization, the alternatives modify the confinement landscape: Gaussian attraction produces smooth globular collapse, while the saturating form
-$$
-V(r) \sim -\frac{1}{1 + k_C r^2}
-$$
+
+$$V(r) \sim -\frac{1}{1 + k_C r^2}$$
+
 limits the strength of long-range attraction, preventing over-collapse and allowing more flexible chromosome territories.
 
 
@@ -188,34 +166,28 @@ The lamina-related contribution introduces spatial confinement and peripheral an
 
 The spherical container defines a soft nuclear boundary by penalizing excursions outside a radial shell. The energy is
 
-$$
-E_{\text{container}} = C \sum_i \left[ \max(0, r_i - R_2)^2 + \max(0, R_1 - r_i)^2 \right]
-$$
+$$E_{\text{container}} = C \sum_i \left[ \max(0, r_i - R_2)^2 + \max(0, R_1 - r_i)^2 \right]$$
 
 where $r_i$ is the radial distance of bead $i$ from the nuclear center. This creates a confined annular domain between radii $R_1$ and $R_2$, representing the accessible nuclear volume and preventing unphysical collapse or escape.
 
 On top of this geometric confinement, the lamina interaction introduces state-dependent attraction of B-type chromatin to the nuclear periphery:
 
-$$
-E_{\text{lamina}} = - \sum_i B(s_i), V(r_i)
-$$
+$$E_{\text{lamina}} = - \sum_i B(s_i), V(r_i)$$
 
 where $s_i$ is the compartment state and $B(s_i)$ selects B-compartment beads. The function $V(r)$ encodes different radial potentials depending on the model choice:
 
 The sinusoidal shell (default) creates a sharp peripheral preference within the shell
-$$
-V(r) = \sin^8\left(\frac{\pi (r - R_1)}{R_2 - R_1}\right) - 1
-$$
+
+$$V(r) = \sin^8\left(\frac{\pi (r - R_1)}{R_2 - R_1}\right) - 1$$
 
 while Gaussian shells localize attraction around the two boundaries $R_1$ and $R_2$
-$$
-V(r) \sim -\left[e^{-(r-R_1)^2/(2\sigma^2)} + e^{-(r-R_2)^2/(2\sigma^2)}\right]
-$$
+
+$$V(r) \sim -\left[e^{-(r-R_1)^2/(2\sigma^2)} + e^{-(r-R_2)^2/(2\sigma^2)}\right]$$
 
 The harmonic shell instead pulls B-chromatin toward the mid-shell radius $r_0=\frac{R_1+R_2}{2}$,
-$$
-V(r) \sim (r - r_0)^2
-$$
+
+$$V(r) \sim (r - r_0)^2$$
+
 and the logistic form creates smooth attractive walls near both boundaries using sigmoidal transitions.
 
 Together, these terms implement a minimal physical model of nuclear architecture where confinement defines the available volume, and lamina attraction biases epigenetically marked chromatin toward the nuclear periphery.
@@ -230,26 +202,24 @@ After coarse grained optimization, nucleosome positions are interpolated using a
 Several key parameters are derived from global geometry and input data to ensure consistent scaling across the model.
 
 The nuclear confinement radii $R_1$ and $R_2$ define the effective spherical domain of the system. They scale with polymer size as
-$$
-R_1 \sim \left(\frac{N}{50000}\right)^{1/3}, \quad R_2 \approx 3.5 R_1
-$$
+
+$$R_1 \sim \left(\frac{N}{50000}\right)^{1/3}, \quad R_2 \approx 3.5 R_1$$
+
 ensuring that nuclear volume grows consistently with chromosome length.
 
 The compartment interaction length scale $r_c$ controls the spatial decay of A/B and subcompartment interactions. It is either taken from experimental input or approximated as
-$$
-r_c = \frac{R_2 - R_1}{20}
-$$
+
+$$r_c = \frac{R_2 - R_1}{20}$$
+
 which ties interaction range directly to confinement geometry.
 
 Loop constraints use bond-specific equilibrium distances $r_0^{(i)}$, either fixed globally or derived from experimental loop lengths $d_i$. This introduces heterogeneity in loop architecture:
-$$
-r_0^{(i)} \in {r_0^{\text{global}}, d_i}
-$$
+
+$r_0^{(i)} \in {r_0^{\text{global}}, d_i}$$
 
 Each bead carries discrete state variables: compartment labels $s_i$ and chromosome identities $\chi_i$. These do not define geometry directly but gate interactions through selection rules such as
-$$
-E_{ij} \propto \delta(s_i, s_j), \quad E_{ij} \propto \delta(\chi_i - \chi_j)
-$$
+
+$$E_{ij} \propto \delta(s_i, s_j), \quad E_{ij} \propto \delta(\chi_i - \chi_j)$$
 
 Together, these derived parameters couple global confinement, loop architecture, and epigenetic state into a unified multiscale polymer framework.
 
