@@ -113,7 +113,7 @@ The block-copolymer contribution $E_{\text{block}}$ encodes epigenetic segregati
 **Compartment level (A/B):** Interactions follow a Gaussian attractive potential:
 
 ```math
-E_{\text{comp}} = -\sum_{i<j} \epsilon(s_i,s_j) \exp\left( -\frac{r_{ij}^2}{2r_c^2} \right)
+E_{\text{comp}} = -\sum \epsilon(s_i,s_j) \exp\left( -\frac{r_{ij}^2}{2r_c^2} \right)
 ```
 
 where $r_{ij}$ is the distance between beads and $r_c$ is the interaction range. The coupling $\epsilon(s_i,s_j)$ is attractive for like compartments (A–A, B–B) and weak or repulsive otherwise, reproducing large-scale A/B segregation seen in Hi-C data.
@@ -121,7 +121,7 @@ where $r_{ij}$ is the distance between beads and $r_c$ is the interaction range.
 **Subcompartment level:** The model is extended to multiple epigenetic states $\alpha,\beta$:
 
 ```math
-E_{\text{sub}} = -\sum_{i<j} \epsilon_{\alpha\beta} \exp\left( -\frac{r_{ij}^2}{2r_{sc}^2} \right) \quad \text{for } s_i=\alpha,\ s_j=\beta
+E_{\text{sub}} = -\sum \epsilon_{\alpha\beta} \exp\left( -\frac{r_{ij}^2}{2r_{sc}^2} \right) \quad \text{for } s_i=\alpha,\ s_j=\beta
 ```
 
 where $r_{sc}$ controls the shorter interaction range. This promotes finer microphase separation inside A/B compartments, creating richer internal chromatin organization.
@@ -129,7 +129,7 @@ where $r_{sc}$ controls the shorter interaction range. This promotes finer micro
 At the **chromosome level**, a weak self-attraction is introduced to promote territorial segregation:
 
 ```math
-E_{\text{chrom}} = \sum_{i<j} \delta_{\chi_i,\chi_j} V(r_{ij})
+E_{\text{chrom}} = \sum \delta_{\chi_i,\chi_j} V(r_{ij})
 ```
 
 where $\chi_i$ denotes chromosome identity and $V(r)$ is a soft attractive potential acting only between beads of the same chromosome. In the default polynomial form,
