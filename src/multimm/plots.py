@@ -558,8 +558,8 @@ def analyze_structure(V, save_path, name="structure"):
     os.makedirs(base, exist_ok=True)
 
     def _save_local(fig, fname):
-        path = os.path.join("plots", fname)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        path = fname
+        os.makedirs(path, exist_ok=True)
         fig.savefig(path + ".png", dpi=300)
         fig.savefig(path + ".pdf")
         fig.savefig(path + ".svg")
@@ -675,7 +675,7 @@ def analyze_structure(V, save_path, name="structure"):
     ax.hist(bonds, bins=80)
     ax.set_title("Bond Length Distribution")
     ax.set_xlabel("Bond length")
-    _save_local(fig, base+f"/{name}_bonds")
+    _save_local(fig, base+f"/plots/{name}_bonds")
 
     # ------------------------------------------------------------
 
@@ -684,7 +684,7 @@ def analyze_structure(V, save_path, name="structure"):
     ax.hist(angles, bins=80)
     ax.set_title("Angle Distribution")
     ax.set_xlabel("Angle (rad)")
-    _save_local(fig, base+f"/{name}_angles")
+    _save_local(fig, base+f"/plots/{name}_angles")
 
     # ------------------------------------------------------------
 
@@ -694,7 +694,7 @@ def analyze_structure(V, save_path, name="structure"):
     ax.set_title("Distance vs Genomic Separation")
     ax.set_xlabel("Genomic separation (beads)")
     ax.set_ylabel("Mean spatial distance")
-    _save_local(fig, base+f"/{name}_scaling")
+    _save_local(fig, base+f"/plots/{name}_scaling")
 
     # ------------------------------------------------------------
 
@@ -704,7 +704,7 @@ def analyze_structure(V, save_path, name="structure"):
     ax.set_title("Scaling (log-log)")
     ax.set_xlabel("s")
     ax.set_ylabel("R(s)")
-    _save_local(fig, base+f"/{name}_scaling_loglog")
+    _save_local(fig, base+f"/plots/{name}_scaling_loglog")
 
     # ------------------------------------------------------------
 
@@ -714,7 +714,7 @@ def analyze_structure(V, save_path, name="structure"):
     ax.set_title("Local Compaction (Sliding Rg)")
     ax.set_xlabel("Bead index")
     ax.set_ylabel("Local Rg")
-    _save_local(fig, base+f"/{name}_local_compaction")
+    _save_local(fig, base+f"/plots/{name}_local_compaction")
 
     # ------------------------------------------------------------
 
@@ -725,7 +725,7 @@ def analyze_structure(V, save_path, name="structure"):
     ax.hist(r, bins=60)
     ax.set_title("Radial Distribution")
     ax.set_xlabel("Distance from COM")
-    _save_local(fig, base+f"/{name}_radial")
+    _save_local(fig, base+f"/plots/{name}_radial")
 
     # ------------------------------------------------------------
     return {
