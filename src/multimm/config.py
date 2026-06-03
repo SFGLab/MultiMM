@@ -269,12 +269,12 @@ class SimulationConfig(BaseModel):
 
     COB_FORCE_TYPE: str = Field(
         default="gaussian",
-        description="Compartment block interaction functional form. Options: gaussian (default), yukawa, powerlaw, theta.",
+        description="Compartment block interaction functional form. Options: gaussian (default), yukawa, theta.",
     )
 
     SCB_FORCE_TYPE: str = Field(
         default="gaussian",
-        description="Subcompartment block interaction functional form. Options: gaussian (default), yukawa, powerlaw, theta.",
+        description="Subcompartment block interaction functional form. Options: gaussian (default), yukawa, theta.",
     )
 
     BLAMINA_FORCE_TYPE: str = Field(

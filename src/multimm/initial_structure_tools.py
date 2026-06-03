@@ -254,31 +254,39 @@ def random_walk_structure(N_beads, step_size=1):
 
 
 def compute_init_struct(N_beads, mode: InitialStructureType = InitialStructureType.RW, scale=5):
+    logger.info(f"Initializing structure: mode={mode}, N_beads={N_beads}, scale={scale}")
+
     match mode:
         case "rw":
-            return random_walk_structure(N_beads)
+            V = random_walk_structure(N_beads)
         case "confined_rw":
-            return confined_random_walk(N_beads)
+            V = confined_random_walk(N_beads)
         case "knot":
-            return trefoil_knot_structure(N_beads)
+            V = trefoil_knot_structure(N_beads)
         case "self_avoiding_rw":
-            return self_avoiding_random_walk(N_beads)
+            V = self_avoiding_random_walk(N_beads)
         case "circle":
-            return polymer_circle(N_beads, 50, 5)
+            V = polymer_circle(N_beads, 50, 5)
         case "helix":
-            return helix_structure(N_beads)
+            V = helix_structure(N_beads)
         case "spiral":
-            return spiral_structure(N_beads)
+            V = spiral_structure(N_beads)
         case "sphere":
-            return sphere_surface_structure(N_beads)
+            V = sphere_surface_structure(N_beads)
         case "hilbert":
-            return generate_hilbert_curve(N_beads, scale=scale)
+            V = generate_hilbert_curve(N_beads, scale=scale)
         case _:
             raise ValueError(
                 f"Invalid option for initial structure: {mode!r}. "
                 f"Choose one of: rw, confined_rw, knot, self_avoiding_rw, "
                 f"circle, helix, spiral, sphere, hilbert."
             )
+
+    V = np.asarray(V)
+
+    logger.info(f"Initial structure generated: shape={V.shape}")
+
+    return V
 
 
 def build_init_mmcif(

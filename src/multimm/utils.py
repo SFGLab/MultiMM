@@ -166,72 +166,43 @@ def get_coordinates_mm(mm_vec):
 
 
 def get_coordinates_cif(file):
-    """It returns the corrdinate matrix V (N,3) of a .pdb file.
+    """It returns the coordinate matrix V (N,3) from a .cif/.pdb-like file."""
 
-    The main problem of this function is that coordiantes are not always in the same
-    column position of a .pdb file. Do changes appropriatelly, in case that the
-    data aren't stored correctly.
+    logger.info(f"Loading structure file: {file}")
 
-    Input:
-    file (str): the path of the .cif file.
+    V = []
 
-    Output:
-    V (np.array): the matrix of coordinates
-    """
-    V = list()
+    n_atoms = 0
+    n_lines = 0
 
     with open(file, "r") as f:
         lines = f.readlines()
+
+        n_lines = len(lines)
+
         for line in lines:
             if line.startswith("ATOM"):
                 columns = line.split()
-                x = eval(columns[10])
-                y = eval(columns[11])
-                z = eval(columns[12])
+
+                try:
+                    x = float(columns[10])
+                    y = float(columns[11])
+                    z = float(columns[12])
+                except Exception as e:
+                    logger.warning(f"Skipping malformed ATOM line: {line[:60]}... ({e})")
+                    continue
+
                 V.append([x, y, z])
+                n_atoms += 1
 
-    return np.array(V)
+    V = np.array(V)
 
+    logger.info(
+        f"Structure loaded: atoms={n_atoms}, "
+        f"total_lines={n_lines}, shape={V.shape}"
+    )
 
-def get_heatmap(mm_vec, viz=False, save=False, path=""):
-    """It returns the corrdinate matrix V (N,3) of a .pdb file.
-
-    The main problem of this function is that coordiantes are not always in the same
-    column position of a .pdb file. Do changes appropriatelly, in case that the
-    data aren't stored correctly.
-
-    Input:
-    file (Openmm Qunatity): an OpenMM vector of the form
-    Quantity(value=[Vec3(x=0.16963918507099152, y=0.9815883636474609, z=-1.4776774644851685),
-    Vec3(x=0.1548253297805786, y=0.9109517931938171, z=-1.4084612131118774),
-    Vec3(x=0.14006929099559784, y=0.8403329849243164, z=-1.3392155170440674),
-    Vec3(x=0.12535107135772705, y=0.7697405219078064, z=-1.269935131072998),
-    ...,
-    unit=nanometer)
-
-    Output:
-    H (np.array): a heatmap of the 3D structure.
-    """
-    V = get_coordinates_mm(mm_vec)
-    mat = distance.cdist(V, V, "euclidean")  # this is the way \--/
-    mat = 1 / (mat + 1)
-
-    if save:
-        np.save("sim_heat.npy", mat)
-
-    if viz:
-        figure(figsize=(25, 20))
-        plt.imshow(
-            mat,
-            cmap="coolwarm",
-            vmax=np.average(mat) + 3 * np.std(mat),
-            vmin=np.average(mat) - 3 * np.std(mat),
-        )
-        plt.savefig(path + "heatmap.svg", format="svg", dpi=500)
-        plt.savefig(path + "heatmap.pdf", format="pdf", dpi=500)
-        plt.close()
-    return mat
-
+    return V
 
 def compute_averages(arr1, N2):
     # Calculate the window size
@@ -260,7 +231,7 @@ def import_bed(
     np.random.seed(seed)
     comps_df = pd.read_csv(bed_file, header=None, sep="\t")
 
-    # Find maximum coordinate of each chromosome
+    # Filter by chromosome / region
     logger.info("Cleaning and transforming subcompartments dataframe...")
     if chrom is not None:
         comps_df = comps_df[(comps_df[0] == chrom) & (comps_df[1] > coords[0]) & (comps_df[2] < coords[1])].reset_index(
@@ -281,12 +252,14 @@ def import_bed(
 
     # Sum bigger chromosomes with the maximum values of previous chromosomes
     if chrom is None:
+        logger.info("Applying chromosome offset shifts...")
         for count, i in enumerate(chrom_idxs):
             comps_df.loc[comps_df[0] == chrs[i], 1] += chrom_ends[count]
             comps_df.loc[comps_df[0] == chrs[i], 2] += chrom_ends[count]
 
     # Convert genomic coordinates to simulation beads
     resolution = chrom_ends[-1] // N_beads if chrom is None else (coords[1] - coords[0]) // N_beads
+    logger.info(f"Computed resolution: {resolution}")
     chrom_ends = np.array(chrom_ends) // resolution
     chrom_ends[-1] = N_beads
     np.save(save_path + "metadata/chrom_lengths.npy", chrom_ends)
@@ -327,26 +300,39 @@ def align_comps(comps, ms, chrom_ends):
 
 
 def integers_to_hex_colors(start, end):
-    # Generate a range of integers
+    logger.info(f"Generating color map: {start} -> {end}")
+
     integers = np.arange(start, end + 1)
 
-    # Map each integer to a rainbow color and convert to hex format
     rgb_colors = plt.cm.rainbow(integers / max(integers))
     hex_colors = [to_hex(color) for color in rgb_colors]
+
+    logger.info(f"Generated {len(hex_colors)} colors")
 
     return hex_colors
 
 
-def write_chrom_colors(chrom_ends, chrom_idxs, name="MultiMM_chromosome_colors.cmd"):
+def write_chrom_colors(
+    chrom_ends,
+    chrom_idxs,
+    name="MultiMM_chromosome_colors.cmd",
+):
+    logger.info(f"Writing chromosome color file: {name}")
+
     colors = integers_to_hex_colors(0, len(chrom_ends) + 1)
 
     content = ""
-    for i in range(len(chrom_ends) - 1):
+
+    n_chroms = len(chrom_ends) - 1
+    logger.info(f"Number of chromosome segments: {n_chroms}")
+
+    for i in range(n_chroms):
         content += f"color {colors[chrom_idxs[i]]} :.{chr(64+1+i)}\n"
 
     with open(name, "w") as f:
         f.write(content)
 
+    logger.info("Chromosome color file written successfully")
 
 def min_max_trans(x):
     return (x - x.min()) / (x.max() - x.min())
@@ -483,7 +469,7 @@ def import_mns_from_bedpe(
 
     if down_prob < 1.0:
         ms, ns, cs, ds = downsample_arrays(ms, ns, cs, ds, down_prob)
-
+    
     avg_ls = np.average(ns - ms)
     logger.info(f"Average loop size: {avg_ls}")
 

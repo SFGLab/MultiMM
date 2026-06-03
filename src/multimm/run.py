@@ -13,9 +13,10 @@ from openmm.unit import Quantity
 from .config import SimulationConfig
 from .model import MultiMM
 from .utils import chrom_sizes
+from .logger import setup_logger
 
+setup_logger()
 logger = logging.getLogger(__name__)
-
 
 class Tee:
     def __init__(self, *streams):
@@ -30,36 +31,78 @@ class Tee:
         for s in self.streams:
             s.flush()
 
-
 class ArgumentChanger:
+
+    # ------------------------------------------------------------
+    # ANSI colors (works in most terminals, including Linux/SSH)
+    # ------------------------------------------------------------
+    ORANGE = "\033[38;5;208m"
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+
     def __init__(self, args, chrom_sizes):
         self.args = args
         self.chrom_sizes = chrom_sizes
 
+        # store original values for diff reporting
+        self._original_values = {}
+
     def set_arg(self, name, value):
-        """Set argument value in attribute."""
+        """
+        Set argument value in attribute and store change history.
+        """
         if hasattr(self.args, name):
+            old_value = getattr(self.args, name, None)
+
+            # store original only once
+            if name not in self._original_values:
+                self._original_values[name] = old_value
+
             setattr(self.args, name, value)
+
         else:
-            logger.warning(f"Warning: Argument '{name}' not found in args object.")
+            logger.warning(f"Argument '{name}' not found in args object.")
+
+    def _report_changes(self):
+        """
+        Print all modified parameters in a readable way.
+        """
+        if not self._original_values:
+            return
+
+        logger.warning(
+            f"{self.ORANGE}{self.BOLD}"
+            "MODELLING LEVEL OVERRIDE ACTIVE: parameters have been overwritten."
+            f"{self.RESET}"
+        )
+
+        print("\nChanged parameters:")
+        print("-" * 60)
+
+        for k, old_v in self._original_values.items():
+            new_v = getattr(self.args, k, None)
+            if old_v != new_v:
+                print(f"{k:35s} : {old_v}  ->  {new_v}")
+
+        print("-" * 60 + "\n")
 
     def convenient_argument_changer(self):
+
         self.set_arg("NUC_DO_INTERPOLATION", False)
         self.set_arg("ATACSEQ_PATH", None)
 
         modelling_level = self.args.MODELLING_LEVEL
-        print("The modelling level is: ", modelling_level)
 
-        # EARLY EXIT: if nothing is defined, do not modify defaults
-        if modelling_level is None or str(modelling_level).strip() == "":
+        level = str(modelling_level).lower()
+
+        if level == "gene":
+
             logger.warning(
-                "No modelling level specified. Using user-specified parameter configuration."
+                f"{self.ORANGE}{self.BOLD}"
+                "Gene-level modelling activated. This will overwrite parameters."
+                f"{self.RESET}"
             )
-            return
-        elif str(modelling_level).lower() in ("gene"):
-            logger.warning(
-                "MAGIC COMMENT: For gene level it is needed to provide a loops_path, and a gene_name or gene_id to specify the target gene of interest."
-            )
+
             self.set_arg("N_BEADS", 1000)
             self.set_arg("SC_USE_SPHERICAL_CONTAINER", False)
             self.set_arg("CHB_USE_CHROMOSOMAL_BLOCKS", False)
@@ -71,41 +114,37 @@ class ArgumentChanger:
             self.set_arg("SIM_RUN_MD", True)
             self.set_arg("SIM_N_STEPS", 10000)
 
-        elif str(modelling_level).lower() in ("region", "loc"):
+        elif level in ("region", "loc"):
+
             logger.warning(
-                "Region-level modelling selected. MultiMM will construct a reduced system "
-                "of 5000 beads focused on TAD-scale dynamics, including loop interactions only. "
-                "Compartment and higher-order nuclear organization terms are disabled by default. "
-                "A .bed file defining the region of interest must be provided."
+                f"{self.ORANGE}{self.BOLD}"
+                "Region-level modelling activated. Overwriting parameters."
+                f"{self.RESET}"
             )
+
             self.set_arg("N_BEADS", 5000)
             self.set_arg("SC_USE_SPHERICAL_CONTAINER", False)
             self.set_arg("CHB_USE_CHROMOSOMAL_BLOCKS", False)
             self.set_arg("SCB_USE_SUBCOMPARTMENT_BLOCKS", False)
-            self.set_arg(
-                "COB_USE_COMPARTMENT_BLOCKS",
-                bool(self.args.COMPARTMENT_PATH),
-            )
+            self.set_arg("COB_USE_COMPARTMENT_BLOCKS", bool(self.args.COMPARTMENT_PATH))
             self.set_arg("IBL_USE_B_LAMINA_INTERACTION", False)
             self.set_arg("CF_USE_CENTRAL_FORCE", False)
             self.set_arg("SIM_RUN_MD", True)
             self.set_arg("SIM_N_STEPS", 10000)
 
-        elif str(modelling_level).lower() in ("chromosome", "chrom"):
+        elif level in ("chromosome", "chrom"):
+
             logger.warning(
-                "MAGIC COMMENT: For chromosome level it is needed to provide a loops_path."
-                "Do not forget to specify the beginning and end of your chromosome." 
-                "You can remove the centromers or telomers that are in the boundaries."
-                "You can optionally add an compartment_path to include block-copolymer forces."
+                f"{self.ORANGE}{self.BOLD}"
+                "Chromosome-level modelling activated. Overwriting parameters."
+                f"{self.RESET}"
             )
+
             self.set_arg("N_BEADS", 20000)
             self.set_arg("SC_USE_SPHERICAL_CONTAINER", False)
             self.set_arg("CHB_USE_CHROMOSOMAL_BLOCKS", False)
             self.set_arg("SCB_USE_SUBCOMPARTMENT_BLOCKS", False)
-            self.set_arg(
-                "COB_USE_COMPARTMENT_BLOCKS",
-                bool(self.args.COMPARTMENT_PATH),
-            )
+            self.set_arg("COB_USE_COMPARTMENT_BLOCKS", bool(self.args.COMPARTMENT_PATH))
             self.set_arg("IBL_USE_B_LAMINA_INTERACTION", False)
             self.set_arg("CF_USE_CENTRAL_FORCE", False)
             self.set_arg("SIM_RUN_MD", True)
@@ -113,18 +152,19 @@ class ArgumentChanger:
             self.set_arg("LOC_START", 1)
             self.set_arg("LOC_END", self.chrom_sizes[self.args.CHROM])
 
-        elif str(modelling_level).lower() in ("gw", "genome"):
+        elif level in ("gw", "genome"):
+
             logger.warning(
-                "MAGIC COMMENT: For gw level it is needed to provide a loops_path. You can optionally add an compartment_path to include block-copolymer forces."
+                f"{self.ORANGE}{self.BOLD}"
+                "Genome-wide modelling activated. Overwriting parameters."
+                f"{self.RESET}"
             )
+
             self.set_arg("N_BEADS", 200000)
             self.set_arg("SC_USE_SPHERICAL_CONTAINER", True)
             self.set_arg("CHB_USE_CHROMOSOMAL_BLOCKS", False)
             self.set_arg("SCB_USE_SUBCOMPARTMENT_BLOCKS", False)
-            self.set_arg(
-                "COB_USE_COMPARTMENT_BLOCKS",
-                bool(self.args.COMPARTMENT_PATH),
-            )
+            self.set_arg("COB_USE_COMPARTMENT_BLOCKS", bool(self.args.COMPARTMENT_PATH))
             self.set_arg(
                 "IBL_USE_B_LAMINA_INTERACTION",
                 bool(self.args.COMPARTMENT_PATH),
@@ -133,6 +173,9 @@ class ArgumentChanger:
             self.set_arg("SIM_RUN_MD", False)
             self.set_arg("SIM_N_STEPS", 10000)
 
+        # final summary
+        if self.args.MODELLING_LEVEL:
+            self._report_changes()
 
 def args_tests(args):
     if args.LOOPS_PATH is None or args.LOOPS_PATH == "":

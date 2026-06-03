@@ -10,26 +10,9 @@ from openmm.unit import Quantity, nanometers
 
 from .initial_structure_tools import build_init_mmcif, write_cmm, write_mmcif_chrom
 from .nucleosome_interpolation import NucleosomeInterpolation
-from .plots import (
-    plot_projection,
-    save_chimera_cmd,
-    viz_chroms,
-    viz_gene_structure,
-    viz_structure,
-)
-from .utils import (
-    chrom_sizes,
-    chrom_strength,
-    chrs,
-    get_coordinates_cif,
-    get_coordinates_mm,
-    get_gene_region,
-    import_bed,
-    import_bw,
-    import_mns_from_bedpe,
-    save_args_to_txt,
-    write_chrom_colors,
-)
+from .utils import *
+from .plots import *
+
 
 logger = logging.getLogger(__name__)
 
@@ -196,26 +179,42 @@ class MultiMM:
         for _ in range(self.system.getNumParticles()):
             self.ev_force.addParticle()
 
+        logger.info(f"Initializing excluded volume force (mode={mode})")
+
         # 1. DEFAULT: power-law excluded volume (current model)
         if mode == "powerlaw":
 
-            self.ev_force.setEnergyFunction("epsilon*(sigma/(r + r_small))^EV_POWER")
+            logger.info("Using power-law excluded volume model")
 
+            self.ev_force.setEnergyFunction("epsilon*(sigma/(r + r_small))^EV_POWER")
             self.ev_force.addGlobalParameter("EV_POWER", self.args.EV_POWER)
+
+            logger.info(f"EV_POWER = {self.args.EV_POWER}")
 
         # 2. SOFT LENNARD-JONES TYPE (no divergence at r→0)
         elif mode == "soft_lj":
 
-            self.ev_force.setEnergyFunction("epsilon * (sigma^n / (r^2 + r_small^2)^(n/2))")
+            logger.info("Using soft Lennard-Jones-like excluded volume model")
+
+            self.ev_force.setEnergyFunction(
+                "epsilon * (sigma^n / (r^2 + r_small^2)^(n/2))"
+            )
 
             self.ev_force.addGlobalParameter("n", self.args.EV_POWER)
+
+            logger.info(f"n (EV_POWER) = {self.args.EV_POWER}")
 
         # 3. GAUSSIAN CORE (very soft polymer melt limit)
         elif mode == "gaussian_core":
 
+            logger.info("Using Gaussian-core excluded volume model")
+
             self.ev_force.setEnergyFunction("epsilon * exp(-r^2/(2*sigma^2))")
 
+            logger.info("No additional parameters required for Gaussian-core model")
+
         else:
+            logger.error(f"Unknown EV_FORCE_TYPE: {mode}")
             raise ValueError(f"Unknown EV_FORCE_TYPE: {mode}")
 
         self.system.addForce(self.ev_force)
@@ -245,6 +244,8 @@ class MultiMM:
         # 1. DEFAULT: Gaussian compartment segregation
         if mode == "gaussian":
 
+            logger.info("Using Gaussian compartment interaction model")
+
             self.comp_force.setEnergyFunction(
                 "-E * exp(-r^2/(2*rc^2)); "
                 "E = (Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2)) + "
@@ -254,36 +255,29 @@ class MultiMM:
             self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
             self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
 
+            logger.info(f"Gaussian compartment parameters loaded: Ea={self.args.COB_EA}, Eb={self.args.COB_EB}")
+
         # 2. YUKAWA: screened compartment attraction
         elif mode == "yukawa":
 
+            logger.info("Using Yukawa compartment interaction model")
+
             self.comp_force.setEnergyFunction(
                 "-E * exp(-r/lambda) / r; "
-                "E = (Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2)) + "
-                "Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2)))"
+                "E = (Ea*(delta(s1-1)+delta(s1-2))*(delta(s1-1)+delta(s1-2)) + "
+                "Eb*(delta(s1+1)+delta(s1+2))*(delta(s1+1)+delta(s1+2)))"
             )
 
             self.comp_force.addGlobalParameter("lambda", self.r_comp)
             self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
             self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
 
-        # 3. POWER-LAW: scale-free compartment organization
-        elif mode == "powerlaw":
+            logger.info(f"Yukawa model: λ={self.r_comp}, Ea={self.args.COB_EA}, Eb={self.args.COB_EB}")
 
-            self.comp_force.setEnergyFunction(
-                "-E / (r^alpha + eps); "
-                "E = (Ea*(delta(s1-1)+delta(s1-2))*(delta(s2-1)+delta(s2-2)) + "
-                "Eb*(delta(s1+1)+delta(s1+2))*(delta(s2+1)+delta(s2+2)))"
-            )
-
-            self.comp_force.addGlobalParameter("alpha", 6.0)
-            self.comp_force.addGlobalParameter("eps", 1e-3)
-
-            self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
-            self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
-
-        # 4. THETA: hard contact compartment model
+        # 3. THETA: hard contact compartment model
         elif mode == "theta":
+
+            logger.info("Using theta (hard contact) compartment model")
 
             self.comp_force.setEnergyFunction(
                 "-E * step(rc - r); "
@@ -294,7 +288,10 @@ class MultiMM:
             self.comp_force.addGlobalParameter("Ea", self.args.COB_EA)
             self.comp_force.addGlobalParameter("Eb", self.args.COB_EB)
 
+            logger.info(f"Theta model parameters: Ea={self.args.COB_EA}, Eb={self.args.COB_EB}")
+
         else:
+            logger.error(f"Unknown COB_FORCE_TYPE: {mode}")
             raise ValueError(f"Unknown COB_FORCE_TYPE: {mode}")
 
         self.system.addForce(self.comp_force)
@@ -323,6 +320,8 @@ class MultiMM:
         # 1. DEFAULT: Gaussian state-dependent interaction (original model)
         if mode == "gaussian":
 
+            logger.info("Using Gaussian subcompartment interaction model")
+
             self.scomp_force.setEnergyFunction(
                 "-E * exp(-r^2/(2*rsc^2)); "
                 "E = Ea1*delta(s1-2)*delta(s2-2) + "
@@ -336,8 +335,12 @@ class MultiMM:
             self.scomp_force.addGlobalParameter("Eb1", self.args.SCB_EB1)
             self.scomp_force.addGlobalParameter("Eb2", self.args.SCB_EB2)
 
+            logger.info("Gaussian parameters loaded (Ea/Eb set)")
+
         # 2. YUKAWA: screened long-range attraction
         elif mode == "yukawa":
+
+            logger.info("Using Yukawa (screened) interaction model")
 
             self.scomp_force.setEnergyFunction(
                 "-E * exp(-r/lambda) / r; "
@@ -353,27 +356,12 @@ class MultiMM:
             self.scomp_force.addGlobalParameter("Eb1", self.args.SCB_EB1)
             self.scomp_force.addGlobalParameter("Eb2", self.args.SCB_EB2)
 
-        # 3. POWER-LAW: scale-free polymer interaction
-        elif mode == "powerlaw":
+            logger.info(f"Yukawa screening length λ = {self.r_comp}")
 
-            self.scomp_force.setEnergyFunction(
-                "-E / (r^alpha + eps); "
-                "E = Ea1*delta(s1-2)*delta(s2-2) + "
-                "Ea2*delta(s1-1)*delta(s2-1) + "
-                "Eb1*delta(s1+1)*delta(s2+1) + "
-                "Eb2*delta(s1+2)*delta(s2+2)"
-            )
-
-            self.scomp_force.addGlobalParameter("alpha", 6.0)
-            self.scomp_force.addGlobalParameter("eps", 1e-3)
-
-            self.scomp_force.addGlobalParameter("Ea1", self.args.SCB_EA1)
-            self.scomp_force.addGlobalParameter("Ea2", self.args.SCB_EA2)
-            self.scomp_force.addGlobalParameter("Eb1", self.args.SCB_EB1)
-            self.scomp_force.addGlobalParameter("Eb2", self.args.SCB_EB2)
-
-        # 4. THETA / SQUARE-WELL (block copolymer contact model)
+        # 3. THETA / SQUARE-WELL (block copolymer contact model)
         elif mode == "theta":
+
+            logger.info("Using theta (square-well) interaction model")
 
             self.scomp_force.setEnergyFunction(
                 "-E * step(rc - r); "
@@ -390,7 +378,10 @@ class MultiMM:
             self.scomp_force.addGlobalParameter("Eb1", self.args.SCB_EB1)
             self.scomp_force.addGlobalParameter("Eb2", self.args.SCB_EB2)
 
+            logger.info(f"Theta cutoff rc = {self.r_comp}")
+
         else:
+            logger.error(f"Unknown SCB_FORCE_TYPE: {mode}")
             raise ValueError(f"Unknown SCB_FORCE_TYPE: {mode}")
 
         self.system.addForce(self.scomp_force)
@@ -423,19 +414,41 @@ class MultiMM:
         # 1. DEFAULT: polynomial
         if mode == "polynomial":
 
-            self.chrom_block_force.setEnergyFunction("E*(k_C*r^4 - r^3 + r^2); " "E = dE*delta(chrom1-chrom2)")
+            logger.info("Using polynomial chromosomal self-attraction model")
+
+            self.chrom_block_force.setEnergyFunction(
+                "E*(k_C*r^4 - r^3 + r^2); "
+                "E = dE*delta(chrom1-chrom2)"
+            )
+
+            logger.info(f"k_C={self.args.CHB_KC}, dE={self.args.CHB_DE}")
 
         # 2. GAUSSIAN SELF-ATTRACTION (globular collapse kernel)
         elif mode == "gaussian":
 
-            self.chrom_block_force.setEnergyFunction("-E * exp(-k_C*r^2); " "E = dE*delta(chrom1-chrom2)")
+            logger.info("Using Gaussian chromosomal collapse kernel")
+
+            self.chrom_block_force.setEnergyFunction(
+                "-E * exp(-k_C*r^2); "
+                "E = dE*delta(chrom1-chrom2)"
+            )
+
+            logger.info(f"k_C={self.args.CHB_KC}, dE={self.args.CHB_DE}")
 
         # 3. SATURATING SOFT-CORE ATTRACTION (stable clustering)
         elif mode == "saturating":
 
-            self.chrom_block_force.setEnergyFunction("-E / (1 + k_C*r^2); " "E = dE*delta(chrom1-chrom2)")
+            logger.info("Using saturating chromosomal interaction model")
+
+            self.chrom_block_force.setEnergyFunction(
+                "-E / (1 + k_C*r^2); "
+                "E = dE*delta(chrom1-chrom2)"
+            )
+
+            logger.info(f"k_C={self.args.CHB_KC}, dE={self.args.CHB_DE}")
 
         else:
+            logger.error(f"Unknown CHB_FORCE_TYPE: {mode}")
             raise ValueError(f"Unknown CHB_FORCE_TYPE: {mode}")
 
         self.system.addForce(self.chrom_block_force)
@@ -488,35 +501,61 @@ class MultiMM:
         # 1. DEFAULT: sinusoidal shell (original)
         if mode == "sin":
 
-            self.Blamina_force.setEnergyFunction("B*(sin(pi*(r-R1)/(R2-R1))^8 - 1)*(delta(s+1)+delta(s+2)); " + r_expr)
+            logger.info("Using sinusoidal lamina shell model")
+
+            self.Blamina_force.setEnergyFunction(
+                "B*(sin(pi*(r-R1)/(R2-R1))^8 - 1)*(delta(s+1)+delta(s+2)); " + r_expr
+            )
             self.Blamina_force.addGlobalParameter("pi", np.pi)
+
+            logger.info(f"Shell radii: R1={self.radius1}, R2={self.radius2}")
 
         # 2. GAUSSIAN SHELL (two lamina layers)
         elif mode == "gaussian_shell":
 
+            logger.info("Using Gaussian lamina shell model (two-layer attraction)")
+
             self.Blamina_force.setEnergyFunction(
-                "-B*(exp(-(r-R1)^2/(2*sigma^2)) + exp(-(r-R2)^2/(2*sigma^2)))" "*(delta(s+1)+delta(s+2)); " + r_expr
+                "-B*(exp(-(r-R1)^2/(2*sigma^2)) + exp(-(r-R2)^2/(2*sigma^2)))"
+                "*(delta(s+1)+delta(s+2)); " + r_expr
             )
 
-            self.Blamina_force.addGlobalParameter("sigma", 0.1 * (self.radius2 - self.radius1))
+            sigma = 0.1 * (self.radius2 - self.radius1)
+            self.Blamina_force.addGlobalParameter("sigma", sigma)
+
+            logger.info(f"sigma = {sigma}")
 
         # 3. HARMONIC SHELL (pull to mid-shell)
         elif mode == "harmonic_shell":
 
-            self.Blamina_force.setEnergyFunction("B*(r - r0)^2*(delta(s+1)+delta(s+2)); " + r_expr)
+            logger.info("Using harmonic lamina shell model (mid-shell attraction)")
 
-            self.Blamina_force.addGlobalParameter("r0", 0.5 * (self.radius1 + self.radius2))
+            self.Blamina_force.setEnergyFunction(
+                "B*(r - r0)^2*(delta(s+1)+delta(s+2)); " + r_expr
+            )
+
+            r0 = 0.5 * (self.radius1 + self.radius2)
+            self.Blamina_force.addGlobalParameter("r0", r0)
+
+            logger.info(f"r0 (mid-shell) = {r0}")
 
         # 4. LOGISTIC WALLS (smooth boundary attraction)
         elif mode == "logistic_shell":
 
+            logger.info("Using logistic lamina shell model (soft boundaries)")
+
             self.Blamina_force.setEnergyFunction(
-                "-B*(1/(1+exp((r-R2)/lambda)) + 1/(1+exp(-(r-R1)/lambda)))" "*(delta(s+1)+delta(s+2)); " + r_expr
+                "-B*(1/(1+exp((r-R2)/lambda)) + 1/(1+exp(-(r-R1)/lambda)))"
+                "*(delta(s+1)+delta(s+2)); " + r_expr
             )
 
-            self.Blamina_force.addGlobalParameter("lambda", 0.05 * (self.radius2 - self.radius1))
+            lam = 0.05 * (self.radius2 - self.radius1)
+            self.Blamina_force.addGlobalParameter("lambda", lam)
+
+            logger.info(f"lambda (boundary softness) = {lam}")
 
         else:
+            logger.error(f"Unknown BLAMINA_FORCE_TYPE: {mode}")
             raise ValueError(f"Unknown BLAMINA_FORCE_TYPE: {mode}")
 
         # add particles
@@ -640,12 +679,22 @@ class MultiMM:
     def initialize_simulation(self):
         if self.args.BUILD_INITIAL_STRUCTURE:
             logger.info("\nCreating initial structure...")
-            ("compartments" if np.all(self.Cs is not None) and len(np.unique(self.Cs)) <= 3 else "subcompartments")
-            if np.all(self.Cs is not None):
+
+            structure_type = (
+                "compartments"
+                if (self.Cs is not None and len(np.unique(self.Cs)) <= 3)
+                else "subcompartments"
+            )
+            logger.info(f"Detected structure type: {structure_type}")
+
+            if self.Cs is not None:
+                logger.info("Writing compartment color map (CMM file)")
                 write_cmm(
                     self.Cs,
                     name=self.save_path + "metadata/MultiMM_compartment_colors.cmd",
                 )
+
+            logger.info("Building initial CIF structure")
             build_init_mmcif(
                 n_dna=self.args.N_BEADS,
                 chrom_ends=self.chr_ends,
@@ -653,70 +702,116 @@ class MultiMM:
                 curve=self.args.INITIAL_STRUCTURE_TYPE,
                 scale=(self.radius1 + self.radius2) / 2,
             )
-            logger.info("---Done!---")
+
+            logger.info("Initial structure generated successfully")
+
+        logger.info("Loading CIF structure into OpenMM system")
+
         self.pdb = (
             PDBxFile(self.save_path + "metadata/MultiMM_init.cif")
             if self.args.INITIAL_STRUCTURE_PATH is None or self.args.BUILD_INITIAL_STRUCTURE
             else PDBxFile(self.args.INITIAL_STRUCTURE_PATH)
         )
+
         self.mass_center = np.average(get_coordinates_mm(self.pdb.positions), axis=0)
+        logger.info(f"Mass center computed: {self.mass_center}")
+
+        logger.info("Creating OpenMM system from forcefield")
         forcefield = ForceField(self.args.FORCEFIELD_PATH)
         self.system = forcefield.createSystem(self.pdb.topology)
 
+        logger.info(f"Integrator type selected: {self.args.SIM_INTEGRATOR_TYPE}")
+
         match self.args.SIM_INTEGRATOR_TYPE:
+
             case "verlet":
+                logger.info("Using Verlet integrator")
                 self.integrator = mm.VerletIntegrator(self.args.SIM_INTEGRATOR_STEP)
+
             case "variable_verlet":
+                logger.info("Using Variable Verlet integrator")
                 self.integrator = mm.VariableVerletIntegrator(self.SIM_ERROR_TOLERANCE)
+
             case "langevin":
+                logger.info("Using Langevin integrator")
                 self.integrator = mm.LangevinIntegrator(
                     self.args.SIM_TEMPERATURE,
                     self.args.SIM_FRICTION_COEFF,
                     self.args.SIM_INTEGRATOR_STEP,
                 )
+
             case "variable_langevin":
+                logger.info("Using Variable Langevin integrator")
                 self.integrator = mm.VariableLangevinIntegrator(
                     self.args.SIM_TEMPERATURE,
                     self.args.SIM_FRICTION_COEFF,
                     self.SIM_ERROR_TOLERANCE,
                 )
+
             case "amd":
+                logger.info("Using AMD integrator")
                 self.integrator = mm.amd.AMDIntegrator(
                     self.args.SIM_INTEGRATOR_STEP,
                     self.args.SIM_AMD_ALPHA,
                     self.args.SIM_AMD_E,
                 )
+
             case "brownian":
+                logger.info("Using Brownian integrator")
                 self.integrator = mm.BrownianIntegrator(
                     self.args.SIM_TEMPERATURE,
                     self.args.SIM_FRICTION_COEFF,
                     self.args.SIM_INTEGRATOR_STEP,
                 )
 
+        logger.info("Simulation initialization complete")
+
     def add_forcefield(self):
         """Here we define the forcefield of MultiMM."""
-        # Add forces
+
         logger.info("\nImporting forcefield...")
+
         if self.args.EV_USE_EXCLUDED_VOLUME:
+            logger.info("Adding excluded volume force")
             self.add_evforce()
+
         if self.args.COB_USE_COMPARTMENT_BLOCKS:
+            logger.info("Adding compartment blocks force")
             self.add_compartment_blocks()
+
         if self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
+            logger.info("Adding subcompartment blocks force")
             self.add_subcompartment_blocks()
+
         if self.args.CHB_USE_CHROMOSOMAL_BLOCKS:
+            logger.info("Adding chromosomal blocks force")
             self.add_chromosomal_blocks()
+
         if self.args.SC_USE_SPHERICAL_CONTAINER:
+            logger.info("Adding spherical container force")
             self.add_spherical_container()
+
         if self.args.IBL_USE_B_LAMINA_INTERACTION:
+            logger.info("Adding lamina interaction force")
             self.add_Blamina_interaction()
+
         if self.args.CF_USE_CENTRAL_FORCE:
+            logger.info("Adding central force")
             self.add_central_force()
+
         if self.args.POL_USE_HARMONIC_BOND:
+            logger.info("Adding harmonic bond force")
             self.add_harmonic_bonds()
+
         if self.args.LE_USE_HARMONIC_BOND:
+            logger.info("Adding loop extrusion force")
             self.add_loops()
+
         if self.args.POL_USE_HARMONIC_ANGLE:
+            logger.info("Adding angular stiffness force")
             self.add_stiffness()
+
+        logger.info("Forcefield construction complete.")
 
     def min_energy(self):
         logger.info("\nEnergy minimization...")
@@ -860,100 +955,139 @@ class MultiMM:
             and _is_empty(self.args.GENE_NAME)
             and self.args.LOC_START is None
             and self.args.LOC_END is None
+            and self.chrom_idxs is not None
+            and len(self.chrom_idxs) > 1
         )
-        is_comp = np.any(self.Cs is not None).item()
+
+        is_comp = self.Cs is not None and len(self.Cs) > 0
+
+        def _viz_and_heat(cif_path, out_name, colors=None):
+            """Unified structure + heatmap pipeline (single source of truth)."""
+            V = get_coordinates_cif(cif_path)
+
+            # 3D structure
+            viz_structure(
+                V,
+                colors,
+                r=0.2,
+                cmap="coolwarm",
+                save_path=self.save_path + f"plots/{out_name}.png",
+            )
+
+            # heatmap (always)
+            get_heatmap(
+                cif_path,
+                viz=True,
+                save=True,
+                save_path=self.save_path + f"plots",
+            )
+
+            # structure analysis (NEW)
+            analyze_structure(
+                V,
+                save_path=self.save_path,
+                name=out_name,
+            )
+
+            return V
+
+        # ============================================================
+        # GW MODE
+        # ============================================================
         if is_gw:
+
             if is_comp:
                 plot_projection(
                     get_coordinates_mm(self.state.getPositions()),
                     self.Cs,
                     save_path=self.save_path,
                 )
+
             viz_chroms(self.save_path, r=0.2, comps=is_comp)
+
             for i in range(len(self.chr_ends) - 1):
-                V = get_coordinates_cif(
-                    self.save_path + f"model/chromosomes/MultiMM_minimized_{chrs[self.chrom_idxs[i]]}.cif"
+                chrom = chrs[self.chrom_idxs[i]]
+                _viz_and_heat(
+                    self.save_path + f"model/chromosomes/MultiMM_minimized_{chrom}.cif",
+                    f"chromosomes/{chrom}_minimized_structure",
                 )
-                viz_structure(
-                    V,
-                    r=0.2,
-                    cmap="coolwarm",
-                    save_path=self.save_path + f"plots/chromosomes/{chrs[self.chrom_idxs[i]]}_minimized_structure.png",
-                )
-        else:
-            if hasattr(self, "gene_start"):
-                save_chimera_cmd(
-                    self.gene_start,
-                    self.gene_end,
-                    self.args.N_BEADS,
-                    cmd_filename=self.save_path + "metadata/chimera_gene_coloring.cmd",
-                )
-                V = get_coordinates_cif(self.save_path + "metadata/MultiMM_init.cif")
+
+            return
+
+        # ============================================================
+        # GENE / REGION MODE
+        # ============================================================
+        if hasattr(self, "gene_start"):
+
+            save_chimera_cmd(
+                self.gene_start,
+                self.gene_end,
+                self.args.N_BEADS,
+                cmd_filename=self.save_path + "metadata/chimera_gene_coloring.cmd",
+            )
+
+            for tag, path in [
+                ("initial_gene", "metadata/MultiMM_init.cif"),
+                ("minimized_gene", "model/MultiMM_minimized.cif"),
+            ]:
+                V = get_coordinates_cif(self.save_path + path)
                 viz_gene_structure(
                     V,
                     self.gene_start,
                     self.gene_end,
                     r=0.2,
                     cmap="coolwarm",
-                    save_path=self.save_path + "plots/initial_structure_gene_coloring.png",
+                    save_path=self.save_path + f"plots/{tag}.png",
                 )
-                V = get_coordinates_cif(self.save_path + "model/MultiMM_minimized.cif")
+
+            if self.args.SIM_RUN_MD:
+                V = get_coordinates_cif(self.save_path + "model/MultiMM_afterMD.cif")
                 viz_gene_structure(
                     V,
                     self.gene_start,
                     self.gene_end,
                     r=0.2,
                     cmap="coolwarm",
-                    save_path=self.save_path + "plots/minimized_structure_gene_coloring.png",
+                    save_path=self.save_path + "plots/structure_afterMD_gene_coloring.png",
                 )
-                if self.args.SIM_RUN_MD:
-                    V = get_coordinates_cif(self.save_path + "model/MultiMM_afterMD.cif")
-                    viz_gene_structure(
-                        V,
-                        self.gene_start,
-                        self.gene_end,
-                        r=0.2,
-                        cmap="coolwarm",
-                        save_path=self.save_path + "plots/structure_afterMD_gene_coloring.png",
-                    )
-            V = get_coordinates_cif(self.save_path + "metadata/MultiMM_init.cif")
-            viz_structure(
-                V,
-                r=0.2,
-                cmap="coolwarm",
-                save_path=self.save_path + "plots/initial_structure.png",
-            )
-            V = get_coordinates_cif(self.save_path + "model/MultiMM_minimized.cif")
-            viz_structure(
-                V,
-                r=0.2,
-                cmap="coolwarm",
-                save_path=self.save_path + "plots/minimized_structure.png",
-            )
-            if is_comp:
+
+        # ============================================================
+        # COMMON STRUCTURES (always executed)
+        # ============================================================
+
+        snapshots = [
+            ("initial_structure", "metadata/MultiMM_init.cif"),
+            ("minimized_structure", "model/MultiMM_minimized.cif"),
+        ]
+
+        for name, path in snapshots:
+            _viz_and_heat(self.save_path + path, name)
+
+        if is_comp:
+            for name, path in snapshots:
+                V = get_coordinates_cif(self.save_path + path)
                 viz_structure(
                     V,
                     self.Cs[: len(V)],
-                    cmap="coolwarm",
                     r=0.2,
-                    save_path=self.save_path + "plots/minimized_structure_compartment_coloring.png",
+                    cmap="coolwarm",
+                    save_path=self.save_path + f"plots/{name}_compartment_coloring.png",
                 )
-            if self.args.SIM_RUN_MD:
-                V = get_coordinates_cif(self.save_path + "model/MultiMM_afterMD.cif")
+
+        if self.args.SIM_RUN_MD:
+            md_path = "model/MultiMM_afterMD.cif"
+
+            _viz_and_heat(self.save_path + md_path, "structure_afterMD")
+
+            if is_comp:
+                V = get_coordinates_cif(self.save_path + md_path)
                 viz_structure(
                     V,
+                    self.Cs[: len(V)],
                     r=0.2,
                     cmap="coolwarm",
-                    save_path=self.save_path + "plots/structure_afterMD.png",
+                    save_path=self.save_path + "plots/structure_afterMD_compartment_coloring.png",
                 )
-                if is_comp:
-                    viz_structure(
-                        V,
-                        self.Cs[: len(V)],
-                        cmap="coolwarm",
-                        r=0.2,
-                        save_path=self.save_path + "plots/structure_afterMD_compartment_coloring.png",
-                    )
 
     def run(self):
         """Energy minimization for GW model."""
@@ -986,3 +1120,5 @@ class MultiMM:
             self.nuc_interpolation()
 
         save_args_to_txt(self.args, self.args.OUT_PATH + "/metadata/parameters.txt")
+
+        print("\033[1;32m✅ MultiMM ran successfully!!!\033[0m\n")
