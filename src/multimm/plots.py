@@ -559,7 +559,6 @@ def analyze_structure(V, save_path, name="structure"):
 
     def _save_local(fig, fname):
         path = fname
-        os.makedirs(path, exist_ok=True)
         fig.savefig(path + ".png", dpi=300)
         fig.savefig(path + ".pdf")
         fig.savefig(path + ".svg")
@@ -669,6 +668,7 @@ def analyze_structure(V, save_path, name="structure"):
         f.write("Local Rg → domain compaction\n")
 
     # PLOTS
+    os.makedirs(base+'/plots', exist_ok=True)
 
     # 1. bond lengths
     fig, ax = plt.subplots(figsize=(6, 4))
