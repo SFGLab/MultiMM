@@ -678,7 +678,7 @@ class MultiMM:
 
     def initialize_simulation(self):
         if self.args.BUILD_INITIAL_STRUCTURE:
-            logger.info("\nCreating initial structure...")
+            logger.info("Creating initial structure...")
 
             structure_type = (
                 "compartments"
