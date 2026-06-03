@@ -452,7 +452,8 @@ def get_heatmap(
     vmax=None,
     vmin=None,
     log_scale=True,
-    reorder_by_diagonal=False
+    reorder_by_diagonal=False,
+    name="structure"
 ):
     """
     Compute and visualize contact/interaction heatmap from 3D structure.
@@ -480,7 +481,7 @@ def get_heatmap(
     # Distance → contact
     # ------------------------------------------------------------
     mat = distance.cdist(V, V, metric="euclidean")
-    mat = 1.0 / (mat + 1e-6)
+    mat = 1.0 / (mat + 1)**(2/3)
 
     logger.info(
         f"Raw contact matrix: min={mat.min():.3e}, max={mat.max():.3e}, "
@@ -512,7 +513,7 @@ def get_heatmap(
             mat,
             cmap="coolwarm",
             interpolation="nearest",
-            norm=PowerNorm(gamma=0.5)
+            norm=PowerNorm(gamma=0.4)
         )
 
         ax.set_title("Structure-derived Contact Map", fontsize=12)
@@ -520,7 +521,7 @@ def get_heatmap(
         ax.set_ylabel("Bead index")
 
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label("Contact strength")
+        cbar.set_label("Contact strength (Inverse Distance)")
 
         ax.set_aspect("equal")
         ax.tick_params(length=0)
@@ -529,8 +530,8 @@ def get_heatmap(
         # Save (UNCHANGED)
         # --------------------------------------------------------
         if save and save_path is not None:
-            logger.info(f"Saving heatmap to: {save_path}/contact_map.*")
-            _save_local(fig, save_path + "/contact_map")
+            logger.info(f"Saving heatmap to: {save_path}/{name}_contact_map.*")
+            _save_local(fig, save_path + f"/{name}_contact_map")
 
         plt.close(fig)
 

@@ -500,7 +500,7 @@ class MultiMM:
 
         # 1. DEFAULT: sinusoidal shell (original)
         if mode == "sin":
-
+                
             logger.info("Using sinusoidal lamina shell model")
 
             self.Blamina_force.setEnergyFunction(
@@ -527,7 +527,7 @@ class MultiMM:
 
         # 3. HARMONIC SHELL (pull to mid-shell)
         elif mode == "harmonic_shell":
-
+            
             logger.info("Using harmonic lamina shell model (mid-shell attraction)")
 
             self.Blamina_force.setEnergyFunction(
@@ -769,7 +769,7 @@ class MultiMM:
     def add_forcefield(self):
         """Here we define the forcefield of MultiMM."""
 
-        logger.info("\nImporting forcefield...")
+        logger.info("Importing forcefield...")
 
         if self.args.EV_USE_EXCLUDED_VOLUME:
             logger.info("Adding excluded volume force")
@@ -814,7 +814,7 @@ class MultiMM:
         logger.info("Forcefield construction complete.")
 
     def min_energy(self):
-        logger.info("\nEnergy minimization...")
+        logger.info("Energy minimization...")
         # Try to use CUDA or OpenCL, fall back to CPU if not available
         try:
             platform = mm.Platform.getPlatformByName(self.args.PLATFORM)
@@ -980,6 +980,7 @@ class MultiMM:
                 viz=True,
                 save=True,
                 save_path=self.save_path + f"plots",
+                name=out_name
             )
 
             # structure analysis (NEW)
