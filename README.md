@@ -208,7 +208,7 @@ After coarse grained optimization, nucleosome positions are interpolated using a
 
 ## Internal parameter definitions
 
-All geometric and interaction scales are now derived from a single microscopic length scale, the polymer bond length $b_0 =$ \texttt{POL_HARMONIC_BOND_R0}, ensuring consistent density and eliminating arbitrary global normalization factors.
+All geometric and interaction scales are now derived from a single microscopic length scale, the polymer bond length $b_0 =$ POL_HARMONIC_BOND_R0, ensuring consistent density and eliminating arbitrary global normalization factors.
 
 The nuclear confinement is modeled as a dense polymer globule with constant monomer density. In this regime, the outer nuclear radius follows the standard scaling law
 
