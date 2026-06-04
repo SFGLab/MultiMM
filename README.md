@@ -205,31 +205,48 @@ Together, these terms implement a minimal physical model of nuclear architecture
 
 After coarse grained optimization, nucleosome positions are interpolated using a beads on the string zigzag model. Each nucleosome is represented as a helix with 1.65 DNA turns. The number of nucleosomes per bead is derived from normalized ATAC Seq signal, enforcing nucleosome rich regions in low accessibility chromatin.
 
+
 ## Internal parameter definitions
 
-Several key parameters are derived from global geometry and input data to ensure consistent scaling across the model.
+All geometric and interaction scales are now derived from a single microscopic length scale, the polymer bond length $b_0 = \texttt{POL_HARMONIC_BOND_R0}$, ensuring consistent density and eliminating arbitrary global normalization factors.
 
-The nuclear confinement radii $R_1$ and $R_2$ define the effective spherical domain of the system. They scale with polymer size as
+The nuclear confinement is modeled as a dense polymer globule with constant monomer density. In this regime, the outer nuclear radius follows the standard scaling law
 
-$$R_1 \sim \left(\frac{N}{50000}\right)^{1/3}, \quad R_2 \approx 3.5 R_1$$
+$$
+R_2 = b_0 , N^{1/3},
+$$
 
-ensuring that nuclear volume grows consistently with chromosome length.
+which enforces $N / R_2^3 \approx \text{const}$ and guarantees physically consistent compaction as system size changes. The inner compartment (nucleolus-like region) is defined via a fixed volume fraction $f$ of the nuclear volume, leading to
 
-The compartment interaction length scale $r_c$ controls the spatial decay of A/B and subcompartment interactions. It is either taken from experimental input or approximated as
+$$
+R_1 = R_2 , f^{1/3}.
+$$
 
-$$r_c = \frac{R_2 - R_1}{20}$$
+This construction ensures that compartment organization scales in a volume-preserving manner rather than through independent geometric tuning.
 
-which ties interaction range directly to confinement geometry.
+The compartment interaction length scale $r_c$ (previously $r_{\text{comp}}$) is no longer tied to geometric confinement. Instead, it represents the physical decay length of short-range attractive interactions between chromatin compartments and nuclear structures. It is defined directly from the polymer bond length as
 
-Loop constraints use bond-specific equilibrium distances $r_0^{(i)}$, either fixed globally or derived from experimental loop lengths $d_i$. This introduces heterogeneity in loop architecture:
+$$
+r_c \sim \mathcal{O}(b_0),
+$$
 
-$$r_0^{(i)} \in (r_0^{\text{global}}, d_i)$$
+typically chosen as a small multiple of $b_0$ (e.g. $r_c \approx 1.5 b_0$), ensuring that interactions remain local and comparable to nearest-neighbor connectivity along the polymer backbone.
 
-Each bead carries discrete state variables: compartment labels $s_i$ and chromosome identities $\chi_i$. These do not define geometry directly but gate interactions through selection rules such as
+Loop constraints are encoded through bond-specific equilibrium distances $r_0^{(i)}$, which may either be globally fixed or informed by experimental loop length data $d_i$. This introduces controlled heterogeneity in loop architecture:
 
-$$E_{ij} \propto \delta(s_i, s_j), \quad E_{ij} \propto \delta(\chi_i - \chi_j)$$
+$$
+r_0^{(i)} \in (r_0^{\text{global}}, d_i),
+$$
 
-Together, these derived parameters couple global confinement, loop architecture, and epigenetic state into a unified multiscale polymer framework.
+allowing loops to interpolate between polymer-native scales and experimentally inferred constraints.
+
+Each bead carries discrete state variables such as compartment identity $s_i$ and chromosome label $\chi_i$. These variables do not directly define geometry but modulate interactions through selection rules of the form
+
+$$
+E_{ij} \propto \delta(s_i, s_j), \quad E_{ij} \propto \delta(\chi_i, \chi_j),
+$$
+
+ensuring that only compatible epigenetic or chromosomal states contribute to attractive or repulsive terms. Together, these elements couple polymer physics, nuclear confinement, and epigenetic structure into a unified multiscale chromatin framework.
 
 
 

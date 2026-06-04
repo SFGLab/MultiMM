@@ -219,7 +219,7 @@ class SimulationConfig(BaseModel):
     SC_SCALE: float = Field(default=1000.0, description="Spherical container scaling factor")
     CHB_USE_CHROMOSOMAL_BLOCKS: Boolean = Field(default=False, description="Use Chromosomal Blocks.")
     CHB_KC: float = Field(default=0.3, description="Block copolymer width parameter.")
-    CHB_DE: float = Field(default=1e-05, description="Energy factor for block copolymer chromosomal model.")
+    CHB_DE: float = Field(default=1e-04, description="Energy factor for block copolymer chromosomal model.")
     COB_USE_COMPARTMENT_BLOCKS: Boolean = Field(default=False, description="Use Compartment Blocks.")
     COB_DISTANCE: Optional[OpenMMQuantity] = Field(
         default=None, description="Block copolymer equilibrium distance for chromosomal blocks."
@@ -227,16 +227,12 @@ class SimulationConfig(BaseModel):
     COB_EA: float = Field(default=1.0, description="Energy strength for A compartment.")
     COB_EB: float = Field(default=2.0, description="Energy strength for B compartment.")
     SCB_USE_SUBCOMPARTMENT_BLOCKS: Boolean = Field(default=False, description="Use Subcompartment Blocks.")
-    SCB_DISTANCE: Optional[OpenMMQuantity] = Field(
-        default=None, description="Block copolymer equilibrium distance for chromosomal blocks."
-    )
+    SCB_DISTANCE: Optional[OpenMMQuantity] = Field(default=None, description="Block copolymer equilibrium distance for chromosomal blocks.")
     SCB_EA1: float = Field(default=1.0, description="Energy strength for A1 compartment.")
     SCB_EA2: float = Field(default=1.33, description="Energy strength for A2 compartment.")
     SCB_EB1: float = Field(default=1.66, description="Energy strength for B1 compartment.")
     SCB_EB2: float = Field(default=2.0, description="Energy strength for B2 compartment.")
-    IBL_USE_B_LAMINA_INTERACTION: Boolean = Field(
-        default=False, description="Interactions of B compartment with lamina."
-    )
+    IBL_USE_B_LAMINA_INTERACTION: Boolean = Field(default=False, description="Interactions of B compartment with lamina.")
     IBL_SCALE: float = Field(default=400.0, description="Scaling factor for B comoartment interaction with lamina.")
     CF_USE_CENTRAL_FORCE: Boolean = Field(default=False, description="Attraction of smaller chromosomes.")
     CF_STRENGTH: float = Field(default=10.0, description="Strength of Interaction")

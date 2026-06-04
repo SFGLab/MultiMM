@@ -397,7 +397,7 @@ class MultiMM:
         """
         mode = getattr(self.args, "CHB_FORCE_TYPE", "polynomial")
 
-        self.chrom_block_force = mm.CustomNonbondedForce()
+        self.chrom_block_force = mm.CustomNonbondedForce("0")
         self.chrom_block_force.setForceGroup(2)
 
         # ----------------------------------------
@@ -507,51 +507,39 @@ class MultiMM:
                 "B*(sin(pi*(r-R1)/(R2-R1))^8 - 1)*(delta(s+1)+delta(s+2)); " + r_expr
             )
             self.Blamina_force.addGlobalParameter("pi", np.pi)
-
             logger.info(f"Shell radii: R1={self.radius1}, R2={self.radius2}")
 
         # 2. GAUSSIAN SHELL (two lamina layers)
         elif mode == "gaussian_shell":
 
             logger.info("Using Gaussian lamina shell model (two-layer attraction)")
-
             self.Blamina_force.setEnergyFunction(
                 "-B*(exp(-(r-R1)^2/(2*sigma^2)) + exp(-(r-R2)^2/(2*sigma^2)))"
                 "*(delta(s+1)+delta(s+2)); " + r_expr
             )
-
             sigma = 0.1 * (self.radius2 - self.radius1)
             self.Blamina_force.addGlobalParameter("sigma", sigma)
-
             logger.info(f"sigma = {sigma}")
 
         # 3. HARMONIC SHELL (pull to mid-shell)
         elif mode == "harmonic_shell":
-            
             logger.info("Using harmonic lamina shell model (mid-shell attraction)")
-
             self.Blamina_force.setEnergyFunction(
                 "B*(r - r0)^2*(delta(s+1)+delta(s+2)); " + r_expr
             )
-
             r0 = 0.5 * (self.radius1 + self.radius2)
             self.Blamina_force.addGlobalParameter("r0", r0)
-
             logger.info(f"r0 (mid-shell) = {r0}")
 
         # 4. LOGISTIC WALLS (smooth boundary attraction)
         elif mode == "logistic_shell":
-
             logger.info("Using logistic lamina shell model (soft boundaries)")
-
             self.Blamina_force.setEnergyFunction(
                 "-B*(1/(1+exp((r-R2)/lambda)) + 1/(1+exp(-(r-R1)/lambda)))"
                 "*(delta(s+1)+delta(s+2)); " + r_expr
             )
-
             lam = 0.05 * (self.radius2 - self.radius1)
             self.Blamina_force.addGlobalParameter("lambda", lam)
-
             logger.info(f"lambda (boundary softness) = {lam}")
 
         else:
@@ -922,32 +910,51 @@ class MultiMM:
         )
 
     def set_radiuses(self):
-        raw_r1 = self.args.SC_RADIUS1
-        if isinstance(raw_r1, Quantity):
-            self.radius1 = raw_r1.value_in_unit(nanometers)
+        # --------------------------------------------
+        # fundamental polymer scale
+        # --------------------------------------------
+        b0 = self.args.POL_HARMONIC_BOND_R0
+        if hasattr(b0, "value_in_unit"):
+            b0 = b0.value_in_unit(nanometers)
         else:
-            self.radius1 = (self.args.N_BEADS / 50000) ** (1 / 3) if raw_r1 is None else float(raw_r1)
+            b0 = float(b0)
 
-        raw_r2 = self.args.SC_RADIUS2
-        if isinstance(raw_r2, Quantity):
-            self.radius2 = raw_r2.value_in_unit(nanometers)
-        else:
-            self.radius2 = 3.5 * (self.args.N_BEADS / 50000) ** (1 / 3) if raw_r2 is None else float(raw_r2)
+        N = float(self.args.N_BEADS)
 
-        if self.args.COB_DISTANCE is not None:
-            raw_cob = self.args.COB_DISTANCE
-            if isinstance(raw_cob, Quantity):
-                self.r_comp = raw_cob.value_in_unit(nanometers)
-            else:
-                self.r_comp = float(raw_cob)
-        elif self.args.SCB_DISTANCE is not None:
-            raw_scb = self.args.SCB_DISTANCE
-            if isinstance(raw_scb, Quantity):
-                self.r_comp = raw_scb.value_in_unit(nanometers)
-            else:
-                self.r_comp = float(raw_scb)
-        else:
-            self.r_comp = (self.radius2 - self.radius1) / 20
+        # --------------------------------------------
+        # polymer globule scaling (constant density assumption)
+        # R ~ b0 * N^(1/3)
+        # --------------------------------------------
+        R2 = b0 * N ** (1.0 / 3.0)
+
+        # inner compartment as volume fraction of nucleus
+        inner_volume_fraction = 0.20
+        R1 = R2 * inner_volume_fraction ** (1.0 / 3.0)
+
+        # --------------------------------------------
+        # interaction range for compartment / lamina attraction
+        # physically: short-range, ~1–3 bond lengths
+        #
+        # r_comp is NOT a geometric distance anymore
+        # it is the decay length of attractive potential
+        # --------------------------------------------
+        r_comp = 1.5 * b0
+
+        self.radius2 = R2
+        self.radius1 = R1
+        self.r_comp = r_comp
+
+        # --------------------------------------------
+        # logging
+        # --------------------------------------------
+        logger.info(
+            "[Radiuses] "
+            f"b0={b0:.4f} nm | "
+            f"N={N:.0f} | "
+            f"R1={R1:.4f} nm | "
+            f"R2={R2:.4f} nm | "
+            f"r_comp={r_comp:.4f} nm"
+        )
 
     def make_plots(self):
         is_gw = (
@@ -990,6 +997,12 @@ class MultiMM:
                 name=out_name,
             )
 
+            plot_projection(
+                    get_coordinates_mm(self.state.getPositions()),
+                    self.Cs,
+                    save_path=self.save_path,
+                )
+
             return V
 
         # ============================================================
@@ -1007,10 +1020,14 @@ class MultiMM:
             viz_chroms(self.save_path, r=0.2, comps=is_comp)
 
             for i in range(len(self.chr_ends) - 1):
-                chrom = chrs[self.chrom_idxs[i]]
-                _viz_and_heat(
-                    self.save_path + f"model/chromosomes/MultiMM_minimized_{chrom}.cif",
-                    f"chromosomes/{chrom}_minimized_structure",
+                V = get_coordinates_cif(
+                    self.save_path + f"model/chromosomes/MultiMM_minimized_{chrs[self.chrom_idxs[i]]}.cif"
+                )
+                viz_structure(
+                    V,
+                    r=0.2,
+                    cmap="coolwarm",
+                    save_path=self.save_path + f"plots/chromosomes/{chrs[self.chrom_idxs[i]]}_minimized_structure.png",
                 )
 
             return

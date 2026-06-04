@@ -33,7 +33,7 @@ def plot_projection(struct_3D, Cs, save_path):
 
     sns.set_style("whitegrid")
     plt.rcParams.update({
-        "figure.dpi": 300,
+        "figure.dpi": 600,
         "axes.spines.top": False,
         "axes.spines.right": False,
         "font.size": 11
@@ -90,9 +90,9 @@ def plot_projection(struct_3D, Cs, save_path):
 
     def _save_local(fig, name):
         path = os.path.join(base_dir, name)
-        fig.savefig(path + ".png", dpi=300, bbox_inches="tight")
-        fig.savefig(path + ".pdf", bbox_inches="tight")
-        fig.savefig(path + ".svg", bbox_inches="tight")
+        fig.savefig(path + ".png", dpi=600)
+        fig.savefig(path + ".pdf", dpi=600)
+        fig.savefig(path + ".svg", dpi=600)
 
     # ============================================================
     # 1. PCA projection (with proper colorbar)
@@ -121,7 +121,6 @@ def plot_projection(struct_3D, Cs, save_path):
     # ============================================================
     # 2. 3D structure (main physical object)
     # ============================================================
-    from mpl_toolkits.mplot3d import Axes3D
 
     fig = plt.figure(figsize=(8, 7))
     ax = fig.add_subplot(111, projection="3d")
@@ -443,7 +442,6 @@ def viz_chroms(sim_path, r=0.1, comps=True):
 
     logger.info("Chromosome visualization finished successfully")
 
-
 def get_heatmap(
     cif_file,
     viz=False,
@@ -637,6 +635,7 @@ def analyze_structure(V, save_path, name="structure"):
 
     # REPORT
     report_path = os.path.join(base, f"{name}_report.txt")
+    os.makedirs(base, exist_ok=True)
 
     with open(report_path, "w") as f:
 
