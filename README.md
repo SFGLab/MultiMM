@@ -213,13 +213,13 @@ All geometric and interaction scales are now derived from a single microscopic l
 The nuclear confinement is modeled as a dense polymer globule with constant monomer density. In this regime, the outer nuclear radius follows the standard scaling law
 
 $$
-R_2 = b_0 , N^{1/3},
+R_2 = b_0  N^{1/3},
 $$
 
 which enforces $N / R_2^3 \approx \text{const}$ and guarantees physically consistent compaction as system size changes. The inner compartment (nucleolus-like region) is defined via a fixed volume fraction $f$ of the nuclear volume, leading to
 
 $$
-R_1 = R_2 , f^{1/3}.
+R_1 = R_2  f^{1/3}.
 $$
 
 This construction ensures that compartment organization scales in a volume-preserving manner rather than through independent geometric tuning.
@@ -243,7 +243,7 @@ allowing loops to interpolate between polymer-native scales and experimentally i
 Each bead carries discrete state variables such as compartment identity $s_i$ and chromosome label $\chi_i$. These variables do not directly define geometry but modulate interactions through selection rules of the form
 
 $$
-E_{ij} \propto \delta(s_i, s_j), \quad E_{ij} \propto \delta(\chi_i, \chi_j),
+E_{ij} \propto \delta(s_i, s_j) \quad E_{ij} \propto \delta(\chi_i, \chi_j),
 $$
 
 ensuring that only compatible epigenetic or chromosomal states contribute to attractive or repulsive terms. Together, these elements couple polymer physics, nuclear confinement, and epigenetic structure into a unified multiscale chromatin framework.
