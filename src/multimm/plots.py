@@ -9,6 +9,7 @@ from matplotlib.pyplot import figure
 from scipy.spatial import ConvexHull, distance
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from scipy.stats import gaussian_kde
 from mpl_toolkits.mplot3d import Axes3D
 from .utils import get_coordinates_cif
 
@@ -299,7 +300,7 @@ def plot_projection(struct_3D, Cs, save_path):
     ax.set_title("Subcompartment KDE Contours (PCA space)")
     ax.set_xlabel("PC1")
     ax.set_ylabel("PC2")
-    
+
     # clean frame
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
