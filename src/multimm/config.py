@@ -233,9 +233,9 @@ class SimulationConfig(BaseModel):
     SCB_EB1: float = Field(default=1.66, description="Energy strength for B1 compartment.")
     SCB_EB2: float = Field(default=2.0, description="Energy strength for B2 compartment.")
     IBL_USE_B_LAMINA_INTERACTION: Boolean = Field(default=False, description="Interactions of B compartment with lamina.")
-    IBL_SCALE: float = Field(default=400.0, description="Scaling factor for B comoartment interaction with lamina.")
+    IBL_SCALE: float = Field(default=1000.0, description="Scaling factor for B comoartment interaction with lamina.")
     CF_USE_CENTRAL_FORCE: Boolean = Field(default=False, description="Attraction of smaller chromosomes.")
-    CF_STRENGTH: float = Field(default=10.0, description="Strength of Interaction")
+    CF_STRENGTH: float = Field(default=20.0, description="Strength of Interaction")
     NUC_DO_INTERPOLATION: Boolean = Field(default=False, description="Attraction of smaller chromosomes.")
     MAX_NUCS_PER_BEAD: int = Field(default=4, description="Maximum amount of nucleosomes per single bead.")
     NUC_RADIUS: float = Field(default=0.1, description="The radius of the single nucleosome helix.")
@@ -290,5 +290,15 @@ class SimulationConfig(BaseModel):
             "Options: polynomial (default, handcrafted potential), "
             "gaussian (soft collapse kernel), "
             "saturating (soft-core bounded attraction)."
-    )
-)
+    ))
+
+    CENTRAL_FORCE_TYPE: str = Field(
+        default="harmonic",
+        description=(
+            "Central nucleolar attraction functional form controlling radial bias toward nucleus center. "
+            "Encodes chromosome-size dependent positioning. "
+            "Options: "
+            "harmonic (default, quadratic confinement around R1), "
+            "gaussian (soft nucleolar enrichment field), "
+            "logistic (soft-core radial partitioning with smooth boundary)."
+    ))

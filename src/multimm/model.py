@@ -553,18 +553,76 @@ class MultiMM:
         self.system.addForce(self.Blamina_force)
 
     def add_central_force(self):
-        self.central_force = mm.CustomExternalForce(
-            "G*chrom_s*(sin(r-3*R1/2)+(r-3*R1/2)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)"
-        )
+        """
+        Central nucleolar attraction with chromosome-size bias.
+        """
+
+        mode = getattr(self.args, "CENTRAL_FORCE_TYPE", "harmonic")
+
+        self.central_force = mm.CustomExternalForce("0")
         self.central_force.setForceGroup(2)
-        self.central_force.addGlobalParameter("G", defaultValue=self.args.CF_STRENGTH)
-        self.central_force.addGlobalParameter("R1", defaultValue=self.radius1)
-        self.central_force.addGlobalParameter("x0", defaultValue=self.mass_center[0])
-        self.central_force.addGlobalParameter("y0", defaultValue=self.mass_center[1])
-        self.central_force.addGlobalParameter("z0", defaultValue=self.mass_center[2])
+
+        # --------------------------------------------
+        # global parameters
+        # --------------------------------------------
+        self.central_force.addGlobalParameter("G", self.args.CF_STRENGTH)
+        self.central_force.addGlobalParameter("R1", self.radius1)
+        self.central_force.addGlobalParameter("x0", self.mass_center[0])
+        self.central_force.addGlobalParameter("y0", self.mass_center[1])
+        self.central_force.addGlobalParameter("z0", self.mass_center[2])
+
         self.central_force.addPerParticleParameter("chrom_s")
+
+        # --------------------------------------------
+        # radial distance (INLINE ONLY for OpenMM)
+        # --------------------------------------------
+        r = "(sqrt((x-x0)*(x-x0)+(y-y0)*(y-y0)+(z-z0)*(z-z0)))"
+
+        # ============================================================
+        # 1. HARMONIC CENTERING
+        # ============================================================
+        if mode == "harmonic":
+            logger.info("Using harmonic central attraction")
+
+            self.central_force.setEnergyFunction(
+                f"G*chrom_s*({r}-R1)*({r}-R1)"
+            )
+
+        # ============================================================
+        # 2. GAUSSIAN CENTER
+        # ============================================================
+        elif mode == "gaussian":
+            logger.info("Using Gaussian central enrichment")
+
+            sigma = 0.5 * self.radius1
+            self.central_force.addGlobalParameter("sigma", sigma)
+
+            self.central_force.setEnergyFunction(
+                f"-G*chrom_s*exp(-({r}*{r})/(2*sigma*sigma))"
+            )
+
+        # ============================================================
+        # 3. LOGISTIC CORE
+        # ============================================================
+        elif mode == "logistic":
+            logger.info("Using logistic central attraction")
+
+            lam = 0.2 * self.radius1
+            self.central_force.addGlobalParameter("lambda", lam)
+
+            self.central_force.setEnergyFunction(
+                f"-G*chrom_s*(1/(1+exp(({r}-R1)/lambda)))"
+            )
+
+        else:
+            raise ValueError(f"Unknown CENTRAL_FORCE_TYPE: {mode}")
+
+        # --------------------------------------------
+        # add particles
+        # --------------------------------------------
         for i in range(self.system.getNumParticles()):
             self.central_force.addParticle(i, [self.chrom_strength[i]])
+
         self.system.addForce(self.central_force)
 
     def add_harmonic_bonds(self):
@@ -911,7 +969,7 @@ class MultiMM:
 
     def set_radiuses(self):
         # --------------------------------------------
-        # fundamental polymer scale
+        # fundamental polymer scale (bead spacing)
         # --------------------------------------------
         b0 = self.args.POL_HARMONIC_BOND_R0
         if hasattr(b0, "value_in_unit"):
@@ -922,21 +980,30 @@ class MultiMM:
         N = float(self.args.N_BEADS)
 
         # --------------------------------------------
-        # polymer globule scaling (constant density assumption)
-        # R ~ b0 * N^(1/3)
+        # nucleus as a dense polymer globule
+        # analogy: "packed ball of spaghetti"
+        #
+        # constant-density assumption:
+        # volume ~ N * b0^3  =>  R ~ b0 * N^(1/3)
         # --------------------------------------------
         R2 = b0 * N ** (1.0 / 3.0)
 
-        # inner compartment as volume fraction of nucleus
+        # --------------------------------------------
+        # inner compartment (nucleolus-like core)
+        # analogy: "denser droplet inside the globule"
+        #
+        # defined by volume fraction, not geometry
+        # --------------------------------------------
         inner_volume_fraction = 0.20
         R1 = R2 * inner_volume_fraction ** (1.0 / 3.0)
 
         # --------------------------------------------
-        # interaction range for compartment / lamina attraction
-        # physically: short-range, ~1–3 bond lengths
+        # interaction range (NOT geometry)
         #
-        # r_comp is NOT a geometric distance anymore
-        # it is the decay length of attractive potential
+        # r_comp controls how far chromatin "feels"
+        # compartments / lamina attraction
+        #
+        # analogy: interaction fuzziness around contact
         # --------------------------------------------
         r_comp = 1.5 * b0
 

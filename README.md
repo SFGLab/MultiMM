@@ -529,15 +529,15 @@ Below is a categorized description of the simulation arguments and their default
 | PHI_NORM                     | float        | pi/5        | None          | Zig-zag angle for nucleosome helix. |
 
 #### Functional Form Switches (Forcefield Modes) - Experimental
-| Argument Name      | Type | Default    | Options                                             | Description                                                                                                                                               |
-| ------------------ | ---- | ---------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| EV_FORCE_TYPE      | str  | powerlaw   | powerlaw, soft_lj, gaussian_core                    | Controls excluded volume repulsion functional form (from hard-scale repulsion to soft-core melt-like behavior).                                           |
-| COB_FORCE_TYPE     | str  | gaussian   | gaussian, yukawa, powerlaw, theta                   | Sets compartment A/B interaction kernel (short-range Gaussian segregation, screened Yukawa, scale-free powerlaw, or hard contact model).                  |
-| SCB_FORCE_TYPE     | str  | gaussian   | gaussian, yukawa, powerlaw, theta                   | Subcompartment interaction kernel with finer epigenetic state resolution (same functional family as compartments but higher specificity).                 |
-| BLAMINA_FORCE_TYPE | str  | sin        | sin, gaussian_shell, harmonic_shell, logistic_shell | Defines lamina interaction profile for B-type compartments (oscillatory shell, localized Gaussian layers, harmonic attraction, or smooth boundary walls). |
-| LE_LOOP_FORCE_TYPE | str  | harmonic   | harmonic, fene_soft, gaussian_tether                | Loop constraint model (linear spring, bounded FENE-like spring, or smooth Gaussian tether).                                                               |
-| CHB_FORCE_TYPE     | str  | polynomial | polynomial, gaussian, saturating                    | Chromosome-level self-attraction kernel controlling global compaction into chromosome territories.                                                        |
-
+| Argument Name      | Type | Default    | Options                                             | Description                                                                                                                                                            |
+| ------------------ | ---- | ---------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EV_FORCE_TYPE      | str  | powerlaw   | powerlaw, soft_lj, gaussian_core                    | Controls excluded volume repulsion functional form (from hard-scale repulsion to soft-core melt-like behavior).                                                        |
+| COB_FORCE_TYPE     | str  | gaussian   | gaussian, yukawa, powerlaw, theta                   | Sets compartment A/B interaction kernel (short-range Gaussian segregation, screened Yukawa, scale-free powerlaw, or hard contact model).                               |
+| SCB_FORCE_TYPE     | str  | gaussian   | gaussian, yukawa, powerlaw, theta                   | Subcompartment interaction kernel with finer epigenetic state resolution (same functional family as compartments but higher specificity).                              |
+| BLAMINA_FORCE_TYPE | str  | sin        | sin, gaussian_shell, harmonic_shell, logistic_shell | Defines lamina interaction profile for B-type compartments (oscillatory shell, localized Gaussian layers, harmonic attraction, or smooth boundary walls).              |
+| LE_LOOP_FORCE_TYPE | str  | harmonic   | harmonic, fene_soft, gaussian_tether                | Loop constraint model (linear spring, bounded FENE-like spring, or smooth Gaussian tether).                                                                            |
+| CHB_FORCE_TYPE     | str  | polynomial | polynomial, gaussian, saturating                    | Chromosome-level self-attraction kernel controlling global compaction into chromosome territories.                                                                     |
+| CENTRAL_FORCE_TYPE | str  | harmonic   | harmonic, gaussian, logistic                        | Central nucleolar attraction model controlling radial bias of chromosomes toward nucleus center; encodes size-dependent positioning and nucleolar enrichment strength. |
 
 
 ## Output Directory

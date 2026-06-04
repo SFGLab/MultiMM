@@ -243,6 +243,70 @@ def plot_projection(struct_3D, Cs, save_path):
     _save_local(fig, "axis_projections")
     plt.close(fig)
 
+    # ============================================================
+    # NEW: PCA contour KDE per subcompartment (clean scientific plot)
+    # ============================================================
+    fig, ax = plt.subplots(figsize=(7, 6))
+
+    subcomps = np.sort(df["subcomp"].unique())
+
+    # consistent colormap
+    cmap = plt.get_cmap("Spectral", len(subcomps))
+
+    # grid for KDE evaluation
+    x = df["x_pca"].values
+    y = df["y_pca"].values
+
+    xmin, xmax = x.min(), x.max()
+    ymin, ymax = y.min(), y.max()
+
+    X, Y = np.mgrid[
+        xmin:xmax:200j,
+        ymin:ymax:200j
+    ]
+
+    positions = np.vstack([X.ravel(), Y.ravel()])
+
+    for i, sc_val in enumerate(subcomps):
+
+        sub = df[df["subcomp"] == sc_val]
+
+        if len(sub) < 10:
+            continue  # avoid unstable KDE
+
+        values = np.vstack([sub["x_pca"], sub["y_pca"]])
+
+        kde = gaussian_kde(values, bw_method=0.2)
+        Z = np.reshape(kde(positions).T, X.shape)
+
+        # contour lines (clean + publication style)
+        ax.contour(
+            X, Y, Z,
+            levels=5,
+            colors=[cmap(i)],
+            linewidths=1.2,
+            alpha=0.9
+        )
+
+        # optional: faint fill for intuition
+        ax.contourf(
+            X, Y, Z,
+            levels=3,
+            alpha=0.08,
+            colors=[cmap(i)]
+        )
+
+    ax.set_title("Subcompartment KDE Contours (PCA space)")
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+    
+    # clean frame
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    _save_local(fig, "pca_kde_contours")
+    plt.close(fig)
+
 def _save_plotter(plotter, save_path):
     """
     Save PyVista scene in multiple formats.
