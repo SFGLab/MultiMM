@@ -501,7 +501,7 @@ Below is a categorized description of the simulation arguments and their default
 | SC_SCALE                     | float        | 1000.0      | kJ/mol/nm^2   | Scaling factor for the spherical container. |
 | CHB_USE_CHROMOSOMAL_BLOCKS   | bool         | False       | None          | Use chromosomal blocks. |
 | CHB_KC                       | float        | 0.3         | nm^(-4)       | Block copolymer width parameter. |
-| CHB_DE                       | float        | 1e-5        | kJ/mol        | Energy factor for chromosomal blocks. |
+| CHB_DE                       | float        | 1e-4        | kJ/mol        | Energy factor for chromosomal blocks. |
 | SCB_USE_SUBCOMPARTMENT_BLOCKS| bool         | False       | None          | Use subcompartment blocks. |
 | SCB_DISTANCE                 | float        | None        | nm            | Equilibrium distance for subcompartment blocks. |
 | SCB_EA1                      | float        | 1.0         | kJ/mol        | Energy strength for A1 compartment. |

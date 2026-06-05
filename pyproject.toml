@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "MultiMM"
-version = "2.0.1"
+version = "2.0.2"
 description = "A tool for chromatin modeling from nucleosomes to chromosomal territories."
 readme = "README.md"
 authors = [

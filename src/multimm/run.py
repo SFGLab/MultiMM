@@ -18,6 +18,43 @@ from .logger import setup_logger
 setup_logger()
 logger = logging.getLogger(__name__)
 
+STARTUP_BANNER_LINES = [
+    "#########################################################################",
+    "# 🧬 MultiMM Chromatin Simulation Platform 🧬",
+    "#########################################################################",
+    "# Creator: Sebastian Korsak (Warsaw,)",
+    "# Web-server & infrastructure: Patryk Prusak",
+    "# email: s.korsak@datascience.edu.pl",
+    "#",
+    "# 🚀 Starting simulation pipeline...",
+    "# ✨ Wishing you smooth, stable and beautiful chromatin dynamics!",
+    "# 🧪 May your contacts be meaningful and your loops well-formed",
+    "# 🔬 Happy modeling!",
+    "#########################################################################",
+]
+
+# ANSI colors (soft scientific palette)
+COLORS = [
+    "\033[96m",  # cyan
+    "\033[95m",  # magenta
+    "\033[94m",  # blue
+    "\033[92m",  # green
+    "\033[93m",  # yellow
+    "\033[91m",  # red
+]
+
+RESET = "\033[0m"
+
+
+def print_startup_banner(logger):
+    """
+    Print colorful MultiMM startup banner.
+    """
+
+    for i, line in enumerate(STARTUP_BANNER_LINES):
+        color = COLORS[i % len(COLORS)]
+        logger.info(f"{color}{line}{RESET}")
+
 class Tee:
     def __init__(self, *streams):
         self.streams = streams
@@ -178,54 +215,117 @@ class ArgumentChanger:
             self._report_changes()
 
 def args_tests(args):
+
+    def check_file(path, name, ext_hint=None):
+        """
+        Validate optional input files.
+        If provided, ensure they exist.
+        """
+        if path is None or path == "":
+            return  # optional → OK
+
+        if not os.path.exists(path):
+            ext_msg = f" (expected {ext_hint})" if ext_hint else ""
+            raise ValueError(
+                f"\033[91m{name} file was provided but not found: {path}{ext_msg}\033[0m"
+            )
+
+    # -----------------------------------------
+    # REQUIRED INPUT
+    # -----------------------------------------
     if args.LOOPS_PATH is None or args.LOOPS_PATH == "":
-        raise ValueError("\033[91mMultiMM cannot run without providing interactions in .bedpe format!!!\033[0m")
+        raise ValueError(
+            "\033[91mLoops interaction data is required to run MultiMM."
+            "Please provide a valid .bedpe file via LOOPS_PATH.\033[0m"
+        )
+
+    check_file(args.LOOPS_PATH, "Loops (.bedpe)", ".bedpe")
+
+    # -----------------------------------------
+    # OPTIONAL INPUT VALIDATION (if provided)
+    # -----------------------------------------
+    check_file(args.COMPARTMENT_PATH, "Compartment data", ".bed")
+    check_file(args.ATACSEQ_PATH, "Nucleosome/ATAC data", ".bigwig")
+
+    if args.LOOPS_PATH is None or args.LOOPS_PATH == "":
+        raise ValueError(
+            "\033[91mInteraction data is required to run MultiMM."
+            "Please provide a .bedpe file via LOOPS_PATH.\033[0m"
+        )
+
     elif (args.COMPARTMENT_PATH is None or args.COMPARTMENT_PATH == "") and args.COB_USE_COMPARTMENT_BLOCKS:
         raise ValueError(
-            "\033[91mYou cannot model compartments without providing a file in .bed format. Either disable COB_USE_COMPARTMENT_BLOCKS or import data from some compartment caller according to the documentation.\033[0m"
+            "\033[91mCompartment modeling is enabled, but no compartment data was provided."
+            "Please supply a .bed file or disable COB_USE_COMPARTMENT_BLOCKS.\033[0m"
         )
+
     elif args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH is None:
         raise ValueError(
-            "\033[91mYou enabled nucleosome simulation without providing nucleosome data. Either import a .bigwig file that shows nucleosome occupancy or disable NUC_DO_INTERPOLATION.\033[0m"
+            "\033[91mNucleosome interpolation is enabled, but no occupancy data was found."
+            "Provide a .bigwig file via ATACSEQ_PATH or disable NUC_DO_INTERPOLATION.\033[0m"
         )
+
     elif (args.COMPARTMENT_PATH is None or args.COMPARTMENT_PATH == "") and args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
         raise ValueError(
-            "\033[91mYou cannot model subcompartments without providing a file in .bed format. Either disable SCB_USE_SUBCOMPARTMENT_BLOCKS or import data from some compartment caller according to the documentation.\033[0m"
+            "\033[91mSubcompartment modeling requires input data."
+            "Please provide a .bed file or disable SCB_USE_SUBCOMPARTMENT_BLOCKS.\033[0m"
         )
+
     elif args.COMPARTMENT_PATH is None and args.IBL_USE_B_LAMINA_INTERACTION:
         raise ValueError(
-            "\033[91mLamina interactions are compartment specific, but you did not provide a .bed file for compartments. Maybe you should disable the IBL_USE_B_LAMINA_INTERACTION?\033[0m"
+            "\033[91mLamina interactions depend on compartment annotations."
+            "Please provide a compartment .bed file or disable IBL_USE_B_LAMINA_INTERACTION.\033[0m"
         )
+
     elif args.IBL_USE_B_LAMINA_INTERACTION and not (
         args.SCB_USE_SUBCOMPARTMENT_BLOCKS or args.COB_USE_COMPARTMENT_BLOCKS
     ):
         raise ValueError(
-            "\033[91mYou have enabled lamina interactions which are compartment specific, but you did not enable compartment or subcompartment forces. Please, read the documentation and the paper to understand better the forcefield!\033[0m"
+            "\033[91mLamina interactions are enabled but no compartment-based forces are active."
+            "Enable COB_USE_COMPARTMENT_BLOCKS or SCB_USE_SUBCOMPARTMENT_BLOCKS, or disable lamina interactions.\033[0m"
         )
+
     elif args.CF_USE_CENTRAL_FORCE and args.CHROM is not None:
         raise ValueError(
-            "\033[91mOoo00ops! You enabled chromosome-specific attraction to the nucleolus, but you want to model only one chromosome. Maybe disable CF_USE_CENTRAL_FORCE?"
+            "\033[91mCentral force attraction to the nucleolus is typically used for whole-genome simulations."
+            "Since you are modeling a single chromosome or region, consider disabling CF_USE_CENTRAL_FORCE.\033[0m"
         )
+
     elif args.CHB_USE_CHROMOSOMAL_BLOCKS and args.CHROM is not None:
-        raise ValueError("\033[91mBetter disable CHB_USE_CHROMOSOMAL_BLOCKS when you model only one chromosome.")
+        logger.warning(
+            "\033[93mChromosomal block interactions are more meaningful in multi-chromosome systems."
+            "You may want to disable CHB_USE_CHROMOSOMAL_BLOCKS for single-chromosome simulations.\033[0m"
+        )
 
     if args.SHUFFLE_CHROMS and (args.CHROM is not None and args.CHROM != ""):
         logger.warning(
-            "\nWarning!! You enabled chromosome shuffling, but you model only a specific region of a specific chromosome.\n"
+            "\033[93mChromosome shuffling is enabled, but you are simulating a specific chromosomal region."
+            "This option usually makes more sense when working with multiple chromosomes.\033[0m"
         )
+
     if args.CHROM is not None and args.IBL_USE_B_LAMINA_INTERACTION:
         logger.warning(
-            "\nWarning!! You enabled lamina interactions, but you want to model a specific chromosomal region. It is not imprtantly wrong, but keep in mind that it makes more sense when you model the whole genome.\n"
+            "\033[93mLamina interactions are enabled."
+            "This is not incorrect, but they are typically more relevant in whole-genome simulations.\033[0m"
         )
+
     if args.CHROM is not None and args.SC_USE_SPHERICAL_CONTAINER:
         logger.warning(
-            "\nWarning!! You enabled spherical container but you want to model a single chromosomal region. It is not importantly wrong, but it makes more sense when you model the whole genome.\n"
+            "\033[93mA spherical container is being used."
+            "This is fine, but it is generally more meaningful when modeling the full genome.\033[0m"
         )
+
     if (not args.POL_USE_HARMONIC_BOND) or (not args.POL_USE_HARMONIC_ANGLE) or (not args.EV_USE_EXCLUDED_VOLUME):
-        logger.warning("\nWarning!! Take care when you disable fundamental forces from the backbone!.\n")
+        logger.warning(
+            "\033[93mSome fundamental backbone forces are disabled."
+            "Make sure this is intentional, as it may strongly affect the physical behavior of the polymer.\033[0m"
+        )
+
     if args.CHB_USE_CHROMOSOMAL_BLOCKS:
         logger.warning(
-            "\nWarning!! You are using chromosomal block forces. Take care because they are not always very biological. Refer to the documentation to be sure that you are doing everything correctly.\n"
+            "\033[93mChromosomal block forces are enabled."
+            "These are approximate and may not always reflect biological reality."
+            "Consider checking the documentation to ensure they fit your use case.\033[0m"
         )
 
 
@@ -320,6 +420,7 @@ def write_config(args):
 
 def main():
     try:
+        print_startup_banner(logger)
         args = get_config()
         args_tests(args)
 

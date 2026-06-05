@@ -233,7 +233,7 @@ class SimulationConfig(BaseModel):
     SCB_EB1: float = Field(default=1.66, description="Energy strength for B1 compartment.")
     SCB_EB2: float = Field(default=2.0, description="Energy strength for B2 compartment.")
     IBL_USE_B_LAMINA_INTERACTION: Boolean = Field(default=False, description="Interactions of B compartment with lamina.")
-    IBL_SCALE: float = Field(default=1000.0, description="Scaling factor for B comoartment interaction with lamina.")
+    IBL_SCALE: float = Field(default=400.0, description="Scaling factor for B comoartment interaction with lamina.")
     CF_USE_CENTRAL_FORCE: Boolean = Field(default=False, description="Attraction of smaller chromosomes.")
     CF_STRENGTH: float = Field(default=20.0, description="Strength of Interaction")
     NUC_DO_INTERPOLATION: Boolean = Field(default=False, description="Attraction of smaller chromosomes.")

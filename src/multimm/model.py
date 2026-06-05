@@ -28,6 +28,14 @@ class MultiMM:
         ------------
         args: list of arguments imported from config.ini file.
         """
+        self.md_history = {
+            "step": [],
+            "potential": [],
+            "kinetic": [],
+            "total": [],
+            "temperature": [],
+        }
+
         # Import args
         self.args = args
 
@@ -929,8 +937,53 @@ class MultiMM:
         logger.info("Running relaxation...")
         start = time.time()
         for i in range(self.args.SIM_N_STEPS // self.args.SIM_SAMPLING_STEP):
+
             self.simulation.step(self.args.SIM_SAMPLING_STEP)
-            self.state = self.simulation.context.getState(getPositions=True)
+
+            state = self.simulation.context.getState(
+                getPositions=True,
+                getEnergy=True,
+                getVelocities=True
+            )
+
+            # STEP (always safe)
+            step = state.getStepCount()
+            self.md_history["step"].append(step)
+
+            # ENERGY (handle Quantity safely)
+            pot = state.getPotentialEnergy()
+            kin = state.getKineticEnergy()
+
+            # convert to raw floats (kJ/mol in OpenMM usually)
+            try:
+                pot_val = pot.value_in_unit(pot.unit)
+                kin_val = kin.value_in_unit(kin.unit)
+            except Exception:
+                # fallback if already float-like
+                pot_val = float(pot)
+                kin_val = float(kin)
+
+            self.md_history["potential"].append(pot_val)
+            self.md_history["kinetic"].append(kin_val)
+            self.md_history["total"].append(pot_val + kin_val)
+
+            # TEMPERATURE (correct OpenMM way)
+            try:
+                # best case: integrator exposes temperature
+                temp = self.integrator.getTemperature()
+                if hasattr(temp, "value_in_unit"):
+                    temp = temp.value_in_unit(kelvin)
+            except Exception:
+                # fallback: compute from kinetic energy
+                # T = 2K / (3 N k_B)
+                kB = 0.008314462618  # kJ/(mol·K)
+                dof = max(1, self.system.getNumParticles() * 3)
+                temp = (2.0 * kin_val) / (dof * kB)
+
+            self.md_history["temperature"].append(temp)
+
+            # SAVE FRAME
+            self.state = state
             PDBxFile.writeFile(
                 self.pdb.topology,
                 self.state.getPositions(),
@@ -943,6 +996,10 @@ class MultiMM:
             self.pdb.topology,
             self.state.getPositions(),
             open(self.save_path + "model/MultiMM_afterMD.cif", "w"),
+        )
+        plot_md_thermo(
+            self.md_history,
+            self.save_path
         )
         logger.info(
             f"Everything is done! Simulation finished succesfully!\nMD finished in {elapsed//3600:.0f} hours, {elapsed%3600//60:.0f} minutes and  {elapsed%60:.0f} seconds. ---\n"
@@ -1011,9 +1068,6 @@ class MultiMM:
         self.radius1 = R1
         self.r_comp = r_comp
 
-        # --------------------------------------------
-        # logging
-        # --------------------------------------------
         logger.info(
             "[Radiuses] "
             f"b0={b0:.4f} nm | "
@@ -1049,13 +1103,16 @@ class MultiMM:
             )
 
             # heatmap (always)
-            get_heatmap(
-                cif_path,
-                viz=True,
-                save=True,
-                save_path=self.save_path + f"plots",
-                name=out_name
-            )
+            if self.args.N_BEADS<50000:
+                get_heatmap(
+                    cif_path,
+                    viz=True,
+                    save=True,
+                    save_path=self.save_path + f"plots",
+                    name=out_name
+                )
+            else:
+                logger.warning("\033[93mHeatmap creation skipped because system is too large for visualization.\033[0m")
 
             # structure analysis (NEW)
             analyze_structure(
@@ -1072,9 +1129,7 @@ class MultiMM:
 
             return V
 
-        # ============================================================
         # GW MODE
-        # ============================================================
         if is_gw:
 
             if is_comp:
@@ -1099,9 +1154,7 @@ class MultiMM:
 
             return
 
-        # ============================================================
         # GENE / REGION MODE
-        # ============================================================
         if hasattr(self, "gene_start"):
 
             save_chimera_cmd(
@@ -1136,10 +1189,7 @@ class MultiMM:
                     save_path=self.save_path + "plots/structure_afterMD_gene_coloring.png",
                 )
 
-        # ============================================================
         # COMMON STRUCTURES (always executed)
-        # ============================================================
-
         snapshots = [
             ("initial_structure", "metadata/MultiMM_init.cif"),
             ("minimized_structure", "model/MultiMM_minimized.cif"),

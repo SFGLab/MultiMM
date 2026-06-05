@@ -10,6 +10,8 @@ from scipy.spatial import ConvexHull, distance
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from scipy.stats import gaussian_kde
+from matplotlib.lines import Line2D
+import matplotlib.colors as mcolors
 from mpl_toolkits.mplot3d import Axes3D
 from .utils import get_coordinates_cif
 
@@ -22,291 +24,255 @@ comp_dict = {-2: "B2", -1: "B1", 1: "A2", 2: "A1", 0: "no compartment"}
 
 def plot_projection(struct_3D, Cs, save_path):
     """
-    Enhanced structural analysis:
-    - PCA projection
-    - 3D structure
-    - radial + component distributions
-    - anisotropy proxy
-    - PCA density map
+    Chromatin structural analysis centered on COM.
 
-    Removed: t-SNE (as requested)
+    Includes:
+    - PCA embedding
+    - 3D structure
+    - radial compaction (COM-based)
+    - anisotropy via gyration tensor
+    - density landscapes
+    - subcompartment-dependent structure
     """
 
     sns.set_style("whitegrid")
     plt.rcParams.update({
         "figure.dpi": 600,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
         "font.size": 11
     })
 
-    # ------------------------------------------------------------
-    # Safety / preprocessing
-    # ------------------------------------------------------------
-    struct_3D = np.asarray(struct_3D, dtype=np.float64)
+    # preprocessing (STRICT ALIGNMENT GUARANTEE)
+    X = np.asarray(struct_3D, dtype=np.float64)
     Cs = np.asarray(Cs)
 
-    N = struct_3D.shape[0]
+    N = min(len(X), len(Cs))
+    X = X[:N]
     Cs = Cs[:N]
 
-    mask_valid = np.isfinite(struct_3D).all(axis=1)
-    struct_3D = struct_3D[mask_valid]
-    Cs = Cs[mask_valid]
+    mask = np.isfinite(X).all(axis=1)
 
-    # ------------------------------------------------------------
-    # PCA
-    # ------------------------------------------------------------
+    X = X[mask]
+    Cs = Cs[mask]
+
+    # remove invalid compartments early (IMPORTANT)
+    valid = Cs != 0
+    X = X[valid]
+    Cs = Cs[valid]
+
+    # CENTER OF MASS SHIFT (IMPORTANT CHANGE)
+    com = X.mean(axis=0)
+    Xc = X - com  # everything now COM-based
+
+    # PCA (COM-centered)
     pca = PCA(n_components=2)
-    struct_2d = pca.fit_transform(struct_3D)
+    X_pca = pca.fit_transform(Xc)
+    r = np.linalg.norm(Xc, axis=1)
+    X0 = Xc - Xc.mean(axis=0)
+    G = (X0.T @ X0) / len(X0)
+    eigvals = np.linalg.eigvalsh(G)
+    anisotropy_scalar = np.sqrt(eigvals.max() / (eigvals.min() + 1e-12))
 
-    # ------------------------------------------------------------
-    # Geometry features (IMPORTANT for intuition)
-    # ------------------------------------------------------------
-    r = np.linalg.norm(struct_3D, axis=1)
-
-    # anisotropy proxy (per-point spread along axes)
-    anisotropy = np.abs(struct_3D[:, 0]) + np.abs(struct_3D[:, 1]) + np.abs(struct_3D[:, 2])
-
-    # ------------------------------------------------------------
-    # Dataframe
-    # ------------------------------------------------------------
     df = pd.DataFrame({
-        "x": struct_3D[:, 0],
-        "y": struct_3D[:, 1],
-        "z": struct_3D[:, 2],
-        "x_pca": struct_2d[:, 0],
-        "y_pca": struct_2d[:, 1],
-        "distance": r,
-        "anisotropy": anisotropy,
+        "x": Xc[:, 0],
+        "y": Xc[:, 1],
+        "z": Xc[:, 2],
+        "pc1": X_pca[:, 0],
+        "pc2": X_pca[:, 1],
+        "r_com": r,
+        "anisotropy": anisotropy_scalar,
         "subcomp": Cs
     })
 
-    df = df[df["subcomp"] != 0.0]
+    df = df[df["subcomp"] != 0]
 
-    # ------------------------------------------------------------
-    # Output dir
-    # ------------------------------------------------------------
-    base_dir = os.path.join(save_path, "plots")
-    os.makedirs(base_dir, exist_ok=True)
+    # output
+    base = os.path.join(save_path, "plots")
+    os.makedirs(base, exist_ok=True)
 
-    def _save_local(fig, name):
-        path = os.path.join(base_dir, name)
-        fig.savefig(path + ".png", dpi=600)
-        fig.savefig(path + ".pdf", dpi=600)
-        fig.savefig(path + ".svg", dpi=600)
+    def save(fig, name):
+        fig.savefig(os.path.join(base, name + ".png"), dpi=600)
+        fig.savefig(os.path.join(base, name + ".pdf"), dpi=600)
+        plt.close(fig)
 
-    # ============================================================
-    # 1. PCA projection (with proper colorbar)
-    # ============================================================
+    # 1. PCA projection
     fig, ax = plt.subplots(figsize=(7, 6))
-
-    sc = ax.scatter(
-        df["x_pca"],
-        df["y_pca"],
-        c=df["subcomp"],
-        cmap="Spectral",
-        s=12,
-        alpha=0.6
-    )
+    sc = ax.scatter(df.pc1, df.pc2, c=df.subcomp, s=10, cmap="Spectral", alpha=0.7)
 
     cbar = plt.colorbar(sc, ax=ax)
-    cbar.set_label("Subcompartment index")
+    cbar.set_label("Subcompartment state")
 
-    ax.set_title("PCA Projection")
-    ax.set_xlabel("PC1")
-    ax.set_ylabel("PC2")
+    ax.set_title("Chromatin PCA (COM-centered configuration)")
+    ax.set_xlabel("PC1 (collective mode)")
+    ax.set_ylabel("PC2 (collective mode)")
 
-    _save_local(fig, "PCA_projection")
-    plt.close(fig)
+    save(fig, "pca_projection")
 
-    # ============================================================
-    # 2. 3D structure (main physical object)
-    # ============================================================
-
+    # 2. 3D structure (COM-centered)
     fig = plt.figure(figsize=(8, 7))
     ax = fig.add_subplot(111, projection="3d")
 
-    sc = ax.scatter(
-        df["x"],
-        df["y"],
-        df["z"],
-        c=df["subcomp"],
-        cmap="Spectral",
-        s=4,
-        alpha=0.7
-    )
+    sc = ax.scatter(Xc[:, 0], Xc[:, 1], Xc[:, 2],
+                    c=df.subcomp, cmap="Spectral", s=4, alpha=0.7)
 
     cbar = fig.colorbar(sc, ax=ax, shrink=0.6)
-    cbar.set_label("Subcompartment")
+    cbar.set_label("Subcompartment state")
+    ax.set_title("3D Chromatin Structure (center-of-mass frame)")
+    ax.set_xlabel("X - COM")
+    ax.set_ylabel("Y - COM")
+    ax.set_zlabel("Z - COM")
+    save(fig, "structure_3D_com")
 
-    ax.set_title("3D Chromatin Structure")
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-
-    _save_local(fig, "structure_3D")
-    plt.close(fig)
-
-    # ============================================================
-    # 3. Radial distribution (compaction signal)
-    # ============================================================
+    # 3. Radial compaction (COM-based)
     fig, ax = plt.subplots(figsize=(7, 4))
 
-    sns.kdeplot(
-        data=df,
-        x="distance",
-        hue="subcomp",
-        fill=True,
-        palette="Spectral",
-        alpha=0.5,
-        ax=ax
-    )
+    sns.kdeplot(data=df, x="r_com", hue="subcomp",
+                fill=True, alpha=0.5, palette="Spectral", ax=ax)
 
-    ax.set_title("Radial Compaction Profile")
-    ax.set_xlabel("Distance from origin")
+    ax.set_title("Radial Compaction from Center of Mass")
+    ax.set_xlabel("Distance from COM")
+    ax.set_ylabel("Density")
+    save(fig, "radial_com")
 
-    _save_local(fig, "radial_distribution")
-    plt.close(fig)
-
-    # ============================================================
-    # 4. PCA density landscape (free energy-like intuition)
-    # ============================================================
+    # 4. PCA density landscape
     fig, ax = plt.subplots(figsize=(7, 6))
 
-    sc = sns.kdeplot(
-        data=df,
-        x="x_pca",
-        y="y_pca",
-        cmap="mako",
-        fill=True,
-        levels=50,
-        thresh=0.05,
-        ax=ax
-    )
+    sns.kdeplot(x=df.pc1, y=df.pc2,
+                cmap="mako", fill=True, levels=60, ax=ax)
 
-    ax.set_title("PCA Density Landscape")
+    ax.set_title("Free-energy-like landscape (PCA space)")
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+    save(fig, "pca_density")
 
-    _save_local(fig, "pca_density")
-    plt.close(fig)
-
-    # ============================================================
-    # 5. Component-wise spatial spread (NEW: very informative)
-    # ============================================================
+    # 5. radial vs subcompartment (IMPROVED: distribution + raw structure)
     fig, ax = plt.subplots(figsize=(7, 4))
-
-    sns.boxplot(
+    unique_sub = np.sort(df.subcomp.unique())
+    abs_max = np.max(np.abs(unique_sub)) if len(unique_sub) > 0 else 1.0
+    norm = mcolors.Normalize(vmin=-abs_max, vmax=abs_max)
+    cmap = plt.get_cmap("coolwarm")
+    sns.violinplot(
         data=df,
         x="subcomp",
-        y="distance",
-        palette="Spectral",
+        y="r_com",
+        palette=[cmap(norm(v)) for v in unique_sub],
+        inner=None,
+        cut=0,
         ax=ax
     )
-
-    ax.set_title("Radial Distance by Subcompartment")
-    ax.set_xlabel("Subcompartment")
-    ax.set_ylabel("Radius")
-
-    _save_local(fig, "radial_by_subcomp")
-    plt.close(fig)
-
-    # ============================================================
-    # 6. Anisotropy distribution (NEW: shape diagnostics)
-    # ============================================================
-    fig, ax = plt.subplots(figsize=(7, 4))
-
-    sns.kdeplot(
+    sns.stripplot(
         data=df,
-        x="anisotropy",
-        hue="subcomp",
-        fill=True,
-        palette="Spectral",
-        alpha=0.5,
+        x="subcomp",
+        y="r_com",
+        color="black",
+        alpha=0.25,
+        size=1.5,
         ax=ax
     )
+    ax.set_title("Radial Distribution by Subcompartment (COM frame)")
+    ax.set_xlabel("Subcompartment state")
+    ax.set_ylabel("Distance from COM")
+    save(fig, "radial_by_subcomp")
 
-    ax.set_title("Structural Anisotropy Distribution")
-
-    _save_local(fig, "anisotropy_distribution")
-    plt.close(fig)
-
-    # ============================================================
-    # 7. Axis projections (NEW: structure elongation intuition)
-    # ============================================================
-    fig, ax = plt.subplots(figsize=(7, 4))
-
-    ax.scatter(df["x"], df["y"], s=3, alpha=0.4, label="XY")
-    ax.scatter(df["x"], df["z"], s=3, alpha=0.4, label="XZ")
-    ax.scatter(df["y"], df["z"], s=3, alpha=0.4, label="YZ")
-
-    ax.set_title("Pairwise Coordinate Projections")
-    ax.legend()
-
-    _save_local(fig, "axis_projections")
-    plt.close(fig)
-
-    # ============================================================
-    # NEW: PCA contour KDE per subcompartment (clean scientific plot)
-    # ============================================================
-    fig, ax = plt.subplots(figsize=(7, 6))
-
-    subcomps = np.sort(df["subcomp"].unique())
-
-    # consistent colormap
-    cmap = plt.get_cmap("Spectral", len(subcomps))
-
-    # grid for KDE evaluation
-    x = df["x_pca"].values
-    y = df["y_pca"].values
-
-    xmin, xmax = x.min(), x.max()
-    ymin, ymax = y.min(), y.max()
-
-    X, Y = np.mgrid[
-        xmin:xmax:200j,
-        ymin:ymax:200j
+    # 7. axis correlations (structure signature, COM-centered, density-based)
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+    pairs = [
+        (df.x, df.y, "X–Y plane"),
+        (df.x, df.z, "X–Z plane"),
+        (df.y, df.z, "Y–Z plane"),
     ]
+    for ax, (a, b, title) in zip(axes, pairs):
+        # replace scatter with 2D density (structure, not noise)
+        sns.kdeplot(
+            x=a,
+            y=b,
+            ax=ax,
+            fill=True,
+            cmap="mako",
+            levels=40,
+            thresh=0.05,
+            bw_adjust=0.6
+        )
+        # light contour overlay (adds geometry readability)
+        sns.kdeplot(
+            x=a,
+            y=b,
+            ax=ax,
+            color="white",
+            levels=6,
+            linewidths=0.6,
+            alpha=0.6,
+            bw_adjust=0.6
+        )
+        ax.set_title(title)
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.grid(True, alpha=0.2)
+    # shared labels (cleaner than repeating)
+    axes[0].set_ylabel("Coordinate axis (nm)")
+    axes[1].set_xlabel("Coordinate axis (nm)")
+    fig.suptitle("Coordinate Correlations in COM frame (density representation)", y=1.02)
+    save(fig, "axis_correlations")
 
-    positions = np.vstack([X.ravel(), Y.ravel()])
+   # 8. PCA KDE per subcompartment (signed colors, white background)
+    fig, ax = plt.subplots(figsize=(7, 6))
+    # enforce clean white background (important for KDE readability)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+    x = df.pc1.values
+    y = df.pc2.values
+    Xg, Yg = np.mgrid[
+        x.min():x.max():200j,
+        y.min():y.max():200j
+    ]
+    pos = np.vstack([Xg.ravel(), Yg.ravel()])
+    unique_sub = np.sort(df.subcomp.unique())
 
-    for i, sc_val in enumerate(subcomps):
+    # ------------------------------------------------------------
+    # SIGN-BASED colormap (this is the key fix)
+    # negative → blue, positive → red
+    # ------------------------------------------------------------
+    abs_max = np.max(np.abs(unique_sub)) if len(unique_sub) > 0 else 1.0
+    norm = mcolors.Normalize(vmin=-abs_max, vmax=abs_max)
+    cmap = plt.get_cmap("coolwarm")
 
-        sub = df[df["subcomp"] == sc_val]
+    for scv in unique_sub:
 
+        sub = df[df.subcomp == scv]
         if len(sub) < 10:
-            continue  # avoid unstable KDE
+            continue
 
-        values = np.vstack([sub["x_pca"], sub["y_pca"]])
+        kde = gaussian_kde([sub.pc1, sub.pc2])
+        Z = kde(pos).reshape(Xg.shape)
 
-        kde = gaussian_kde(values, bw_method=0.2)
-        Z = np.reshape(kde(positions).T, X.shape)
+        color = cmap(norm(scv))
 
-        # contour lines (clean + publication style)
+        ax.contourf(
+            Xg, Yg, Z,
+            levels=3,
+            alpha=0.10,
+            colors=[color]
+        )
+
         ax.contour(
-            X, Y, Z,
+            Xg, Yg, Z,
             levels=5,
-            colors=[cmap(i)],
+            colors=[color],
             linewidths=1.2,
             alpha=0.9
         )
 
-        # optional: faint fill for intuition
-        ax.contourf(
-            X, Y, Z,
-            levels=3,
-            alpha=0.08,
-            colors=[cmap(i)]
-        )
-
-    ax.set_title("Subcompartment KDE Contours (PCA space)")
-    ax.set_xlabel("PC1")
-    ax.set_ylabel("PC2")
-
-    # clean frame
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-
-    _save_local(fig, "pca_kde_contours")
-    plt.close(fig)
+    # ------------------------------------------------------------
+    # legend (sign-based meaning preserved)
+    # ------------------------------------------------------------
+    legend_elements = [
+        Line2D([0], [0], color=cmap(norm(v)), lw=2, label=f"subcomp {v}")
+        for v in unique_sub if v != 0
+    ]
+    ax.legend(handles=legend_elements, frameon=True, fontsize=9)
+    ax.set_title("Subcompartment density in PCA space")
+    ax.set_xlabel("PC1 (collective chromatin mode)")
+    ax.set_ylabel("PC2 (collective chromatin mode)")
+    save(fig, "pca_kde_subcomp")
 
 def _save_plotter(plotter, save_path):
     """
@@ -530,9 +496,9 @@ def get_heatmap(
 
     def _save_local(fig, name):
         path = name
-        fig.savefig(path + ".png", dpi=300, bbox_inches="tight")
-        fig.savefig(path + ".pdf", bbox_inches="tight")
-        fig.savefig(path + ".svg", bbox_inches="tight")
+        fig.savefig(path + ".png", dpi=300)
+        fig.savefig(path + ".pdf")
+        fig.savefig(path + ".svg")
 
     # ------------------------------------------------------------
     # Load structure
@@ -600,6 +566,38 @@ def get_heatmap(
 
     logger.info("Heatmap computation finished")
     return mat
+
+def plot_md_thermo(history, save_path):
+    """
+    Plot energy + temperature evolution from MD.
+    """
+
+    logger.info("Creating MD thermodynamics plot...")
+
+    steps = history["step"]
+
+    fig, ax1 = plt.subplots(figsize=(6, 4))
+
+    ax1.plot(steps, history["potential"], label="Potential energy")
+    ax1.plot(steps, history["kinetic"], label="Kinetic energy")
+    ax1.plot(steps, history["total"], label="Total energy")
+
+    ax1.set_xlabel("Step")
+    ax1.set_ylabel("Energy")
+    ax1.legend()
+    ax1.grid(True)
+
+    ax2 = ax1.twinx()
+    ax2.plot(steps, history["temperature"], "k--", label="Temperature")
+    ax2.set_ylabel("Temperature")
+
+    plt.title("MultiMM MD Thermodynamics")
+
+    out = os.path.join(save_path, "plots/md_thermodynamics.png")
+    plt.savefig(out, dpi=300)
+    plt.close()
+
+    logger.info(f"MD thermodynamics plot saved to: {out}")
 
 def analyze_structure(V, save_path, name="structure"):
     """
