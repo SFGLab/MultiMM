@@ -260,7 +260,7 @@ class SimulationConfig(BaseModel):
 
     EV_FORCE_TYPE: str = Field(
         default="powerlaw",
-        description="Excluded volume functional form. Options: powerlaw (default), soft_lj, gaussian_core.",
+        description="Excluded volume functional form. Options: powerlaw (default), gaussian_core.",
     )
 
     COB_FORCE_TYPE: str = Field(

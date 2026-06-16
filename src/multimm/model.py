@@ -199,20 +199,7 @@ class MultiMM:
 
             logger.info(f"EV_POWER = {self.args.EV_POWER}")
 
-        # 2. SOFT LENNARD-JONES TYPE (no divergence at r→0)
-        elif mode == "soft_lj":
-
-            logger.info("Using soft Lennard-Jones-like excluded volume model")
-
-            self.ev_force.setEnergyFunction(
-                "epsilon * (sigma^n / (r^2 + r_small^2)^(n/2))"
-            )
-
-            self.ev_force.addGlobalParameter("n", self.args.EV_POWER)
-
-            logger.info(f"n (EV_POWER) = {self.args.EV_POWER}")
-
-        # 3. GAUSSIAN CORE (very soft polymer melt limit)
+        # 2. GAUSSIAN CORE (very soft polymer melt limit)
         elif mode == "gaussian_core":
 
             logger.info("Using Gaussian-core excluded volume model")
