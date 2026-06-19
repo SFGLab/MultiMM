@@ -1,18 +1,20 @@
 import logging
 import os
+
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pyvista as pv
 import seaborn as sns
+from matplotlib.lines import Line2D
 from matplotlib.pyplot import figure
+from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial import ConvexHull, distance
+from scipy.stats import gaussian_kde
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-from scipy.stats import gaussian_kde
-from matplotlib.lines import Line2D
-import matplotlib.colors as mcolors
-from mpl_toolkits.mplot3d import Axes3D
+
 from .utils import get_coordinates_cif
 
 logger = logging.getLogger(__name__)
@@ -22,9 +24,9 @@ pv.set_jupyter_backend("server")
 color_dict = {-2: "#bf0020", -1: "#e36a24", 1: "#20c8e6", 2: "#181385", 0: "#ffffff"}
 comp_dict = {-2: "B2", -1: "B1", 1: "A2", 2: "A1", 0: "no compartment"}
 
+
 def plot_projection(struct_3D, Cs, save_path):
-    """
-    Chromatin structural analysis centered on COM.
+    """Chromatin structural analysis centered on COM.
 
     Includes:
     - PCA embedding
@@ -34,12 +36,8 @@ def plot_projection(struct_3D, Cs, save_path):
     - density landscapes
     - subcompartment-dependent structure
     """
-
     sns.set_style("whitegrid")
-    plt.rcParams.update({
-        "figure.dpi": 600,
-        "font.size": 11
-    })
+    plt.rcParams.update({"figure.dpi": 600, "font.size": 11})
 
     # preprocessing (STRICT ALIGNMENT GUARANTEE)
     X = np.asarray(struct_3D, dtype=np.float64)
@@ -72,16 +70,18 @@ def plot_projection(struct_3D, Cs, save_path):
     eigvals = np.linalg.eigvalsh(G)
     anisotropy_scalar = np.sqrt(eigvals.max() / (eigvals.min() + 1e-12))
 
-    df = pd.DataFrame({
-        "x": Xc[:, 0],
-        "y": Xc[:, 1],
-        "z": Xc[:, 2],
-        "pc1": X_pca[:, 0],
-        "pc2": X_pca[:, 1],
-        "r_com": r,
-        "anisotropy": anisotropy_scalar,
-        "subcomp": Cs
-    })
+    df = pd.DataFrame(
+        {
+            "x": Xc[:, 0],
+            "y": Xc[:, 1],
+            "z": Xc[:, 2],
+            "pc1": X_pca[:, 0],
+            "pc2": X_pca[:, 1],
+            "r_com": r,
+            "anisotropy": anisotropy_scalar,
+            "subcomp": Cs,
+        }
+    )
 
     df = df[df["subcomp"] != 0]
 
@@ -111,8 +111,7 @@ def plot_projection(struct_3D, Cs, save_path):
     fig = plt.figure(figsize=(8, 7))
     ax = fig.add_subplot(111, projection="3d")
 
-    sc = ax.scatter(Xc[:, 0], Xc[:, 1], Xc[:, 2],
-                    c=df.subcomp, cmap="Spectral", s=4, alpha=0.7)
+    sc = ax.scatter(Xc[:, 0], Xc[:, 1], Xc[:, 2], c=df.subcomp, cmap="Spectral", s=4, alpha=0.7)
 
     cbar = fig.colorbar(sc, ax=ax, shrink=0.6)
     cbar.set_label("Subcompartment state")
@@ -125,8 +124,7 @@ def plot_projection(struct_3D, Cs, save_path):
     # 3. Radial compaction (COM-based)
     fig, ax = plt.subplots(figsize=(7, 4))
 
-    sns.kdeplot(data=df, x="r_com", hue="subcomp",
-                fill=True, alpha=0.5, palette="Spectral", ax=ax)
+    sns.kdeplot(data=df, x="r_com", hue="subcomp", fill=True, alpha=0.5, palette="Spectral", ax=ax)
 
     ax.set_title("Radial Compaction from Center of Mass")
     ax.set_xlabel("Distance from COM")
@@ -136,8 +134,7 @@ def plot_projection(struct_3D, Cs, save_path):
     # 4. PCA density landscape
     fig, ax = plt.subplots(figsize=(7, 6))
 
-    sns.kdeplot(x=df.pc1, y=df.pc2,
-                cmap="mako", fill=True, levels=60, ax=ax)
+    sns.kdeplot(x=df.pc1, y=df.pc2, cmap="mako", fill=True, levels=60, ax=ax)
 
     ax.set_title("Free-energy-like landscape (PCA space)")
     ax.set_xlabel("PC1")
@@ -151,23 +148,9 @@ def plot_projection(struct_3D, Cs, save_path):
     norm = mcolors.Normalize(vmin=-abs_max, vmax=abs_max)
     cmap = plt.get_cmap("coolwarm")
     sns.violinplot(
-        data=df,
-        x="subcomp",
-        y="r_com",
-        palette=[cmap(norm(v)) for v in unique_sub],
-        inner=None,
-        cut=0,
-        ax=ax
+        data=df, x="subcomp", y="r_com", palette=[cmap(norm(v)) for v in unique_sub], inner=None, cut=0, ax=ax
     )
-    sns.stripplot(
-        data=df,
-        x="subcomp",
-        y="r_com",
-        color="black",
-        alpha=0.25,
-        size=1.5,
-        ax=ax
-    )
+    sns.stripplot(data=df, x="subcomp", y="r_com", color="black", alpha=0.25, size=1.5, ax=ax)
     ax.set_title("Radial Distribution by Subcompartment (COM frame)")
     ax.set_xlabel("Subcompartment state")
     ax.set_ylabel("Distance from COM")
@@ -182,27 +165,9 @@ def plot_projection(struct_3D, Cs, save_path):
     ]
     for ax, (a, b, title) in zip(axes, pairs):
         # replace scatter with 2D density (structure, not noise)
-        sns.kdeplot(
-            x=a,
-            y=b,
-            ax=ax,
-            fill=True,
-            cmap="mako",
-            levels=40,
-            thresh=0.05,
-            bw_adjust=0.6
-        )
+        sns.kdeplot(x=a, y=b, ax=ax, fill=True, cmap="mako", levels=40, thresh=0.05, bw_adjust=0.6)
         # light contour overlay (adds geometry readability)
-        sns.kdeplot(
-            x=a,
-            y=b,
-            ax=ax,
-            color="white",
-            levels=6,
-            linewidths=0.6,
-            alpha=0.6,
-            bw_adjust=0.6
-        )
+        sns.kdeplot(x=a, y=b, ax=ax, color="white", levels=6, linewidths=0.6, alpha=0.6, bw_adjust=0.6)
         ax.set_title(title)
         ax.set_xlabel("")
         ax.set_ylabel("")
@@ -213,17 +178,14 @@ def plot_projection(struct_3D, Cs, save_path):
     fig.suptitle("Coordinate Correlations in COM frame (density representation)", y=1.02)
     save(fig, "axis_correlations")
 
-   # 8. PCA KDE per subcompartment (signed colors, white background)
+    # 8. PCA KDE per subcompartment (signed colors, white background)
     fig, ax = plt.subplots(figsize=(7, 6))
     # enforce clean white background (important for KDE readability)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
     x = df.pc1.values
     y = df.pc2.values
-    Xg, Yg = np.mgrid[
-        x.min():x.max():200j,
-        y.min():y.max():200j
-    ]
+    Xg, Yg = np.mgrid[x.min() : x.max() : 200j, y.min() : y.max() : 200j]
     pos = np.vstack([Xg.ravel(), Yg.ravel()])
     unique_sub = np.sort(df.subcomp.unique())
 
@@ -246,38 +208,23 @@ def plot_projection(struct_3D, Cs, save_path):
 
         color = cmap(norm(scv))
 
-        ax.contourf(
-            Xg, Yg, Z,
-            levels=3,
-            alpha=0.10,
-            colors=[color]
-        )
+        ax.contourf(Xg, Yg, Z, levels=3, alpha=0.10, colors=[color])
 
-        ax.contour(
-            Xg, Yg, Z,
-            levels=5,
-            colors=[color],
-            linewidths=1.2,
-            alpha=0.9
-        )
+        ax.contour(Xg, Yg, Z, levels=5, colors=[color], linewidths=1.2, alpha=0.9)
 
     # ------------------------------------------------------------
     # legend (sign-based meaning preserved)
     # ------------------------------------------------------------
-    legend_elements = [
-        Line2D([0], [0], color=cmap(norm(v)), lw=2, label=f"subcomp {v}")
-        for v in unique_sub if v != 0
-    ]
+    legend_elements = [Line2D([0], [0], color=cmap(norm(v)), lw=2, label=f"subcomp {v}") for v in unique_sub if v != 0]
     ax.legend(handles=legend_elements, frameon=True, fontsize=9)
     ax.set_title("Subcompartment density in PCA space")
     ax.set_xlabel("PC1 (collective chromatin mode)")
     ax.set_ylabel("PC2 (collective chromatin mode)")
     save(fig, "pca_kde_subcomp")
 
+
 def _save_plotter(plotter, save_path):
-    """
-    Save PyVista scene in multiple formats.
-    """
+    """Save PyVista scene in multiple formats."""
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
     # PyVista supports direct image export
@@ -299,15 +246,8 @@ def polyline_from_points(points):
 
 
 def viz_structure(V, colors=None, r=0.1, cmap="coolwarm", save_path=None):
-    """
-    Visualize structure V and optionally save it to a file.
-    """
-
-    logger.info(
-        f"Visualizing structure: N={len(V)}, "
-        f"colored={colors is not None}, "
-        f"save_path={save_path}"
-    )
+    """Visualize structure V and optionally save it to a file."""
+    logger.info(f"Visualizing structure: N={len(V)}, " f"colored={colors is not None}, " f"save_path={save_path}")
 
     polyline = polyline_from_points(V)
     polyline["scalars"] = np.arange(polyline.n_points)
@@ -320,9 +260,7 @@ def viz_structure(V, colors=None, r=0.1, cmap="coolwarm", save_path=None):
         colors_max = np.max(colors)
         diff = colors_max - colors_min
 
-        logger.info(
-            f"Color mapping enabled: min={colors_min}, max={colors_max}, diff={diff}"
-        )
+        logger.info(f"Color mapping enabled: min={colors_min}, max={colors_max}, diff={diff}")
 
         if diff > 0:
             color_values = (colors - colors_min) / diff
@@ -358,17 +296,14 @@ def viz_structure(V, colors=None, r=0.1, cmap="coolwarm", save_path=None):
 
     logger.info("Visualization finished")
 
+
 def save_chimera_cmd(start, end, total_residues, cmd_filename="coloring.cmd"):
     """
     Create a Chimera .cmd file:
     - Color residues outside the given region blue.
     - Color residues inside the region red.
     """
-
-    logger.info(
-        f"Writing Chimera cmd: {cmd_filename} | "
-        f"region={start}-{end} | total_residues={total_residues}"
-    )
+    logger.info(f"Writing Chimera cmd: {cmd_filename} | " f"region={start}-{end} | total_residues={total_residues}")
 
     with open(cmd_filename, "w") as f:
 
@@ -388,6 +323,7 @@ def save_chimera_cmd(start, end, total_residues, cmd_filename="coloring.cmd"):
         f.write("focus\n")
 
     logger.info("Chimera cmd file written successfully")
+
 
 def viz_gene_structure(V, start, end, r=0.1, cmap="coolwarm", save_path=None):
     """Visualize structure V, highlight a continuous region in red, rest in
@@ -473,6 +409,7 @@ def viz_chroms(sim_path, r=0.1, comps=True):
 
     logger.info("Chromosome visualization finished successfully")
 
+
 def get_heatmap(
     cif_file,
     viz=False,
@@ -482,12 +419,9 @@ def get_heatmap(
     vmin=None,
     log_scale=True,
     reorder_by_diagonal=False,
-    name="structure"
+    name="structure",
 ):
-    """
-    Compute and visualize contact/interaction heatmap from 3D structure.
-    """
-
+    """Compute and visualize contact/interaction heatmap from 3D structure."""
     # ------------------------------------------------------------
     # Output dir (UNCHANGED)
     # ------------------------------------------------------------
@@ -510,12 +444,9 @@ def get_heatmap(
     # Distance → contact
     # ------------------------------------------------------------
     mat = distance.cdist(V, V, metric="euclidean")
-    mat = 1.0 / (mat + 1)**(2/3)
+    mat = 1.0 / (mat + 1) ** (2 / 3)
 
-    logger.info(
-        f"Raw contact matrix: min={mat.min():.3e}, max={mat.max():.3e}, "
-        f"mean={mat.mean():.3e}"
-    )
+    logger.info(f"Raw contact matrix: min={mat.min():.3e}, max={mat.max():.3e}, " f"mean={mat.mean():.3e}")
 
     if log_scale:
         mat = np.log1p(mat)
@@ -538,12 +469,7 @@ def get_heatmap(
 
         fig, ax = plt.subplots(figsize=(8, 7), dpi=600)
 
-        im = ax.imshow(
-            mat,
-            cmap="coolwarm",
-            interpolation="nearest",
-            norm=PowerNorm(gamma=0.4)
-        )
+        im = ax.imshow(mat, cmap="coolwarm", interpolation="nearest", norm=PowerNorm(gamma=0.4))
 
         ax.set_title("Structure-derived Contact Map", fontsize=12)
         ax.set_xlabel("Bead index")
@@ -567,11 +493,9 @@ def get_heatmap(
     logger.info("Heatmap computation finished")
     return mat
 
-def plot_md_thermo(history, save_path):
-    """
-    Plot energy + temperature evolution from MD.
-    """
 
+def plot_md_thermo(history, save_path):
+    """Plot energy + temperature evolution from MD."""
     logger.info("Creating MD thermodynamics plot...")
 
     steps = history["step"]
@@ -599,15 +523,14 @@ def plot_md_thermo(history, save_path):
 
     logger.info(f"MD thermodynamics plot saved to: {out}")
 
+
 def analyze_structure(V, save_path, name="structure"):
-    """
-    Advanced structural analysis for polymer-like 3D structures.
+    """Advanced structural analysis for polymer-like 3D structures.
 
     Outputs:
     - detailed report (text)
     - multiple physically meaningful plots
     """
-
     # ------------------------------------------------------------
     # safety
     # ------------------------------------------------------------
@@ -665,9 +588,7 @@ def analyze_structure(V, save_path, name="structure"):
     v1 = V[1:-1] - V[:-2]
     v2 = V[2:] - V[1:-1]
 
-    cos_angles = np.sum(v1 * v2, axis=1) / (
-        np.linalg.norm(v1, axis=1) * np.linalg.norm(v2, axis=1) + 1e-8
-    )
+    cos_angles = np.sum(v1 * v2, axis=1) / (np.linalg.norm(v1, axis=1) * np.linalg.norm(v2, axis=1) + 1e-8)
 
     angles = np.arccos(np.clip(cos_angles, -1, 1))
 
@@ -690,9 +611,9 @@ def analyze_structure(V, save_path, name="structure"):
     local_rg = []
 
     for i in range(N - window):
-        chunk = V[i:i + window]
+        chunk = V[i : i + window]
         cm = np.mean(chunk, axis=0)
-        local_rg.append(np.sqrt(np.mean(np.sum((chunk - cm)**2, axis=1))))
+        local_rg.append(np.sqrt(np.mean(np.sum((chunk - cm) ** 2, axis=1))))
 
     local_rg = np.array(local_rg)
 
@@ -731,14 +652,14 @@ def analyze_structure(V, save_path, name="structure"):
         f.write("Local Rg → domain compaction\n")
 
     # PLOTS
-    os.makedirs(base+'/plots', exist_ok=True)
+    os.makedirs(base + "/plots", exist_ok=True)
 
     # 1. bond lengths
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.hist(bonds, bins=80)
     ax.set_title("Bond Length Distribution")
     ax.set_xlabel("Bond length")
-    _save_local(fig, base+f"/plots/{name}_bonds")
+    _save_local(fig, base + f"/plots/{name}_bonds")
 
     # ------------------------------------------------------------
 
@@ -747,7 +668,7 @@ def analyze_structure(V, save_path, name="structure"):
     ax.hist(angles, bins=80)
     ax.set_title("Angle Distribution")
     ax.set_xlabel("Angle (rad)")
-    _save_local(fig, base+f"/plots/{name}_angles")
+    _save_local(fig, base + f"/plots/{name}_angles")
 
     # ------------------------------------------------------------
 
@@ -757,7 +678,7 @@ def analyze_structure(V, save_path, name="structure"):
     ax.set_title("Distance vs Genomic Separation")
     ax.set_xlabel("Genomic separation (beads)")
     ax.set_ylabel("Mean spatial distance")
-    _save_local(fig, base+f"/plots/{name}_scaling")
+    _save_local(fig, base + f"/plots/{name}_scaling")
 
     # ------------------------------------------------------------
 
@@ -767,7 +688,7 @@ def analyze_structure(V, save_path, name="structure"):
     ax.set_title("Scaling (log-log)")
     ax.set_xlabel("s")
     ax.set_ylabel("R(s)")
-    _save_local(fig, base+f"/plots/{name}_scaling_loglog")
+    _save_local(fig, base + f"/plots/{name}_scaling_loglog")
 
     # ------------------------------------------------------------
 
@@ -777,7 +698,7 @@ def analyze_structure(V, save_path, name="structure"):
     ax.set_title("Local Compaction (Sliding Rg)")
     ax.set_xlabel("Bead index")
     ax.set_ylabel("Local Rg")
-    _save_local(fig, base+f"/plots/{name}_local_compaction")
+    _save_local(fig, base + f"/plots/{name}_local_compaction")
 
     # ------------------------------------------------------------
 
@@ -788,7 +709,7 @@ def analyze_structure(V, save_path, name="structure"):
     ax.hist(r, bins=60)
     ax.set_title("Radial Distribution")
     ax.set_xlabel("Distance from COM")
-    _save_local(fig, base+f"/plots/{name}_radial")
+    _save_local(fig, base + f"/plots/{name}_radial")
 
     # ------------------------------------------------------------
     return {

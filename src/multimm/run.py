@@ -11,9 +11,9 @@ from enum import Enum
 from openmm.unit import Quantity
 
 from .config import SimulationConfig
+from .logger import setup_logger
 from .model import MultiMM
 from .utils import chrom_sizes
-from .logger import setup_logger
 
 setup_logger()
 logger = logging.getLogger(__name__)
@@ -47,13 +47,11 @@ RESET = "\033[0m"
 
 
 def print_startup_banner(logger):
-    """
-    Print colorful MultiMM startup banner.
-    """
-
+    """Print colorful MultiMM startup banner."""
     for i, line in enumerate(STARTUP_BANNER_LINES):
         color = COLORS[i % len(COLORS)]
         logger.info(f"{color}{line}{RESET}")
+
 
 class Tee:
     def __init__(self, *streams):
@@ -67,6 +65,7 @@ class Tee:
     def flush(self):
         for s in self.streams:
             s.flush()
+
 
 class ArgumentChanger:
 
@@ -85,9 +84,7 @@ class ArgumentChanger:
         self._original_values = {}
 
     def set_arg(self, name, value):
-        """
-        Set argument value in attribute and store change history.
-        """
+        """Set argument value in attribute and store change history."""
         if hasattr(self.args, name):
             old_value = getattr(self.args, name, None)
 
@@ -101,9 +98,7 @@ class ArgumentChanger:
             logger.warning(f"Argument '{name}' not found in args object.")
 
     def _report_changes(self):
-        """
-        Print all modified parameters in a readable way.
-        """
+        """Print all modified parameters in a readable way."""
         if not self._original_values:
             return
 
@@ -154,9 +149,7 @@ class ArgumentChanger:
         elif level in ("region", "loc"):
 
             logger.warning(
-                f"{self.ORANGE}{self.BOLD}"
-                "Region-level modelling activated. Overwriting parameters."
-                f"{self.RESET}"
+                f"{self.ORANGE}{self.BOLD}" "Region-level modelling activated. Overwriting parameters." f"{self.RESET}"
             )
 
             self.set_arg("N_BEADS", 5000)
@@ -192,9 +185,7 @@ class ArgumentChanger:
         elif level in ("gw", "genome"):
 
             logger.warning(
-                f"{self.ORANGE}{self.BOLD}"
-                "Genome-wide modelling activated. Overwriting parameters."
-                f"{self.RESET}"
+                f"{self.ORANGE}{self.BOLD}" "Genome-wide modelling activated. Overwriting parameters." f"{self.RESET}"
             )
 
             self.set_arg("N_BEADS", 200000)
@@ -214,11 +205,12 @@ class ArgumentChanger:
         if self.args.MODELLING_LEVEL:
             self._report_changes()
 
+
 def args_tests(args):
 
     def check_file(path, name, ext_hint=None):
-        """
-        Validate optional input files.
+        """Validate optional input files.
+
         If provided, ensure they exist.
         """
         if path is None or path == "":
@@ -226,9 +218,7 @@ def args_tests(args):
 
         if not os.path.exists(path):
             ext_msg = f" (expected {ext_hint})" if ext_hint else ""
-            raise ValueError(
-                f"\033[91m{name} file was provided but not found: {path}{ext_msg}\033[0m"
-            )
+            raise ValueError(f"\033[91m{name} file was provided but not found: {path}{ext_msg}\033[0m")
 
     # -----------------------------------------
     # REQUIRED INPUT
@@ -249,8 +239,7 @@ def args_tests(args):
 
     if args.LOOPS_PATH is None or args.LOOPS_PATH == "":
         raise ValueError(
-            "\033[91mInteraction data is required to run MultiMM."
-            "Please provide a .bedpe file via LOOPS_PATH.\033[0m"
+            "\033[91mInteraction data is required to run MultiMM." "Please provide a .bedpe file via LOOPS_PATH.\033[0m"
         )
 
     elif (args.COMPARTMENT_PATH is None or args.COMPARTMENT_PATH == "") and args.COB_USE_COMPARTMENT_BLOCKS:

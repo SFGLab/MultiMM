@@ -167,7 +167,6 @@ def get_coordinates_mm(mm_vec):
 
 def get_coordinates_cif(file):
     """It returns the coordinate matrix V (N,3) from a .cif/.pdb-like file."""
-
     logger.info(f"Loading structure file: {file}")
 
     V = []
@@ -197,12 +196,10 @@ def get_coordinates_cif(file):
 
     V = np.array(V)
 
-    logger.info(
-        f"Structure loaded: atoms={n_atoms}, "
-        f"total_lines={n_lines}, shape={V.shape}"
-    )
+    logger.info(f"Structure loaded: atoms={n_atoms}, " f"total_lines={n_lines}, shape={V.shape}")
 
     return V
+
 
 def compute_averages(arr1, N2):
     # Calculate the window size
@@ -333,6 +330,7 @@ def write_chrom_colors(
         f.write(content)
 
     logger.info("Chromosome color file written successfully")
+
 
 def min_max_trans(x):
     return (x - x.min()) / (x.max() - x.min())
@@ -469,7 +467,7 @@ def import_mns_from_bedpe(
 
     if down_prob < 1.0:
         ms, ns, cs, ds = downsample_arrays(ms, ns, cs, ds, down_prob)
-    
+
     avg_ls = np.average(ns - ms)
     logger.info(f"Average loop size: {avg_ls}")
 

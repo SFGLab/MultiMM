@@ -227,12 +227,16 @@ class SimulationConfig(BaseModel):
     COB_EA: float = Field(default=1.0, description="Energy strength for A compartment.")
     COB_EB: float = Field(default=2.0, description="Energy strength for B compartment.")
     SCB_USE_SUBCOMPARTMENT_BLOCKS: Boolean = Field(default=False, description="Use Subcompartment Blocks.")
-    SCB_DISTANCE: Optional[OpenMMQuantity] = Field(default=None, description="Block copolymer equilibrium distance for chromosomal blocks.")
+    SCB_DISTANCE: Optional[OpenMMQuantity] = Field(
+        default=None, description="Block copolymer equilibrium distance for chromosomal blocks."
+    )
     SCB_EA1: float = Field(default=1.0, description="Energy strength for A1 compartment.")
     SCB_EA2: float = Field(default=1.33, description="Energy strength for A2 compartment.")
     SCB_EB1: float = Field(default=1.66, description="Energy strength for B1 compartment.")
     SCB_EB2: float = Field(default=2.0, description="Energy strength for B2 compartment.")
-    IBL_USE_B_LAMINA_INTERACTION: Boolean = Field(default=False, description="Interactions of B compartment with lamina.")
+    IBL_USE_B_LAMINA_INTERACTION: Boolean = Field(
+        default=False, description="Interactions of B compartment with lamina."
+    )
     IBL_SCALE: float = Field(default=400.0, description="Scaling factor for B comoartment interaction with lamina.")
     CF_USE_CENTRAL_FORCE: Boolean = Field(default=False, description="Attraction of smaller chromosomes.")
     CF_STRENGTH: float = Field(default=20.0, description="Strength of Interaction")
@@ -290,7 +294,8 @@ class SimulationConfig(BaseModel):
             "Options: polynomial (default, handcrafted potential), "
             "gaussian (soft collapse kernel), "
             "saturating (soft-core bounded attraction)."
-    ))
+        ),
+    )
 
     CENTRAL_FORCE_TYPE: str = Field(
         default="harmonic",
@@ -301,4 +306,5 @@ class SimulationConfig(BaseModel):
             "harmonic (default, quadratic confinement around R1), "
             "gaussian (soft nucleolar enrichment field), "
             "logistic (soft-core radial partitioning with smooth boundary)."
-    ))
+        ),
+    )
