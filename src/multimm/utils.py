@@ -226,66 +226,125 @@ def import_bed(
     shuffle=False,
     seed=0,
     n_chroms=22,
+    flip_prob=0.0,
+    noise_strength=0.0,
 ):
     # Load compartment dataset
     np.random.seed(seed)
     comps_df = pd.read_csv(bed_file, header=None, sep="\t")
 
-    # Filter by chromosome / region
     logger.info("Cleaning and transforming subcompartments dataframe...")
+
+    # Chromosome selection
     if chrom is not None:
-        comps_df = comps_df[(comps_df[0] == chrom) & (comps_df[1] > coords[0]) & (comps_df[2] < coords[1])].reset_index(
-            drop=True
-        )
-    if chrom is not None:
+        comps_df = comps_df[
+            (comps_df[0] == chrom) &
+            (comps_df[1] > coords[0]) &
+            (comps_df[2] < coords[1])
+        ].reset_index(drop=True)
+
         chrom_idx = next((k for k, v in chrs.items() if v == chrom or v == f"chr{chrom}"), 0)
         chrom_idxs = np.array([chrom_idx])
+
     else:
         chrom_idxs = np.arange(n_chroms).astype(int)
         if shuffle:
             np.random.shuffle(chrom_idxs)
+
     chrom_ends = (
         np.cumsum(np.insert(chrom_lengths_array[1:][chrom_idxs], 0, 0))
         if chrom is None
         else np.array([0, chrom_sizes[chrom]])
     )
 
-    # Sum bigger chromosomes with the maximum values of previous chromosomes
+    # Shift chromosomes
     if chrom is None:
         logger.info("Applying chromosome offset shifts...")
         for count, i in enumerate(chrom_idxs):
-            comps_df.loc[comps_df[0] == chrs[i], 1] += chrom_ends[count]
-            comps_df.loc[comps_df[0] == chrs[i], 2] += chrom_ends[count]
+            mask = comps_df[0] == chrs[i]
+            comps_df.loc[mask, 1] += chrom_ends[count]
+            comps_df.loc[mask, 2] += chrom_ends[count]
 
-    # Convert genomic coordinates to simulation beads
+    # Convert to bead space
     resolution = chrom_ends[-1] // N_beads if chrom is None else (coords[1] - coords[0]) // N_beads
     logger.info(f"Computed resolution: {resolution}")
+
     chrom_ends = np.array(chrom_ends) // resolution
     chrom_ends[-1] = N_beads
     np.save(save_path + "metadata/chrom_lengths.npy", chrom_ends)
+
     if chrom is not None:
-        comps_df[1], comps_df[2] = comps_df[1] - coords[0], comps_df[2] - coords[0]
-    comps_df[1], comps_df[2] = comps_df[1] // resolution, comps_df[2] // resolution
+        comps_df[1] -= coords[0]
+        comps_df[2] -= coords[0]
 
-    # Convert compartemnts to vector
+    comps_df[1] //= resolution
+    comps_df[2] //= resolution
+
+    # Build compartment vector (discrete base state)
     logger.info("Building subcompartments_array...")
-    comps_array = np.zeros(N_beads)
-    for i in tqdm(range(len(comps_df))):
-        if comps_df[3][i].startswith("A.1") or comps_df[3][i].startswith("A1"):
-            val = 2
-        elif comps_df[3][i].startswith("A.2") or comps_df[3][i].startswith("A2") or comps_df[3][i].startswith("A"):
-            val = 1
-        elif comps_df[3][i].startswith("B.2") or comps_df[3][i].startswith("B2"):
-            val = -2
-        elif comps_df[3][i].startswith("B.1") or comps_df[3][i].startswith("B1") or comps_df[3][i].startswith("B"):
-            val = -1
-        comps_array[comps_df[1][i] : comps_df[2][i]] = val
+    comps_array = np.zeros(N_beads, dtype=float)
 
+    for i in tqdm(range(len(comps_df))):
+        label = comps_df[3][i]
+
+        if label.startswith("A.1") or label.startswith("A1"):
+            val = 2
+        elif label.startswith("A.2") or label.startswith("A2") or label.startswith("A"):
+            val = 1
+        elif label.startswith("B.2") or label.startswith("B2"):
+            val = -2
+        elif label.startswith("B.1") or label.startswith("B1") or label.startswith("B"):
+            val = -1
+        else:
+            continue
+
+        comps_array[comps_df[1][i]:comps_df[2][i]] = val
+
+    # ---------------------------------------------------------
+    # STOCHASTIC CONTINUOUS PERTURBATION (zero-mean by design)
+    # ---------------------------------------------------------
+    if noise_strength > 0:
+        noise = np.random.normal(0.0, noise_strength, size=N_beads)
+
+        # optional spatial correlation → biologically smoother domains
+        try:
+            from scipy.ndimage import gaussian_filter1d
+            noise = gaussian_filter1d(noise, sigma=8)
+        except ImportError:
+            pass
+
+        comps_array = comps_array + noise
+
+    # ---------------------------------------------------------
+    # DISCRETE DOMAIN PERTURBATION (local ±1 transitions)
+    # ---------------------------------------------------------
+    if flip_prob > 0:
+        mask = np.random.rand(N_beads) < flip_prob
+        mask &= (comps_array != 0)
+
+        # local stochastic drift instead of hard flip
+        step = np.random.choice([-1, 1], size=N_beads)
+        comps_array[mask] += step[mask]
+
+        # prevent unphysical drift
+        comps_array = np.clip(comps_array, -2, 2)
+
+    # ---------------------------------------------------------
+    # HARD DISCRETIZATION (always integer output)
+    # ---------------------------------------------------------
+    comps_array = np.where(
+        comps_array > 1.5, 2,
+        np.where(comps_array > 0.2, 1,
+        np.where(comps_array < -1.5, -2,
+        np.where(comps_array < -0.2, -1, 0)))
+    ).astype(int)
+
+    # Save
     np.save(save_path + "metadata/compartments.npy", comps_array)
     np.save(save_path + "metadata/chrom_idxs.npy", chrom_idxs)
-    logger.info("Done")
-    return comps_array.astype(int), chrom_ends.astype(int), chrom_idxs.astype(int)
 
+    logger.info("Done")
+    return comps_array, chrom_ends.astype(int), chrom_idxs.astype(int)
 
 def align_comps(comps, ms, chrom_ends):
     for i in range(len(chrom_ends) - 1):

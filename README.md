@@ -514,11 +514,14 @@ Below is a categorized description of the simulation arguments and their default
 | CF_STRENGTH                  | float        | 10.0        | kJ/mol        | Strength of central force attraction. |
 
 #### Ensemble Generation
-| Argument Name                | Type         | Value       | Units         | Description |
-|------------------------------|--------------|-------------|---------------|-------------|
-| GENERATE_ENSEMBLE            | bool         | False       | None          | Generate an ensemble of structures. |
-| N_ENSEMBLE                   | int          | None        | None          | Number of structures in the ensemble. |
-| DOWNSAMPLING_PROB            | float        | 1.0         | None          | Probability of downsampling (0 to 1). |
+| Argument Name               | Type  | Value | Units | Description                                                                              |
+| --------------------------- | ----- | ----- | ----- | ---------------------------------------------------------------------------------------- |
+| GENERATE_ENSEMBLE           | bool  | False | None  | Generate an ensemble of structures.                                                      |
+| N_ENSEMBLE                  | int   | None  | None  | Number of structures in the ensemble.                                                    |
+| DOWNSAMPLING_PROB           | float | 1.0   | None  | Probability of downsampling (0 to 1).                                                    |
+| COMPARTMENT_FLIP_PROB       | float | 0.0   | None  | Probability of stochastic compartment sign flip (A ↔ B) per bead or domain.              |
+| COMPARTMENT_NOISE_STD       | float | 0.0   | None  | Standard deviation of Gaussian noise applied to compartment field before discretization. |
+
 
 #### Nucleosome Parameters
 | Argument Name                | Type         | Value       | Units         | Description |

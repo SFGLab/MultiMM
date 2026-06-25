@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 import tarfile
+import shutil
 from enum import Enum
 
 from openmm.unit import Quantity
@@ -472,10 +473,10 @@ def main():
                     for i in range(args.N_ENSEMBLE):
 
                         args.SHUFFLING_SEED = i
-
-                        run_path = os.path.join(name, f"run_{i:04d}")
+                        width = len(str(args.N_ENSEMBLE - 1))
+                        run_path = os.path.join(name, f"run_{i:0{width}d}")
                         args.OUT_PATH = run_path
-
+                        
                         os.makedirs(run_path, exist_ok=True)
 
                         md = MultiMM(args)
