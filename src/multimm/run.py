@@ -6,6 +6,7 @@ import configparser
 import logging
 import os
 import sys
+import tarfile
 from enum import Enum
 
 from openmm.unit import Quantity
@@ -418,9 +419,34 @@ def write_config(args):
     logger.info(f"Configuration saved to {config_path}")
 
 
+def archive_run(run_path):
+    """
+    Compress a run directory and remove the original folder.
+    """
+
+    tar_path = run_path + ".tar.gz"
+
+    logger.info(f"Creating archive: {tar_path}")
+
+    with tarfile.open(tar_path, "w:gz") as tar:
+        tar.add(run_path, arcname=os.path.basename(run_path))
+
+    # Safety check before deleting
+    if os.path.exists(tar_path) and os.path.getsize(tar_path) > 0:
+        logger.info(f"Archive created successfully. Removing {run_path}")
+        shutil.rmtree(run_path)
+    else:
+        raise RuntimeError(
+            f"Archive creation failed ({tar_path}). "
+            f"Original directory was NOT deleted."
+        )
+
+    logger.info(f"Archived run stored at: {tar_path}")
+
 def main():
     try:
         print_startup_banner(logger)
+
         args = get_config()
         args_tests(args)
 
@@ -428,32 +454,49 @@ def main():
         os.makedirs(log_dir, exist_ok=True)
 
         log_path = os.path.join(log_dir, "output.log")
+
         with open(log_path, "w") as log_file:
+
             original_stdout = sys.stdout
             original_stderr = sys.stderr
+
             sys.stdout = Tee(original_stdout, log_file)
             sys.stderr = Tee(original_stderr, log_file)
 
-            name = args.OUT_PATH
-            if args.GENERATE_ENSEMBLE:
-                for i in range(args.N_ENSEMBLE):
-                    args.SHUFFLING_SEED = i
-                    args.OUT_PATH = name + f"_{i+1}"
+            try:
+
+                name = args.OUT_PATH
+
+                if args.GENERATE_ENSEMBLE:
+
+                    for i in range(args.N_ENSEMBLE):
+
+                        args.SHUFFLING_SEED = i
+
+                        run_path = os.path.join(name, f"run_{i:04d}")
+                        args.OUT_PATH = run_path
+
+                        os.makedirs(run_path, exist_ok=True)
+
+                        md = MultiMM(args)
+                        md.run()
+
+                        archive_run(run_path)
+
+                else:
+
                     md = MultiMM(args)
                     md.run()
-            else:
-                md = MultiMM(args)
-                md.run()
 
-            sys.stdout = original_stdout
-            sys.stderr = original_stderr
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
 
         sys.exit(0)
 
     except Exception as e:
         logger.error(f"ERROR: {e}")
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
