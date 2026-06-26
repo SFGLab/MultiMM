@@ -83,7 +83,7 @@ def plot_projection(struct_3D, Cs, save_path):
         }
     )
 
-    df = df[df["subcomp"] != 0]
+    #df = df[df["subcomp"] != 0]
 
     # output
     base = os.path.join(save_path, "plots")
@@ -256,20 +256,51 @@ def viz_structure(V, colors=None, r=0.1, cmap="coolwarm", save_path=None):
 
         colors = np.array(colors[: len(V)])
 
-        colors_min = np.min(colors)
-        colors_max = np.max(colors)
-        diff = colors_max - colors_min
+        logger.info("Color mapping enabled (signed scheme: neg/zero/pos)")
 
         logger.info(f"Color mapping enabled: min={colors_min}, max={colors_max}, diff={diff}")
+        # ------------------------------------------------------------
+        # NEW: signed piecewise normalization
+        # ------------------------------------------------------------
 
-        if diff > 0:
-            color_values = (colors - colors_min) / diff
-        else:
-            color_values = np.zeros_like(colors, dtype=float)
-            logger.warning("Flat color array detected (all values identical)")
+        color_values = np.zeros(len(colors), dtype=float)
 
-        polyline["colors"] = color_values
+        neg = colors < 0
+        pos = colors > 0
+        zero = colors == 0
+
+        # normalize negatives -> [0, 1]
+        if np.any(neg):
+            nmin, nmax = colors[neg].min(), colors[neg].max()
+            color_values[neg] = (colors[neg] - nmin) / (nmax - nmin + 1e-12)
+
+        # normalize positives -> [0, 1]
+        if np.any(pos):
+            pmin, pmax = colors[pos].min(), colors[pos].max()
+            color_values[pos] = (colors[pos] - pmin) / (pmax - pmin + 1e-12)
+
+        # store sign mask separately (IMPORTANT for colormap)
+        polyline["colors_raw"] = colors
+        polyline["colors_norm"] = color_values
+
+        # encode sign explicitly in scalars:
+        # - negative -> [0, 0.5]
+        # - zero     -> exactly 0.5
+        # - positive -> [0.5, 1]
+        scalar = np.zeros(len(colors), dtype=float)
+
+        if np.any(neg):
+            scalar[neg] = 0.5 * color_values[neg]
+
+        if np.any(pos):
+            scalar[pos] = 0.5 + 0.5 * color_values[pos]
+
+        scalar[zero] = 0.5
+
+        polyline["colors"] = scalar
         polymer = polyline.tube(radius=r)
+
+        cmap = "coolwarm"  # keep diverging map for rendering
 
     else:
         logger.info("No coloring applied (uniform rendering)")

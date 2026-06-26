@@ -143,6 +143,14 @@ class SimulationConfig(BaseModel):
         default=False,
         description="Default value: false. True in case that you would like to have an ensemble of structures instead of one. Better to disable it for large simulations that require long computational time. Moreover it is better to start random walk initial structure in case of true value.",
     )
+    COMPARTMENT_FLIP_PROB: float = Field(
+        default=0.0,
+        description="Probability of flipping compartment identity per bead (A↔B). Applied after BED parsing."
+    )
+    COMPARTMENT_NOISE_STD: float = Field(
+        default=0.0,
+        description="Standard deviation of Gaussian noise applied to compartment field before discretization."
+    )
     N_ENSEMBLE: Optional[int] = Field(
         default=None, description="Number of samples of structures that you would like to calculate."
     )

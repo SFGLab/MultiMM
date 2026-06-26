@@ -111,6 +111,8 @@ class MultiMM:
                     save_path=self.save_path,
                     shuffle=args.SHUFFLE_CHROMS,
                     seed=args.SHUFFLING_SEED,
+                    flip_prob=args.COMPARTMENT_FLIP_PROB,
+                    noise_strength=args.COMPARTMENT_NOISE_STD,
                 )
             else:
                 raise ValueError("Compartments file should be in .bed format.")
