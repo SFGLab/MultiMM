@@ -10,9 +10,8 @@ from openmm.unit import Quantity, nanometers
 
 from .initial_structure_tools import build_init_mmcif, write_cmm, write_mmcif_chrom
 from .nucleosome_interpolation import NucleosomeInterpolation
-from .utils import *
 from .plots import *
-
+from .utils import *
 
 logger = logging.getLogger(__name__)
 
@@ -413,10 +412,7 @@ class MultiMM:
 
             logger.info("Using polynomial chromosomal self-attraction model")
 
-            self.chrom_block_force.setEnergyFunction(
-                "E*(k_C*r^4 - r^3 + r^2); "
-                "E = dE*delta(chrom1-chrom2)"
-            )
+            self.chrom_block_force.setEnergyFunction("E*(k_C*r^4 - r^3 + r^2); " "E = dE*delta(chrom1-chrom2)")
 
             logger.info(f"k_C={self.args.CHB_KC}, dE={self.args.CHB_DE}")
 
@@ -425,10 +421,7 @@ class MultiMM:
 
             logger.info("Using Gaussian chromosomal collapse kernel")
 
-            self.chrom_block_force.setEnergyFunction(
-                "-E * exp(-k_C*r^2); "
-                "E = dE*delta(chrom1-chrom2)"
-            )
+            self.chrom_block_force.setEnergyFunction("-E * exp(-k_C*r^2); " "E = dE*delta(chrom1-chrom2)")
 
             logger.info(f"k_C={self.args.CHB_KC}, dE={self.args.CHB_DE}")
 
@@ -437,10 +430,7 @@ class MultiMM:
 
             logger.info("Using saturating chromosomal interaction model")
 
-            self.chrom_block_force.setEnergyFunction(
-                "-E / (1 + k_C*r^2); "
-                "E = dE*delta(chrom1-chrom2)"
-            )
+            self.chrom_block_force.setEnergyFunction("-E / (1 + k_C*r^2); " "E = dE*delta(chrom1-chrom2)")
 
             logger.info(f"k_C={self.args.CHB_KC}, dE={self.args.CHB_DE}")
 
@@ -497,12 +487,10 @@ class MultiMM:
 
         # 1. DEFAULT: sinusoidal shell (original)
         if mode == "sin":
-                
+
             logger.info("Using sinusoidal lamina shell model")
 
-            self.Blamina_force.setEnergyFunction(
-                "B*(sin(pi*(r-R1)/(R2-R1))^8 - 1)*(delta(s+1)+delta(s+2)); " + r_expr
-            )
+            self.Blamina_force.setEnergyFunction("B*(sin(pi*(r-R1)/(R2-R1))^8 - 1)*(delta(s+1)+delta(s+2)); " + r_expr)
             self.Blamina_force.addGlobalParameter("pi", np.pi)
             logger.info(f"Shell radii: R1={self.radius1}, R2={self.radius2}")
 
@@ -511,8 +499,7 @@ class MultiMM:
 
             logger.info("Using Gaussian lamina shell model (two-layer attraction)")
             self.Blamina_force.setEnergyFunction(
-                "-B*(exp(-(r-R1)^2/(2*sigma^2)) + exp(-(r-R2)^2/(2*sigma^2)))"
-                "*(delta(s+1)+delta(s+2)); " + r_expr
+                "-B*(exp(-(r-R1)^2/(2*sigma^2)) + exp(-(r-R2)^2/(2*sigma^2)))" "*(delta(s+1)+delta(s+2)); " + r_expr
             )
             sigma = 0.1 * (self.radius2 - self.radius1)
             self.Blamina_force.addGlobalParameter("sigma", sigma)
@@ -521,9 +508,7 @@ class MultiMM:
         # 3. HARMONIC SHELL (pull to mid-shell)
         elif mode == "harmonic_shell":
             logger.info("Using harmonic lamina shell model (mid-shell attraction)")
-            self.Blamina_force.setEnergyFunction(
-                "B*(r - r0)^2*(delta(s+1)+delta(s+2)); " + r_expr
-            )
+            self.Blamina_force.setEnergyFunction("B*(r - r0)^2*(delta(s+1)+delta(s+2)); " + r_expr)
             r0 = 0.5 * (self.radius1 + self.radius2)
             self.Blamina_force.addGlobalParameter("r0", r0)
             logger.info(f"r0 (mid-shell) = {r0}")
@@ -532,8 +517,7 @@ class MultiMM:
         elif mode == "logistic_shell":
             logger.info("Using logistic lamina shell model (soft boundaries)")
             self.Blamina_force.setEnergyFunction(
-                "-B*(1/(1+exp((r-R2)/lambda)) + 1/(1+exp(-(r-R1)/lambda)))"
-                "*(delta(s+1)+delta(s+2)); " + r_expr
+                "-B*(1/(1+exp((r-R2)/lambda)) + 1/(1+exp(-(r-R1)/lambda)))" "*(delta(s+1)+delta(s+2)); " + r_expr
             )
             lam = 0.05 * (self.radius2 - self.radius1)
             self.Blamina_force.addGlobalParameter("lambda", lam)
@@ -550,10 +534,7 @@ class MultiMM:
         self.system.addForce(self.Blamina_force)
 
     def add_central_force(self):
-        """
-        Central nucleolar attraction with chromosome-size bias.
-        """
-
+        """Central nucleolar attraction with chromosome-size bias."""
         mode = getattr(self.args, "CENTRAL_FORCE_TYPE", "harmonic")
 
         self.central_force = mm.CustomExternalForce("0")
@@ -581,9 +562,7 @@ class MultiMM:
         if mode == "harmonic":
             logger.info("Using harmonic central attraction")
 
-            self.central_force.setEnergyFunction(
-                f"G*chrom_s*({r}-R1)*({r}-R1)"
-            )
+            self.central_force.setEnergyFunction(f"G*chrom_s*({r}-R1)*({r}-R1)")
 
         # ============================================================
         # 2. GAUSSIAN CENTER
@@ -594,9 +573,7 @@ class MultiMM:
             sigma = 0.5 * self.radius1
             self.central_force.addGlobalParameter("sigma", sigma)
 
-            self.central_force.setEnergyFunction(
-                f"-G*chrom_s*exp(-({r}*{r})/(2*sigma*sigma))"
-            )
+            self.central_force.setEnergyFunction(f"-G*chrom_s*exp(-({r}*{r})/(2*sigma*sigma))")
 
         # ============================================================
         # 3. LOGISTIC CORE
@@ -607,9 +584,7 @@ class MultiMM:
             lam = 0.2 * self.radius1
             self.central_force.addGlobalParameter("lambda", lam)
 
-            self.central_force.setEnergyFunction(
-                f"-G*chrom_s*(1/(1+exp(({r}-R1)/lambda)))"
-            )
+            self.central_force.setEnergyFunction(f"-G*chrom_s*(1/(1+exp(({r}-R1)/lambda)))")
 
         else:
             raise ValueError(f"Unknown CENTRAL_FORCE_TYPE: {mode}")
@@ -636,15 +611,13 @@ class MultiMM:
         self.system.addForce(self.bond_force)
 
     def add_loops(self):
-        """
-        Loop constraints using stable polymer bond models.
+        """Loop constraints using stable polymer bond models.
 
         Supported modes:
         - harmonic (default)
         - fene_safe (bounded FENE-like)
         - gaussian_tether (fully smooth bounded well)
         """
-
         mode = getattr(self.args, "LE_LOOP_FORCE_TYPE", "harmonic")
 
         # 1. HARMONIC (unchanged baseline)
@@ -661,9 +634,7 @@ class MultiMM:
         # 2. SAFE FENE-LIKE (bounded, no singularity)
         elif mode == "fene_soft":
 
-            self.loop_force = mm.CustomBondForce(
-                "k * (r - r0)^2 / (1 + alpha * (r - r0)^2)"
-            )
+            self.loop_force = mm.CustomBondForce("k * (r - r0)^2 / (1 + alpha * (r - r0)^2)")
 
             self.loop_force.addPerBondParameter("r0")
             self.loop_force.addPerBondParameter("k")
@@ -675,16 +646,14 @@ class MultiMM:
                 r0 = self.args.LE_HARMONIC_BOND_R0 if self.args.LE_FIXED_DISTANCES else self.ds[i]
 
                 k = self.args.LE_HARMONIC_BOND_K
-                alpha = 1.0 / (r0 ** 2)
+                alpha = 1.0 / (r0**2)
 
                 self.loop_force.addBond(m, n, [r0, k, alpha])
 
         # 3. GAUSSIAN TETHER (fully smooth bounded interaction)
         elif mode == "gaussian_tether":
 
-            self.loop_force = mm.CustomBondForce(
-                "k * (1 - exp(-(r - r0)^2 / sigma^2))"
-            )
+            self.loop_force = mm.CustomBondForce("k * (1 - exp(-(r - r0)^2 / sigma^2))")
 
             self.loop_force.addPerBondParameter("r0")
             self.loop_force.addPerBondParameter("k")
@@ -724,9 +693,7 @@ class MultiMM:
             logger.info("Creating initial structure...")
 
             structure_type = (
-                "compartments"
-                if (self.Cs is not None and len(np.unique(self.Cs)) <= 3)
-                else "subcompartments"
+                "compartments" if (self.Cs is not None and len(np.unique(self.Cs)) <= 3) else "subcompartments"
             )
             logger.info(f"Detected structure type: {structure_type}")
 
@@ -811,7 +778,6 @@ class MultiMM:
 
     def add_forcefield(self):
         """Here we define the forcefield of MultiMM."""
-
         logger.info("Importing forcefield...")
 
         if self.args.EV_USE_EXCLUDED_VOLUME:
@@ -929,11 +895,7 @@ class MultiMM:
 
             self.simulation.step(self.args.SIM_SAMPLING_STEP)
 
-            state = self.simulation.context.getState(
-                getPositions=True,
-                getEnergy=True,
-                getVelocities=True
-            )
+            state = self.simulation.context.getState(getPositions=True, getEnergy=True, getVelocities=True)
 
             # STEP (always safe)
             step = state.getStepCount()
@@ -986,10 +948,7 @@ class MultiMM:
             self.state.getPositions(),
             open(self.save_path + "model/MultiMM_afterMD.cif", "w"),
         )
-        plot_md_thermo(
-            self.md_history,
-            self.save_path
-        )
+        plot_md_thermo(self.md_history, self.save_path)
         logger.info(
             f"Everything is done! Simulation finished succesfully!\nMD finished in {elapsed//3600:.0f} hours, {elapsed%3600//60:.0f} minutes and  {elapsed%60:.0f} seconds. ---\n"
         )
@@ -1079,7 +1038,8 @@ class MultiMM:
         is_comp = self.Cs is not None and len(self.Cs) > 0
 
         def _viz_and_heat(cif_path, out_name, colors=None):
-            """Unified structure + heatmap pipeline (single source of truth)."""
+            """Unified structure + heatmap pipeline (single source of
+            truth)."""
             V = get_coordinates_cif(cif_path)
 
             # 3D structure
@@ -1092,14 +1052,8 @@ class MultiMM:
             )
 
             # heatmap (always)
-            if self.args.N_BEADS<50000:
-                get_heatmap(
-                    cif_path,
-                    viz=True,
-                    save=True,
-                    save_path=self.save_path + f"plots",
-                    name=out_name
-                )
+            if self.args.N_BEADS < 50000:
+                get_heatmap(cif_path, viz=True, save=True, save_path=self.save_path + f"plots", name=out_name)
             else:
                 logger.warning("\033[93mHeatmap creation skipped because system is too large for visualization.\033[0m")
 
@@ -1110,7 +1064,8 @@ class MultiMM:
                 name=out_name,
             )
 
-            plot_projection(
+            if is_comp:
+                plot_projection(
                     get_coordinates_mm(self.state.getPositions()),
                     self.Cs,
                     save_path=self.save_path,

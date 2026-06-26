@@ -127,3 +127,24 @@ def test_subprocess_run(tmp_path):
     assert os.path.exists(os.path.join(str(out_dir), "metadata", "output.log"))
 
 
+def test_simulation_region_no_compartments_with_plots(tmp_path):
+    out_dir = tmp_path / "sim_region_no_comps"
+    config = SimulationConfig(
+        LOOPS_PATH="tests/fixtures/ENCFF045MJY_simple.bedpe",
+        COMPARTMENT_PATH=None,
+        OUT_PATH=str(out_dir),
+        N_BEADS=100,
+        CHROM="chr1",
+        LOC_START=16000000,
+        LOC_END=17950000,
+        SIM_RUN_MD=True,
+        SIM_N_STEPS=5,
+        SAVE_PLOTS=True,
+        COB_USE_COMPARTMENT_BLOCKS=False,
+    )
+    md = MultiMM(config)
+    md.run()
+    assert os.path.exists(os.path.join(str(out_dir), "model", "MultiMM_minimized.cif"))
+
+
+
