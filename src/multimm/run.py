@@ -25,8 +25,9 @@ STARTUP_BANNER_LINES = [
     "# 🧬 MultiMM Chromatin Simulation Platform 🧬",
     "#########################################################################",
     "# Creator: Sebastian Korsak (Warsaw,)",
+    "# Nucleosome interpolation implementation: Krzystof Banecki",
     "# Web-server & infrastructure: Patryk Prusak",
-    "# email: s.korsak@datascience.edu.pl",
+    "# email us here: s.korsak@datascience.edu.pl, k.banecki@datascience.edu.pl, d.plewczynski@datascience.edu.pl",
     "#",
     "# 🚀 Starting simulation pipeline...",
     "# ✨ Wishing you smooth, stable and beautiful chromatin dynamics!",
@@ -481,8 +482,8 @@ def main():
 
                         md = MultiMM(args)
                         md.run()
-
-                        archive_run(run_path)
+                        
+                        # archive_run(run_path)
 
                 else:
 

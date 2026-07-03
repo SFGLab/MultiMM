@@ -546,7 +546,6 @@ def import_mns_from_bedpe(
         chrom_idxs.astype(int),
     )
 
-
 def generate_arrays(N_loops, N, l_val=6):
     # Generate array ms with random integers between 0 and N (exclusive)
     ms = np.random.randint(0, N, size=N_loops)

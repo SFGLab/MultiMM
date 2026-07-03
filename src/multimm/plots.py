@@ -43,21 +43,27 @@ def plot_projection(struct_3D, Cs, save_path):
 
     # preprocessing (STRICT ALIGNMENT GUARANTEE)
     X = np.asarray(struct_3D, dtype=np.float64)
-    Cs = np.asarray(Cs)
+    has_comps = Cs is not None
 
-    N = min(len(X), len(Cs))
-    X = X[:N]
-    Cs = Cs[:N]
+    if has_comps:
+        Cs = np.asarray(Cs)
 
-    mask = np.isfinite(X).all(axis=1)
+        N = min(len(X), len(Cs))
+        X = X[:N]
+        Cs = Cs[:N]
 
-    X = X[mask]
-    Cs = Cs[mask]
+        mask = np.isfinite(X).all(axis=1)
 
-    # remove invalid compartments early (IMPORTANT)
-    valid = Cs != 0
-    X = X[valid]
-    Cs = Cs[valid]
+        X = X[mask]
+        Cs = Cs[mask]
+
+        # remove undefined compartments
+        valid = Cs != 0
+        X = X[valid]
+        Cs = Cs[valid]
+    else:
+        mask = np.isfinite(X).all(axis=1)
+        X = X[mask]
 
     # CENTER OF MASS SHIFT (IMPORTANT CHANGE)
     com = X.mean(axis=0)
@@ -80,9 +86,10 @@ def plot_projection(struct_3D, Cs, save_path):
         "pc2": X_pca[:, 1],
         "r_com": r,
         "anisotropy": anisotropy_scalar,
-        "subcomp": Cs
     })
 
+    if has_comps:
+        df["subcomp"] = Cs
     #df = df[df["subcomp"] != 0]
 
     # output
@@ -95,43 +102,56 @@ def plot_projection(struct_3D, Cs, save_path):
         plt.close(fig)
 
     # 1. PCA projection
-    fig, ax = plt.subplots(figsize=(7, 6))
-    sc = ax.scatter(df.pc1, df.pc2, c=df.subcomp, s=10, cmap="Spectral", alpha=0.7)
+    if has_comps:
+        fig, ax = plt.subplots(figsize=(7, 6))
+        sc = ax.scatter(df.pc1, df.pc2,
+                        c=df.subcomp,
+                        s=10,
+                        cmap="Spectral",
+                        alpha=0.7)
 
-    cbar = plt.colorbar(sc, ax=ax)
-    cbar.set_label("Subcompartment state")
+        cbar = plt.colorbar(sc, ax=ax)
+        cbar.set_label("Subcompartment state")
 
-    ax.set_title("Chromatin PCA (COM-centered configuration)")
-    ax.set_xlabel("PC1 (collective mode)")
-    ax.set_ylabel("PC2 (collective mode)")
+        ax.set_title("Chromatin PCA (COM-centered configuration)")
+        ax.set_xlabel("PC1 (collective mode)")
+        ax.set_ylabel("PC2 (collective mode)")
 
-    save(fig, "pca_projection")
+        save(fig, "pca_projection")
 
     # 2. 3D structure (COM-centered)
     fig = plt.figure(figsize=(8, 7))
     ax = fig.add_subplot(111, projection="3d")
 
-    sc = ax.scatter(Xc[:, 0], Xc[:, 1], Xc[:, 2],
-                    c=df.subcomp, cmap="Spectral", s=4, alpha=0.7)
-
-    cbar = fig.colorbar(sc, ax=ax, shrink=0.6)
-    cbar.set_label("Subcompartment state")
-    ax.set_title("3D Chromatin Structure (center-of-mass frame)")
-    ax.set_xlabel("X - COM")
-    ax.set_ylabel("Y - COM")
-    ax.set_zlabel("Z - COM")
-    save(fig, "structure_3D_com")
+    if has_comps:
+        sc = ax.scatter(
+            Xc[:, 0], Xc[:, 1], Xc[:, 2],
+            c=df.subcomp,
+            cmap="Spectral",
+            s=4,
+            alpha=0.7
+        )
+        cbar = fig.colorbar(sc, ax=ax, shrink=0.6)
+        cbar.set_label("Subcompartment state")
+    else:
+        ax.scatter(
+            Xc[:, 0], Xc[:, 1], Xc[:, 2],
+            s=4,
+            alpha=0.7,
+            color="black"
+        )
 
     # 3. Radial compaction (COM-based)
-    fig, ax = plt.subplots(figsize=(7, 4))
+    if has_comps:
+        fig, ax = plt.subplots(figsize=(7, 4))
 
-    sns.kdeplot(data=df, x="r_com", hue="subcomp",
-                fill=True, alpha=0.5, palette="Spectral", ax=ax)
+        sns.kdeplot(data=df, x="r_com", hue="subcomp",
+                    fill=True, alpha=0.5, palette="Spectral", ax=ax)
 
-    ax.set_title("Radial Compaction from Center of Mass")
-    ax.set_xlabel("Distance from COM")
-    ax.set_ylabel("Density")
-    save(fig, "radial_com")
+        ax.set_title("Radial Compaction from Center of Mass")
+        ax.set_xlabel("Distance from COM")
+        ax.set_ylabel("Density")
+        save(fig, "radial_com")
 
     # 4. PCA density landscape
     fig, ax = plt.subplots(figsize=(7, 6))
@@ -145,33 +165,34 @@ def plot_projection(struct_3D, Cs, save_path):
     save(fig, "pca_density")
 
     # 5. radial vs subcompartment (IMPROVED: distribution + raw structure)
-    fig, ax = plt.subplots(figsize=(7, 4))
-    unique_sub = np.sort(df.subcomp.unique())
-    abs_max = np.max(np.abs(unique_sub)) if len(unique_sub) > 0 else 1.0
-    norm = mcolors.Normalize(vmin=-abs_max, vmax=abs_max)
-    cmap = plt.get_cmap("coolwarm")
-    sns.violinplot(
-        data=df,
-        x="subcomp",
-        y="r_com",
-        palette=[cmap(norm(v)) for v in unique_sub],
-        inner=None,
-        cut=0,
-        ax=ax
-    )
-    sns.stripplot(
-        data=df,
-        x="subcomp",
-        y="r_com",
-        color="black",
-        alpha=0.25,
-        size=1.5,
-        ax=ax
-    )
-    ax.set_title("Radial Distribution by Subcompartment (COM frame)")
-    ax.set_xlabel("Subcompartment state")
-    ax.set_ylabel("Distance from COM")
-    save(fig, "radial_by_subcomp")
+    if has_comps:
+        fig, ax = plt.subplots(figsize=(7, 4))
+        unique_sub = np.sort(df.subcomp.unique())
+        abs_max = np.max(np.abs(unique_sub)) if len(unique_sub) > 0 else 1.0
+        norm = mcolors.Normalize(vmin=-abs_max, vmax=abs_max)
+        cmap = plt.get_cmap("coolwarm")
+        sns.violinplot(
+            data=df,
+            x="subcomp",
+            y="r_com",
+            palette=[cmap(norm(v)) for v in unique_sub],
+            inner=None,
+            cut=0,
+            ax=ax
+        )
+        sns.stripplot(
+            data=df,
+            x="subcomp",
+            y="r_com",
+            color="black",
+            alpha=0.25,
+            size=1.5,
+            ax=ax
+        )
+        ax.set_title("Radial Distribution by Subcompartment (COM frame)")
+        ax.set_xlabel("Subcompartment state")
+        ax.set_ylabel("Distance from COM")
+        save(fig, "radial_by_subcomp")
 
     # 7. axis correlations (structure signature, COM-centered, density-based)
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
@@ -214,65 +235,66 @@ def plot_projection(struct_3D, Cs, save_path):
     save(fig, "axis_correlations")
 
    # 8. PCA KDE per subcompartment (signed colors, white background)
-    fig, ax = plt.subplots(figsize=(7, 6))
-    # enforce clean white background (important for KDE readability)
-    fig.patch.set_facecolor("white")
-    ax.set_facecolor("white")
-    x = df.pc1.values
-    y = df.pc2.values
-    Xg, Yg = np.mgrid[
-        x.min():x.max():200j,
-        y.min():y.max():200j
-    ]
-    pos = np.vstack([Xg.ravel(), Yg.ravel()])
-    unique_sub = np.sort(df.subcomp.unique())
+    if has_comps:
+        fig, ax = plt.subplots(figsize=(7, 6))
+        # enforce clean white background (important for KDE readability)
+        fig.patch.set_facecolor("white")
+        ax.set_facecolor("white")
+        x = df.pc1.values
+        y = df.pc2.values
+        Xg, Yg = np.mgrid[
+            x.min():x.max():200j,
+            y.min():y.max():200j
+        ]
+        pos = np.vstack([Xg.ravel(), Yg.ravel()])
+        unique_sub = np.sort(df.subcomp.unique())
 
-    # ------------------------------------------------------------
-    # SIGN-BASED colormap (this is the key fix)
-    # negative → blue, positive → red
-    # ------------------------------------------------------------
-    abs_max = np.max(np.abs(unique_sub)) if len(unique_sub) > 0 else 1.0
-    norm = mcolors.Normalize(vmin=-abs_max, vmax=abs_max)
-    cmap = plt.get_cmap("coolwarm")
+        # ------------------------------------------------------------
+        # SIGN-BASED colormap (this is the key fix)
+        # negative → blue, positive → red
+        # ------------------------------------------------------------
+        abs_max = np.max(np.abs(unique_sub)) if len(unique_sub) > 0 else 1.0
+        norm = mcolors.Normalize(vmin=-abs_max, vmax=abs_max)
+        cmap = plt.get_cmap("coolwarm")
 
-    for scv in unique_sub:
+        for scv in unique_sub:
 
-        sub = df[df.subcomp == scv]
-        if len(sub) < 10:
-            continue
+            sub = df[df.subcomp == scv]
+            if len(sub) < 10:
+                continue
 
-        kde = gaussian_kde([sub.pc1, sub.pc2])
-        Z = kde(pos).reshape(Xg.shape)
+            kde = gaussian_kde([sub.pc1, sub.pc2])
+            Z = kde(pos).reshape(Xg.shape)
 
-        color = cmap(norm(scv))
+            color = cmap(norm(scv))
 
-        ax.contourf(
-            Xg, Yg, Z,
-            levels=3,
-            alpha=0.10,
-            colors=[color]
-        )
+            ax.contourf(
+                Xg, Yg, Z,
+                levels=3,
+                alpha=0.10,
+                colors=[color]
+            )
 
-        ax.contour(
-            Xg, Yg, Z,
-            levels=5,
-            colors=[color],
-            linewidths=1.2,
-            alpha=0.9
-        )
+            ax.contour(
+                Xg, Yg, Z,
+                levels=5,
+                colors=[color],
+                linewidths=1.2,
+                alpha=0.9
+            )
 
-    # ------------------------------------------------------------
-    # legend (sign-based meaning preserved)
-    # ------------------------------------------------------------
-    legend_elements = [
-        Line2D([0], [0], color=cmap(norm(v)), lw=2, label=f"subcomp {v}")
-        for v in unique_sub if v != 0
-    ]
-    ax.legend(handles=legend_elements, frameon=True, fontsize=9)
-    ax.set_title("Subcompartment density in PCA space")
-    ax.set_xlabel("PC1 (collective chromatin mode)")
-    ax.set_ylabel("PC2 (collective chromatin mode)")
-    save(fig, "pca_kde_subcomp")
+        # ------------------------------------------------------------
+        # legend (sign-based meaning preserved)
+        # ------------------------------------------------------------
+        legend_elements = [
+            Line2D([0], [0], color=cmap(norm(v)), lw=2, label=f"subcomp {v}")
+            for v in unique_sub if v != 0
+        ]
+        ax.legend(handles=legend_elements, frameon=True, fontsize=9)
+        ax.set_title("Subcompartment density in PCA space")
+        ax.set_xlabel("PC1 (collective chromatin mode)")
+        ax.set_ylabel("PC2 (collective chromatin mode)")
+        save(fig, "pca_kde_subcomp")
 
 def _save_plotter(plotter, save_path):
     """

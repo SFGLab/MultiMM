@@ -13,9 +13,7 @@ from .nucleosome_interpolation import NucleosomeInterpolation
 from .utils import *
 from .plots import *
 
-
 logger = logging.getLogger(__name__)
-
 
 def _is_empty(val) -> bool:
     return val is None or str(val).strip() == "" or str(val).lower() == "none"
@@ -1238,7 +1236,7 @@ class MultiMM:
             logger.info("Creating and saving plots...")
             self.make_plots()
             logger.info("Done! :)\n")
-
+        
         # Run nucleosome interpolation
         if self.args.NUC_DO_INTERPOLATION and self.args.ATACSEQ_PATH is not None:
             self.nuc_interpolation()
