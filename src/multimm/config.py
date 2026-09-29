@@ -164,7 +164,35 @@ class SimulationConfig(BaseModel):
         default=None,
         description="It should be a .bed file with subcompartments from Calder (or something in the same format).",
     )
-    LOOPS_PATH: str = Field(default="", description="A .bedpe file path with loops. It is required.")
+    LOOPS_PATH: Optional[str] = Field(default=None, description="A .bedpe file path with loops. Optional — simulation runs without loops if not provided.")
+    HIC_PATH: Optional[str] = Field(
+        default=None,
+        description="Path to a Hi-C contact file (.hic, .cool, or .mcool). Required when HIC_USE_FORCE=True.",
+    )
+    HIC_USE_FORCE: Boolean = Field(
+        default=False,
+        description="Apply Hi-C contact-guided force to the simulation.",
+    )
+    HIC_FORCE_MODE: str = Field(
+        default="crossentropy",
+        description="Hi-C force functional form. Options: svd, svd_multiscale, crossentropy (default).",
+    )
+    HIC_NORMALIZATION: str = Field(
+        default="KR",
+        description="Hi-C matrix normalisation method. Options: KR (default), VC, VC_SQRT, NONE.",
+    )
+    HIC_N_COMPONENTS: int = Field(
+        default=5,
+        description="Number of SVD components used in svd / svd_multiscale mode.",
+    )
+    HIC_K_SCALE: float = Field(
+        default=100.0,
+        description="Global energy scale for Hi-C force [kJ/mol].",
+    )
+    HIC_MAX_GAP: int = Field(
+        default=10,
+        description="Maximum gap fraction (in %) tolerated when interpolating missing Hi-C bins.",
+    )
     GENE_TSV: str = Field(
         default=default_gene_path,
         description="A .tsv with genes and their locations in the genome.",

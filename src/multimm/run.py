@@ -24,7 +24,7 @@ STARTUP_BANNER_LINES = [
     "#########################################################################",
     "# 🧬 MultiMM Chromatin Simulation Platform 🧬",
     "#########################################################################",
-    "# Creator: Sebastian Korsak (Warsaw,)",
+    "# Creator: Sebastian Korsak (Warsaw, Poland)",
     "# Nucleosome interpolation implementation: Krzystof Banecki",
     "# Web-server & infrastructure: Patryk Prusak",
     "# email us here: s.korsak@datascience.edu.pl, k.banecki@datascience.edu.pl, d.plewczynski@datascience.edu.pl",
@@ -234,67 +234,102 @@ def args_tests(args):
             )
 
     # -----------------------------------------
-    # REQUIRED INPUT
+    # INPUT FILE EXISTENCE CHECKS (if provided)
     # -----------------------------------------
-    if args.LOOPS_PATH is None or args.LOOPS_PATH == "":
-        raise ValueError(
-            "\033[91mLoops interaction data is required to run MultiMM."
-            "Please provide a valid .bedpe file via LOOPS_PATH.\033[0m"
-        )
-
     check_file(args.LOOPS_PATH, "Loops (.bedpe)", ".bedpe")
-
-    # -----------------------------------------
-    # OPTIONAL INPUT VALIDATION (if provided)
-    # -----------------------------------------
     check_file(args.COMPARTMENT_PATH, "Compartment data", ".bed")
     check_file(args.ATACSEQ_PATH, "Nucleosome/ATAC data", ".bigwig")
+    check_file(args.HIC_PATH, "Hi-C contact matrix", ".hic/.cool/.mcool")
 
-    if args.LOOPS_PATH is None or args.LOOPS_PATH == "":
+    # -----------------------------------------
+    # REQUIRED COMBINATIONS
+    # -----------------------------------------
+    if args.LE_USE_HARMONIC_BOND and (args.LOOPS_PATH is None or args.LOOPS_PATH == ""):
         raise ValueError(
-            "\033[91mInteraction data is required to run MultiMM."
-            "Please provide a .bedpe file via LOOPS_PATH.\033[0m"
+            "\033[91mLE_USE_HARMONIC_BOND=True but no LOOPS_PATH provided. "
+            "Please supply a .bedpe file or disable LE_USE_HARMONIC_BOND.\033[0m"
         )
 
-    elif (args.COMPARTMENT_PATH is None or args.COMPARTMENT_PATH == "") and args.COB_USE_COMPARTMENT_BLOCKS:
+    if args.HIC_USE_FORCE and (args.HIC_PATH is None or args.HIC_PATH == ""):
         raise ValueError(
-            "\033[91mCompartment modeling is enabled, but no compartment data was provided."
+            "\033[91mHIC_USE_FORCE=True but no HIC_PATH provided. "
+            "Please supply a .hic / .cool / .mcool file or disable HIC_USE_FORCE.\033[0m"
+        )
+
+    if (args.COMPARTMENT_PATH is None or args.COMPARTMENT_PATH == "") and args.COB_USE_COMPARTMENT_BLOCKS:
+        raise ValueError(
+            "\033[91mCompartment modeling is enabled, but no compartment data was provided. "
             "Please supply a .bed file or disable COB_USE_COMPARTMENT_BLOCKS.\033[0m"
         )
 
-    elif args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH is None:
+    if args.NUC_DO_INTERPOLATION and (args.ATACSEQ_PATH is None or args.ATACSEQ_PATH == ""):
         raise ValueError(
-            "\033[91mNucleosome interpolation is enabled, but no occupancy data was found."
+            "\033[91mNucleosome interpolation is enabled, but no occupancy data was found. "
             "Provide a .bigwig file via ATACSEQ_PATH or disable NUC_DO_INTERPOLATION.\033[0m"
         )
 
-    elif (args.COMPARTMENT_PATH is None or args.COMPARTMENT_PATH == "") and args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
+    if (args.COMPARTMENT_PATH is None or args.COMPARTMENT_PATH == "") and args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
         raise ValueError(
-            "\033[91mSubcompartment modeling requires input data."
+            "\033[91mSubcompartment modeling requires input data. "
             "Please provide a .bed file or disable SCB_USE_SUBCOMPARTMENT_BLOCKS.\033[0m"
         )
 
-    elif args.COMPARTMENT_PATH is None and args.IBL_USE_B_LAMINA_INTERACTION:
+    if (args.COMPARTMENT_PATH is None or args.COMPARTMENT_PATH == "") and args.IBL_USE_B_LAMINA_INTERACTION:
         raise ValueError(
-            "\033[91mLamina interactions depend on compartment annotations."
+            "\033[91mLamina interactions depend on compartment annotations. "
             "Please provide a compartment .bed file or disable IBL_USE_B_LAMINA_INTERACTION.\033[0m"
         )
 
-    elif args.IBL_USE_B_LAMINA_INTERACTION and not (
+    if args.IBL_USE_B_LAMINA_INTERACTION and not (
         args.SCB_USE_SUBCOMPARTMENT_BLOCKS or args.COB_USE_COMPARTMENT_BLOCKS
     ):
         raise ValueError(
-            "\033[91mLamina interactions are enabled but no compartment-based forces are active."
+            "\033[91mLamina interactions are enabled but no compartment-based forces are active. "
             "Enable COB_USE_COMPARTMENT_BLOCKS or SCB_USE_SUBCOMPARTMENT_BLOCKS, or disable lamina interactions.\033[0m"
         )
 
-    elif args.CF_USE_CENTRAL_FORCE and args.CHROM is not None:
-        raise ValueError(
-            "\033[91mCentral force attraction to the nucleolus is typically used for whole-genome simulations."
-            "Since you are modeling a single chromosome or region, consider disabling CF_USE_CENTRAL_FORCE.\033[0m"
+    if args.CF_USE_CENTRAL_FORCE and args.CHROM is not None and args.CHROM != "":
+        logger.warning(
+            "\033[93mCentral force (nucleolar attraction) is enabled for a single-chromosome/region run. "
+            "It is typically used in whole-genome simulations; consider disabling CF_USE_CENTRAL_FORCE.\033[0m"
         )
 
-    elif args.CHB_USE_CHROMOSOMAL_BLOCKS and args.CHROM is not None:
+    # -----------------------------------------
+    # ADVISORY WARNINGS
+    # -----------------------------------------
+
+    # All three data sources active simultaneously — warn about potential redundancy
+    if (
+        args.HIC_USE_FORCE
+        and args.LE_USE_HARMONIC_BOND
+        and not (args.COMPARTMENT_PATH is None or args.COMPARTMENT_PATH == "")
+    ):
+        logger.warning(
+            "\033[93mHi-C contact force, loop extrusion, AND compartment forces are all active. "
+            "This combination is valid but may over-constrain the structure. "
+            "Consider using Hi-C force alone, or loops + compartments without Hi-C force.\033[0m"
+        )
+
+    # TAD / region run with no structural restraint
+    if (args.CHROM is not None and args.CHROM != "") and not args.LE_USE_HARMONIC_BOND and not args.HIC_USE_FORCE:
+        logger.warning(
+            "\033[93mRegion/TAD simulation with neither loop extrusion nor Hi-C contact force active. "
+            "The polymer will fold only under generic excluded-volume and backbone forces. "
+            "Consider enabling LE_USE_HARMONIC_BOND (LOOPS_PATH) or HIC_USE_FORCE (HIC_PATH).\033[0m"
+        )
+
+    # Genome-wide or chromosome-wide run without compartment annotations
+    if (args.CHROM is None or args.CHROM == "") and (args.COMPARTMENT_PATH is None or args.COMPARTMENT_PATH == ""):
+        if args.SCB_USE_SUBCOMPARTMENT_BLOCKS or args.COB_USE_COMPARTMENT_BLOCKS:
+            pass  # already caught above as an error
+        else:
+            logger.warning(
+                "\033[93mChromosome-wide or genome-wide simulation without compartment data. "
+                "A/B compartment organisation will not be reproduced. "
+                "Supply COMPARTMENT_PATH (.bed, Calder format) to enable compartment forces.\033[0m"
+            )
+
+    if args.CHB_USE_CHROMOSOMAL_BLOCKS and args.CHROM is not None and args.CHROM != "":
         logger.warning(
             "\033[93mChromosomal block interactions are more meaningful in multi-chromosome systems."
             "You may want to disable CHB_USE_CHROMOSOMAL_BLOCKS for single-chromosome simulations.\033[0m"

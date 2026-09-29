@@ -849,3 +849,73 @@ def analyze_structure(V, save_path, name="structure"):
         "asphericity": asphericity,
         "acylindricity": acylindricity,
     }
+
+# ── Hi-C comparison heatmap ───────────────────────────────────────────────────
+
+def plot_hic_comparison(
+    sim_matrix: "np.ndarray",
+    exp_matrix: "np.ndarray",
+    save_dir: str,
+    name: str = "hic_comparison",
+    vmax_percentile: float = 99.0,
+) -> None:
+    """Save a side-by-side heatmap figure comparing simulated vs. experimental Hi-C.
+
+    Both matrices are log1p-transformed and displayed on the same colour scale.
+
+    Parameters
+    ----------
+    sim_matrix : ndarray, shape (N, N)
+        Simulated contact proxy (e.g. inverse-average distance map).
+    exp_matrix : ndarray, shape (N, N)
+        Experimental Hi-C contact matrix, already pooled to the same resolution
+        as *sim_matrix*.
+    save_dir : str
+        Directory where the PNG will be saved (created if missing).
+    name : str
+        Base filename (without extension).
+    vmax_percentile : float
+        Upper percentile used to clip the shared colour scale (avoids saturation
+        from isolated hot spots).
+    """
+    import os
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as mcolors
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    sim_log = np.log1p(sim_matrix)
+    exp_log = np.log1p(exp_matrix)
+
+    # Shared colour scale derived from both matrices
+    combined = np.concatenate([sim_log[np.isfinite(sim_log)], exp_log[np.isfinite(exp_log)]])
+    vmax = float(np.percentile(combined, vmax_percentile))
+    vmin = 0.0
+
+    fig, axes = plt.subplots(
+        1, 2,
+        figsize=(12, 5),
+        dpi=150,
+        constrained_layout=True,
+    )
+
+    cmap = "YlOrRd"
+    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+
+    for ax, mat, title in zip(axes, [exp_log, sim_log], ["Experimental Hi-C", "Simulated (contact proxy)"]):
+        im = ax.imshow(mat, cmap=cmap, norm=norm, origin="upper", aspect="auto")
+        ax.set_title(title, fontsize=13, fontweight="bold")
+        ax.set_xlabel("Genomic bin", fontsize=11)
+        ax.set_ylabel("Genomic bin", fontsize=11)
+        ax.tick_params(labelsize=9)
+
+    cbar = fig.colorbar(im, ax=axes, fraction=0.025, pad=0.02)
+    cbar.set_label("log(1 + contact)", fontsize=10)
+
+    out_path = os.path.join(save_dir, f"{name}.png")
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    logger.info(f"Saved Hi-C comparison heatmap → {out_path}")

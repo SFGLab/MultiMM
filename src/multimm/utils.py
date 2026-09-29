@@ -168,7 +168,7 @@ def get_coordinates_mm(mm_vec):
 def get_coordinates_cif(file):
     """It returns the coordinate matrix V (N,3) from a .cif/.pdb-like file."""
 
-    logger.info(f"Loading structure file: {file}")
+    logger.debug(f"Loading structure file: {file}")
 
     V = []
 
@@ -197,7 +197,7 @@ def get_coordinates_cif(file):
 
     V = np.array(V)
 
-    logger.info(
+    logger.debug(
         f"Structure loaded: atoms={n_atoms}, "
         f"total_lines={n_lines}, shape={V.shape}"
     )
@@ -233,7 +233,7 @@ def import_bed(
     np.random.seed(seed)
     comps_df = pd.read_csv(bed_file, header=None, sep="\t")
 
-    logger.info("Cleaning and transforming subcompartments dataframe...")
+    logger.debug("Cleaning and transforming subcompartments dataframe...")
 
     # Chromosome selection
     if chrom is not None:
@@ -259,7 +259,7 @@ def import_bed(
 
     # Shift chromosomes
     if chrom is None:
-        logger.info("Applying chromosome offset shifts...")
+        logger.debug("Applying chromosome offset shifts...")
         for count, i in enumerate(chrom_idxs):
             mask = comps_df[0] == chrs[i]
             comps_df.loc[mask, 1] += chrom_ends[count]
@@ -267,7 +267,7 @@ def import_bed(
 
     # Convert to bead space
     resolution = chrom_ends[-1] // N_beads if chrom is None else (coords[1] - coords[0]) // N_beads
-    logger.info(f"Computed resolution: {resolution}")
+    logger.debug(f"Computed resolution: {resolution}")
 
     chrom_ends = np.array(chrom_ends) // resolution
     chrom_ends[-1] = N_beads
@@ -281,7 +281,7 @@ def import_bed(
     comps_df[2] //= resolution
 
     # Build compartment vector (discrete base state)
-    logger.info("Building subcompartments_array...")
+    logger.debug("Building subcompartments_array...")
     comps_array = np.zeros(N_beads, dtype=float)
 
     for i in tqdm(range(len(comps_df))):
@@ -343,7 +343,7 @@ def import_bed(
     np.save(save_path + "metadata/compartments.npy", comps_array)
     np.save(save_path + "metadata/chrom_idxs.npy", chrom_idxs)
 
-    logger.info("Done")
+    logger.debug("Done")
     return comps_array, chrom_ends.astype(int), chrom_idxs.astype(int)
 
 def align_comps(comps, ms, chrom_ends):
@@ -359,14 +359,14 @@ def align_comps(comps, ms, chrom_ends):
 
 
 def integers_to_hex_colors(start, end):
-    logger.info(f"Generating color map: {start} -> {end}")
+    logger.debug(f"Generating color map: {start} -> {end}")
 
     integers = np.arange(start, end + 1)
 
     rgb_colors = plt.cm.rainbow(integers / max(integers))
     hex_colors = [to_hex(color) for color in rgb_colors]
 
-    logger.info(f"Generated {len(hex_colors)} colors")
+    logger.debug(f"Generated {len(hex_colors)} colors")
 
     return hex_colors
 
@@ -376,14 +376,14 @@ def write_chrom_colors(
     chrom_idxs,
     name="MultiMM_chromosome_colors.cmd",
 ):
-    logger.info(f"Writing chromosome color file: {name}")
+    logger.debug(f"Writing chromosome color file: {name}")
 
     colors = integers_to_hex_colors(0, len(chrom_ends) + 1)
 
     content = ""
 
     n_chroms = len(chrom_ends) - 1
-    logger.info(f"Number of chromosome segments: {n_chroms}")
+    logger.debug(f"Number of chromosome segments: {n_chroms}")
 
     for i in range(n_chroms):
         content += f"color {colors[chrom_idxs[i]]} :.{chr(64+1+i)}\n"
@@ -391,7 +391,7 @@ def write_chrom_colors(
     with open(name, "w") as f:
         f.write(content)
 
-    logger.info("Chromosome color file written successfully")
+    logger.debug("Chromosome color file written successfully")
 
 def min_max_trans(x):
     return (x - x.min()) / (x.max() - x.min())
@@ -458,7 +458,7 @@ def import_mns_from_bedpe(
         if chrom is None
         else np.array([0, chrom_sizes[chrom]])
     )
-    logger.info("Cleaning and transforming loops dataframe...")
+    logger.debug("Cleaning and transforming loops dataframe...")
 
     # Sum bigger chromosomes with the maximum values of previous chromosomes
     if chrom is None:
@@ -494,7 +494,7 @@ def import_mns_from_bedpe(
     counts = loops["Total Count"].values
 
     # Filter the ones above the threshold
-    logger.info("Importing loops...")
+    logger.debug("Importing loops...")
     mns, cs = (
         np.vstack(
             (
@@ -530,14 +530,14 @@ def import_mns_from_bedpe(
         ms, ns, cs, ds = downsample_arrays(ms, ns, cs, ds, down_prob)
     
     avg_ls = np.average(ns - ms)
-    logger.info(f"Average loop size: {avg_ls}")
+    logger.debug(f"Average loop size: {avg_ls}")
 
     N_loops = len(ms)
     np.save(path + "metadata/chrom_idxs.npy", chrom_idxs)
     np.save(path + "metadata/ms.npy", ms)
     np.save(path + "metadata/ns.npy", ns)
     np.save(path + "metadata/ds.npy", ds)
-    logger.info(f"Done! Number of loops is {N_loops}")
+    logger.debug(f"Done! Number of loops is {N_loops}")
     return (
         ms.astype(int),
         ns.astype(int),
@@ -600,7 +600,7 @@ def import_bw(
     chrom_idxs = np.arange(n_chroms).astype(int)
     if shuffle:
         np.random.shuffle(chrom_idxs)
-    logger.info(f"Number of chromosomes: {n_chroms}")
+    logger.debug(f"Number of chromosomes: {n_chroms}")
 
     # Compute the total length of chromosomes
     if chrom is None:
@@ -615,7 +615,7 @@ def import_bw(
         np.save(path + "metadata/chrom_lengths.npy", polymer_lengths)
 
     # Import the downgraded signal
-    logger.info("Importing bw signal...")
+    logger.debug("Importing bw signal...")
     if chrom is None:
         genomewide_signal = list()
         for i in tqdm(range(n_chroms)):
@@ -645,7 +645,7 @@ def import_bw(
         nums = np.array(rd.choices([-1, 1], k=n_zeros))
         genomewide_signal[mask] = nums
 
-    logger.info("Done!\n")
+    logger.debug("Done!\n")
 
     # Plotting
     if viz:
@@ -690,14 +690,14 @@ def get_gene_region(gene_tsv, gene_id=None, gene_name=None, window_size=200000):
     if gene_id is not None:
         if gene_id not in genes["gene_id"].values:
             raise ValueError(f"Gene ID '{gene_id}' not found in the provided TSV file.")
-        logger.info("Region will be defined based on gene ID.")
+        logger.debug("Region will be defined based on gene ID.")
         chrom = genes[genes["gene_id"] == gene_id]["chromosome"].values[0]
         start = genes[genes["gene_id"] == gene_id]["start"].values[0]
         end = genes[genes["gene_id"] == gene_id]["end"].values[0]
     elif gene_name is not None:
         if gene_name not in genes["gene_name"].values:
             raise ValueError(f"Gene name '{gene_name}' not found in the provided TSV file.")
-        logger.info("Region will be defined based on gene name.")
+        logger.debug("Region will be defined based on gene name.")
         chrom = genes[genes["gene_name"] == gene_name]["chromosome"].values[0]
         start = genes[genes["gene_name"] == gene_name]["start"].values[0]
         end = genes[genes["gene_name"] == gene_name]["end"].values[0]
@@ -795,3 +795,240 @@ def get_eigenvector(eigenvec_tsv, N_beads, chrom=None, region=None, viz=False):
         plt.xlabel("Genomic Distance")
         plt.show()
     return spins, chrom_ends
+
+
+# =============================================================================
+# General structure / matrix utilities (previously in validation.py)
+# =============================================================================
+
+def standarize(v):
+    """Zero-mean, unit-variance normalisation."""
+    return (v - np.mean(v)) / np.std(v)
+
+
+def structure_to_heatmap(V):
+    """Convert (N, 3) bead coordinates to a contact-like heatmap.
+
+    Returns the inverse-cube of pairwise Euclidean distances, which serves
+    as a contact-frequency proxy: closer beads have higher values.
+    """
+    dist_matrix = distance.cdist(V, V, "euclidean")
+    return 1.0 / (dist_matrix + 1) ** 3 / 2
+
+
+def mean_downsample(V, target_size):
+    """Downsample an (N, 3) coordinate array to (target_size, 3) by moving averages.
+
+    Parameters
+    ----------
+    V : ndarray, shape (N, 3)
+    target_size : int
+
+    Returns
+    -------
+    V_downsampled : ndarray, shape (target_size, 3)
+    """
+    N, dims = V.shape
+    assert dims == 3, "Input array must have shape (N, 3)"
+    assert target_size < N, "target_size must be smaller than N"
+    window_size = N / target_size
+    V_downsampled = np.zeros((target_size, dims))
+    for i in range(target_size):
+        start_idx = int(i * window_size)
+        end_idx = int(min(start_idx + window_size, N))
+        V_downsampled[i] = np.mean(V[start_idx:end_idx], axis=0)
+    return V_downsampled
+
+
+def rescale_matrix(matrix, target_size):
+    """Coarse-grain a square matrix to (target_size, target_size) by index subsampling."""
+    N = matrix.shape[0]
+    indices = np.linspace(0, N - 1, target_size, dtype=int)
+    return matrix[np.ix_(indices, indices)]
+
+
+def remove_zero_rows_and_columns(matrix):
+    """Remove rows and columns that are entirely zero.
+
+    Returns
+    -------
+    matrix : ndarray  — pruned matrix
+    zero_rows : ndarray of int
+    zero_columns : ndarray of int
+    """
+    matrix = np.array(matrix)
+    zero_rows = np.where(~matrix.any(axis=1))[0]
+    zero_columns = np.where(~matrix.any(axis=0))[0]
+    matrix = np.delete(matrix, zero_rows, axis=0)
+    matrix = np.delete(matrix, zero_columns, axis=1)
+    return matrix, zero_rows, zero_columns
+
+
+def remove_diagonals(matrix, n_diag):
+    """Replace the n_diag near-diagonal bands with the matrix mean.
+
+    Parameters
+    ----------
+    matrix : ndarray, square
+    n_diag : int  — number of diagonals (on each side of the main diagonal) to blank
+
+    Returns
+    -------
+    modified_matrix : ndarray
+    """
+    if matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("The input matrix must be square.")
+    mean = np.mean(matrix)
+    modified_matrix = matrix.copy()
+    n = matrix.shape[0]
+    for d in range(n_diag + 1):
+        mask = np.zeros_like(matrix, dtype=bool)
+        for i in range(n):
+            if i + d < n:
+                mask[i, i + d] = True
+                mask[i + d, i] = True
+            if i - d >= 0:
+                mask[i, i - d] = True
+                mask[i - d, i] = True
+        modified_matrix[mask] = mean
+    return modified_matrix
+
+
+def compute_compartments(matrix):
+    """Compartment eigenvectors from a contact or simulated heatmap.
+
+    Computes the Pearson correlation matrix of the input and returns the two
+    dominant eigenvectors (PC1 and PC2), which correspond to A/B compartment
+    identity in Hi-C data.
+
+    Parameters
+    ----------
+    matrix : ndarray, shape (N, N) — symmetric, square
+
+    Returns
+    -------
+    pc1 : ndarray, shape (N,)
+    pc2 : ndarray, shape (N,)
+    """
+    assert matrix.shape[0] == matrix.shape[1], "Matrix must be square"
+    # already_oe=True: skip OE step; the corrcoef inside hic_pc1 handles normalisation
+    return hic_pc1(np.nan_to_num(matrix), already_oe=True, k=2)
+
+
+# =============================================================================
+# Hi-C model validation — distance heatmap and eigenvector correlations
+# =============================================================================
+
+def model_distance_heatmap(coords: np.ndarray) -> np.ndarray:
+    """Pairwise Euclidean distance matrix from (N, 3) bead coordinates.
+
+    Parameters
+    ----------
+    coords : ndarray, shape (N, 3)
+
+    Returns
+    -------
+    D : ndarray, shape (N, N), symmetric distance matrix
+    """
+    return distance.cdist(coords, coords, "euclidean")
+
+
+def average_distance_heatmap(cif_paths: list) -> np.ndarray:
+    """Ensemble-averaged pairwise distance matrix from a list of .cif files.
+
+    Parameters
+    ----------
+    cif_paths : list of str
+        Paths to MultiMM output .cif structure files.
+
+    Returns
+    -------
+    avg_D : ndarray, shape (N, N)
+    """
+    avg = None
+    for path in tqdm(cif_paths, desc="Averaging distance maps"):
+        coords = get_coordinates_cif(path)
+        D = model_distance_heatmap(coords)
+        avg = D if avg is None else avg + D
+    return avg / len(cif_paths)
+
+
+def _pool_matrix(matrix: np.ndarray, target: int) -> np.ndarray:
+    """Resize a square matrix to (target, target) via weighted average pooling.
+
+    Uses the same bin-overlap kernel as read_hic.pool_to_n_beads so that
+    model and Hi-C maps are resampled consistently.
+    """
+    from .read_hic import pool_to_n_beads
+    return pool_to_n_beads(matrix.astype(float), target)
+
+
+def _oe_normalize(hic: np.ndarray) -> np.ndarray:
+    """Observed/Expected normalisation by per-diagonal mean."""
+    N = hic.shape[0]
+    oe = np.zeros_like(hic, dtype=float)
+    for d in range(N):
+        diag = np.diag(hic, d)
+        mean = diag.mean()
+        if mean > 0:
+            normed = diag / mean
+            idx = np.arange(N - d)
+            oe[idx, idx + d] = normed
+            if d:
+                oe[idx + d, idx] = normed
+    return oe
+
+
+def hic_pc1(hic: np.ndarray, already_oe: bool = False, k: int = 1):
+    """Principal components (compartment eigenvectors) of a Hi-C / contact matrix.
+
+    Pipeline: OE normalisation → Pearson correlation matrix → top-k eigenvectors.
+
+    Parameters
+    ----------
+    hic : ndarray, shape (N, N)
+        Raw or OE-normalised contact matrix.
+    already_oe : bool
+        Skip OE normalisation if True.
+    k : int
+        Number of eigenvectors to return.
+
+    Returns
+    -------
+    pc1 : ndarray, shape (N,)  when k == 1
+    (pc1, pc2, ...) : tuple of ndarray  when k > 1
+    """
+    from scipy.sparse.linalg import eigsh
+    H = hic if already_oe else _oe_normalize(hic)
+    H = np.nan_to_num(H)
+    np.fill_diagonal(H, 0)
+    corr = np.nan_to_num(np.corrcoef(H, rowvar=False))
+    _, eigvecs = eigsh(corr, k=k, which="LM")
+    if k == 1:
+        return eigvecs[:, 0]
+    return tuple(eigvecs[:, i] for i in range(k))
+
+
+def distance_pc1(dist_map: np.ndarray) -> np.ndarray:
+    """PC1 of a pairwise distance map.
+
+    Converts distances to a contact proxy (1/d²) before computing the
+    Pearson correlation matrix and extracting the dominant eigenvector.
+
+    Parameters
+    ----------
+    dist_map : ndarray, shape (N, N)
+
+    Returns
+    -------
+    pc1 : ndarray, shape (N,)
+    """
+    from scipy.sparse.linalg import eigsh
+    with np.errstate(divide="ignore", invalid="ignore"):
+        contact = np.where(dist_map > 0, 1.0 / dist_map**2, 0.0)
+    np.fill_diagonal(contact, 0.0)
+    corr = np.nan_to_num(np.corrcoef(contact, rowvar=False))
+    _, eigvecs = eigsh(corr, k=1, which="LM")
+    return eigvecs[:, 0]
+
+

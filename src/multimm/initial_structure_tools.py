@@ -292,6 +292,13 @@ def compute_init_struct(N_beads, mode: InitialStructureType = InitialStructureTy
 def build_init_mmcif(
     n_dna, chrom_ends, psf=True, path="", curve: InitialStructureType = InitialStructureType.HILBERT, scale=5
 ):
+    # chrom_ends must be a numpy array so that arithmetic like `chrom_ends - 1` works element-wise.
+    if not isinstance(chrom_ends, np.ndarray):
+        raise TypeError(
+            f"build_init_mmcif: 'chrom_ends' must be a numpy ndarray, "
+            f"got {type(chrom_ends).__name__}. "
+            "Wrap it with np.asarray(chrom_ends, dtype=int) before calling."
+        )
     # Define the initial coordinates of histones and the structure of DNA
     dna_points = compute_init_struct(n_dna, mode=curve, scale=scale)
     # Write the positions in .mmcif file

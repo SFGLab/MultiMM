@@ -1,16 +1,27 @@
 import logging
 
+from .logger import log_table
+
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.ndimage as ndimage
 import seaborn as sns
-from scipy.sparse.linalg import eigsh
-from scipy.spatial import KDTree, distance
-from scipy.stats import pearsonr
+from scipy.spatial import KDTree
+from scipy.stats import pearsonr, spearmanr
 from sklearn.decomposition import PCA
 from tqdm import tqdm
 
-from .utils import get_coordinates_cif
+from .utils import (
+    get_coordinates_cif,
+    min_max_normalize,
+    standarize,
+    structure_to_heatmap,
+    mean_downsample,
+    rescale_matrix,
+    remove_zero_rows_and_columns,
+    remove_diagonals,
+    compute_compartments,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -228,122 +239,12 @@ def generate_self_avoiding_walk(N, step_size=1.0, max_backtracks=50):
     return walk
 
 
-def structure_to_heatmap(V, use_sparse=False):
-    # Calculate pairwise Euclidean distances
-    dist_matrix = distance.cdist(V, V, "euclidean")
-
-    # Invert distances, avoiding division by zero
-    inv_dist_matrix = 1.0 / (dist_matrix + 1) ** 3 / 2
-
-    return inv_dist_matrix
-
-
-def rescale_matrix(matrix, target_size):
-    # Rescale or coarse-grain the matrix to the target size (nxn)
-    N = matrix.shape[0]
-    indices = np.linspace(0, N - 1, target_size, dtype=int)
-    rescaled_matrix = matrix[np.ix_(indices, indices)]
-    return rescaled_matrix
-
-
-# Preprocessing
-def mean_downsample(V, target_size):
-    """Downsamples a 3D structure from Nx3 to nx3 by computing moving averages.
-
-    Parameters:
-    V (ndarray): The input array of shape (N, 3).
-    target_size (int): The desired number of rows in the downsampled array (n).
-
-    Returns:
-    V_downsampled (ndarray): The downsampled array of shape (n, 3).
-    """
-    N, dims = V.shape
-    assert dims == 3, "Input array must have shape (N, 3)"
-    assert target_size < N, "Target size must be less than the original size"
-
-    # Calculate the window size for downsampling
-    window_size = N / target_size
-
-    # Initialize the downsampled structure
-    V_downsampled = np.zeros((target_size, dims))
-
-    # Compute moving averages for each downsampled point
-    for i in range(target_size):
-        start_idx = int(i * window_size)
-        end_idx = int(min(start_idx + window_size, N))
-        V_downsampled[i] = np.mean(V[start_idx:end_idx], axis=0)
-
-    return V_downsampled
-
-
 def pca_downsample(V, n):
     pca = PCA(n_components=3)
     V_reduced = pca.fit_transform(V)
     indices = np.linspace(0, V_reduced.shape[0] - 1, n, dtype=int)
     V_downgraded = V_reduced[indices, :]
     return V_downgraded
-
-
-def remove_zero_rows_and_columns(matrix):
-    # Convert input to numpy array if it isn't already
-    matrix = np.array(matrix)
-
-    # Find rows where all elements are zero
-    zero_rows = np.where(~matrix.any(axis=1))[0]
-
-    # Find columns where all elements are zero
-    zero_columns = np.where(~matrix.any(axis=0))[0]
-
-    # Remove the zero rows and columns
-    matrix = np.delete(matrix, zero_rows, axis=0)
-    matrix = np.delete(matrix, zero_columns, axis=1)
-
-    return matrix, zero_rows, zero_columns
-
-
-def remove_diagonals(matrix, n_diag):
-    """Removes the specified number of diagonals from a square matrix.
-
-    Parameters:
-    - matrix (np.array): The input square matrix.
-    - n_diag (int): Number of diagonals to remove.
-
-    Returns:
-    - modified_matrix (np.array): Matrix with specified diagonals removed.
-    """
-    if matrix.shape[0] != matrix.shape[1]:
-        raise ValueError("The input matrix must be square.")
-    mean = np.mean(matrix)
-    modified_matrix = matrix.copy()
-
-    # Create a mask for diagonals to be removed
-    n = matrix.shape[0]
-
-    for d in range(n_diag + 1):
-        # Mask for main diagonal and `d` diagonals above and below
-        mask = np.zeros_like(matrix, dtype=bool)
-
-        # Main diagonal and diagonals above and below
-        for i in range(n):
-            if i + d < n:
-                mask[i, i + d] = True  # Diagonals above main
-                mask[i + d, i] = True  # Symmetric diagonals below main
-            if i - d >= 0:
-                mask[i, i - d] = True  # Diagonals below main
-                mask[i - d, i] = True  # Symmetric diagonals above main
-
-        # Remove diagonals by setting them to zero
-        modified_matrix[mask] = mean
-
-    return modified_matrix
-
-
-def minMax(v, Max=1, Min=0):
-    return (Max - Min) * (v - np.min(v)) / (np.max(v) - np.min(v)) + Min
-
-
-def standarize(v):
-    return (v - np.mean(v)) / np.std(v)
 
 
 # Heatmap Comparison
@@ -395,45 +296,6 @@ def analyze_heatmaps(heatmap1, heatmap2, min_distance=1, distance_threshold=1):
     return percentage_common_maxima, correlation
 
 
-# Compute eigenvectors
-def compute_compartments(matrix):
-    """Computes the correlation matrix from a Hi-C contact matrix, performs
-    eigenvalue decomposition, and returns the eigenvector corresponding to the
-    highest eigenvalue.
-
-    Parameters:
-    - matrix: 2D numpy array, the Hi-C contact matrix (should be square and symmetric)
-
-    Returns:
-    - eigenvector: 1D numpy array, the eigenvector corresponding to the highest eigenvalue
-    """
-    # Ensure matrix is symmetric
-    assert matrix.shape[0] == matrix.shape[1], "Matrix must be square"
-    assert np.allclose(matrix, matrix.T), "Matrix is not symmetric"
-
-    # Compute the correlation matrix
-    # Normalizing the matrix (remove diagonal for correlation computation)
-    matrix = np.nan_to_num(matrix)  # Replace NaNs with 0
-    np.fill_diagonal(matrix, 0)  # Remove the diagonal
-
-    # Compute the correlation matrix
-    correlation_matrix = np.corrcoef(matrix, rowvar=False)
-    # correlation_matrix = matrix
-
-    # Perform eigenvalue decomposition
-    eigvals, eigvecs = eigsh(correlation_matrix)
-
-    # Get indices of the top two eigenvalues
-    indices = np.argsort(eigvals)[::-1]  # Sort in descending order
-    top_two_indices = indices[:2]
-
-    # Get the top two eigenvectors
-    eigenvector1 = eigvecs[:, top_two_indices[0]]
-    eigenvector2 = eigvecs[:, top_two_indices[1]]
-
-    return eigenvector1, eigenvector2
-
-
 def compare_matrices(m, mr, exp_m, viz=True):
     # Remove empty rows
     exp_m, rs, cs = remove_zero_rows_and_columns(exp_m)
@@ -444,7 +306,7 @@ def compare_matrices(m, mr, exp_m, viz=True):
 
     # Normalize
     m, mr, exp_m = standarize(m), standarize(mr), standarize(exp_m)
-    m, mr, exp_m = minMax(m), minMax(mr), minMax(exp_m)
+    m, mr, exp_m = min_max_normalize(m), min_max_normalize(mr), min_max_normalize(exp_m)
 
     # Compute Compartments
     eignvec_sim, _ = compute_compartments(m)
@@ -731,16 +593,382 @@ def regions_pipeline(regions_dir, chroms, starts, ends, N_ens=1000):
     plt.show()
 
 
-# Import structures
-sim_path = "/home/skorsak/Data/simulation_results/gw_ens_5M"
-exp_path = "/home/skorsak/Data/Rao"
+# =============================================================================
+# Hi-C model validation — experiment vs. model comparisons
+# =============================================================================
 
-ensemble_pipeline_bars(sim_path, exp_path)
+# ── Low-level metric helpers ──────────────────────────────────────────────────
 
-# # Load data
-# regs_path = '/home/skorsak/Data/simulation_results/ensembles_of_regions'
-# starts = np.load('/home/skorsak/Data/simulation_results/starts.npy')
-# ends = np.load('/home/skorsak/Data/simulation_results/ends.npy')
-# chroms = np.load('/home/skorsak/Data/simulation_results/chroms.npy')
+def _pool_matrix(m: np.ndarray, N: int) -> np.ndarray:
+    """Down-sample or up-sample *m* to an N×N matrix by mean-pooling."""
+    M = m.shape[0]
+    if M == N:
+        return m.astype(float)
+    if M > N:
+        # mean-pool: reshape into (N, block, N, block)
+        block = M // N
+        trimmed = m[: N * block, : N * block]
+        return trimmed.reshape(N, block, N, block).mean(axis=(1, 3))
+    # upsample (simple repeat — rare in practice)
+    factor = N // M
+    return np.repeat(np.repeat(m, factor, axis=0), factor, axis=1).astype(float)
 
-# regions_pipeline(regs_path,chroms,starts,ends)
+
+def diagonal_decay_profile(mat: np.ndarray, max_diag: int | None = None) -> np.ndarray:
+    """Per-diagonal mean contact profile (diagonal decay).
+
+    Parameters
+    ----------
+    mat : ndarray, shape (N, N)
+    max_diag : int, optional
+        Only compute diagonals 1..max_diag.  Defaults to N-1.
+
+    Returns
+    -------
+    profile : ndarray, shape (max_diag,)
+        profile[k] = mean of the k-th super-diagonal.
+    """
+    N = mat.shape[0]
+    if max_diag is None:
+        max_diag = N - 1
+    profile = np.array([np.mean(np.diag(mat, k)) for k in range(1, max_diag + 1)])
+    return profile
+
+
+def insulation_score(mat: np.ndarray, window: int = 10) -> np.ndarray:
+    """Sliding-window insulation score.
+
+    score[i] = mean of the *window* × *window* sub-matrix centred on the
+    diagonal at position i.  Low scores mark TAD boundaries.
+
+    Parameters
+    ----------
+    mat : ndarray, shape (N, N)
+    window : int
+        Half-width of the sliding square (full width = 2*window).
+
+    Returns
+    -------
+    score : ndarray, shape (N,)
+    """
+    N = mat.shape[0]
+    score = np.full(N, np.nan)
+    for i in range(window, N - window):
+        block = mat[i - window : i, i : i + window]
+        score[i] = np.mean(block)
+    return score
+
+
+def oe_matrix(mat: np.ndarray) -> np.ndarray:
+    """Observed / Expected contact matrix (divide each diagonal by its mean)."""
+    N = mat.shape[0]
+    oe = np.zeros_like(mat, dtype=float)
+    for k in range(N):
+        diag = np.diag(mat, k)
+        mean_k = diag.mean()
+        if mean_k > 0:
+            oe_diag = diag / mean_k
+        else:
+            oe_diag = diag
+        idx = np.arange(N - k)
+        oe[idx, idx + k] = oe_diag
+        oe[idx + k, idx] = oe_diag
+    return oe
+
+
+def pc1_of_oe(mat: np.ndarray) -> np.ndarray:
+    """First principal component (PC1) of the O/E-normalised contact matrix.
+
+    The sign convention follows Hi-C practice: PC1 is flipped so that the
+    sign correlates with gene density (positive ↔ A compartment), but since
+    we compare two PC1 vectors the relative sign is still arbitrary; callers
+    should correlate |pc1_sim| with |pc1_exp|, or use the absolute Pearson r.
+
+    Parameters
+    ----------
+    mat : ndarray, shape (N, N)
+
+    Returns
+    -------
+    pc1 : ndarray, shape (N,)
+    """
+    from sklearn.decomposition import PCA
+    oe = oe_matrix(mat)
+    # mean-centre rows
+    oe_c = oe - oe.mean(axis=1, keepdims=True)
+    pca = PCA(n_components=1)
+    pc1 = pca.fit_transform(oe_c)[:, 0]
+    return pc1
+
+
+def inverse_contact_matrix(dist_map: np.ndarray, eps: float = 1e-3) -> np.ndarray:
+    """Convert a pairwise distance matrix to a contact proxy via 1/(d + ε).
+
+    Parameters
+    ----------
+    dist_map : ndarray, shape (N, N)
+    eps : float
+        Regularisation to avoid division by zero.
+
+    Returns
+    -------
+    contact : ndarray, shape (N, N)
+    """
+    return 1.0 / (dist_map + eps)
+
+
+# ── Correlation helpers ───────────────────────────────────────────────────────
+
+def _pearson(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
+    """Pearson r between two 1-D arrays; returns (r, p).  NaN-safe."""
+    mask = np.isfinite(a) & np.isfinite(b)
+    if mask.sum() < 3:
+        return float("nan"), float("nan")
+    r, p = pearsonr(a[mask], b[mask])
+    return float(r), float(p)
+
+
+
+def _spearman(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
+    """Spearman r between two 1-D arrays; returns (r, p).  NaN-safe."""
+    mask = np.isfinite(a) & np.isfinite(b)
+    if mask.sum() < 3:
+        return float("nan"), float("nan")
+    r, p = spearmanr(a[mask], b[mask])
+    return float(r), float(p)
+
+
+def _upper_tri(mat: np.ndarray) -> np.ndarray:
+    """Return flattened upper triangle (k=1) of a square matrix."""
+    idx = np.triu_indices_from(mat, k=1)
+    return mat[idx]
+
+
+# ── Public validation API ─────────────────────────────────────────────────────
+
+def validate_hic_model(
+    cif_path: str,
+    hic_matrix: np.ndarray,
+    insulation_window: int = 10,
+    max_diag: int | None = None,
+    save_path: str | None = None,
+    log=None,
+) -> dict:
+    """Validate a single simulated structure against experimental Hi-C.
+
+    Three metrics are computed between the simulated contact proxy
+    (1/(distance + ε)) and the experimental Hi-C matrix:
+
+    1. **Diagonal decay correlation** — Pearson r between per-diagonal mean
+       contact profiles.  Captures whether the overall distance-decay law of
+       contacts is reproduced.
+    2. **Insulation score correlation** — Pearson r between the sliding-window
+       insulation score vectors.  Measures TAD boundary agreement.
+    3. **PC1 correlation** — Pearson r between the first principal component of
+       the O/E-normalised contact matrices.  Reflects A/B compartmentalisation.
+
+    Parameters
+    ----------
+    cif_path : str
+        Path to a MultiMM output .cif file.
+    hic_matrix : ndarray, shape (M, M)
+        Experimental Hi-C contact matrix (raw counts or normalised).
+    insulation_window : int
+        Half-width of the insulation-score sliding window (in beads).
+    max_diag : int or None
+        How many diagonals to include in the decay profile.  Defaults to N//2.
+    log : logging.Logger, optional
+
+    Returns
+    -------
+    dict with keys:
+        'diag_decay_r', 'diag_decay_p',
+        'insulation_r', 'insulation_p',
+        'pc1_r',        'pc1_p'
+    """
+    from .utils import get_coordinates_cif, model_distance_heatmap
+    _log = log or logger
+
+    coords   = get_coordinates_cif(cif_path)
+    dist_map = model_distance_heatmap(coords)
+    N        = dist_map.shape[0]
+
+    # Resize experimental matrix to match simulation resolution
+    hic_r = _pool_matrix(hic_matrix, N)
+    if max_diag is None:
+        max_diag = N // 2
+
+    # Contact proxy: 1/(d + ε)
+    sim_contact = inverse_contact_matrix(dist_map)
+
+    # ── 1. Diagonal decay ─────────────────────────────────────────────────────
+    sim_decay = diagonal_decay_profile(sim_contact, max_diag)
+    exp_decay = diagonal_decay_profile(hic_r,       max_diag)
+    r_dd, p_dd = _pearson(sim_decay, exp_decay)
+
+    # ── 2. Insulation score ───────────────────────────────────────────────────
+    sim_ins = insulation_score(sim_contact, insulation_window)
+    exp_ins = insulation_score(hic_r,       insulation_window)
+    r_ins, p_ins = _pearson(sim_ins, exp_ins)
+
+    # ── 3. PC1 (A/B compartments) ─────────────────────────────────────────────
+    sim_pc1 = pc1_of_oe(sim_contact)
+    exp_pc1 = pc1_of_oe(hic_r)
+    r_pc1, p_pc1 = _pearson(np.abs(sim_pc1), np.abs(exp_pc1))
+
+    log_table(
+        [
+            ("Diagonal decay r",    f"{r_dd:.4f}  (p={p_dd:.2e})"),
+            ("Insulation score r",  f"{r_ins:.4f}  (p={p_ins:.2e})"),
+            ("|PC1| r",             f"{r_pc1:.4f}  (p={p_pc1:.2e})"),
+        ],
+        title="Hi-C Validation — single structure",
+        log_fn=_log.info,
+    )
+
+    # ── 4. Direct matrix similarity ───────────────────────────────────────────
+    sim_flat = _upper_tri(sim_contact)
+    exp_flat = _upper_tri(hic_r)
+    r_pearson, p_pearson = _pearson(sim_flat, exp_flat)
+    r_spearman, p_spearman = _spearman(sim_flat, exp_flat)
+
+    log_table(
+        [
+            ("Pearson r (matrix)",   f"{r_pearson:.4f}  (p={p_pearson:.2e})"),
+            ("Spearman r (matrix)",  f"{r_spearman:.4f}  (p={p_spearman:.2e})"),
+        ],
+        title="Hi-C Validation — direct similarity",
+        log_fn=_log.info,
+    )
+
+    if save_path is not None:
+        from .plots import plot_hic_comparison
+        import os
+        plots_dir = os.path.join(save_path, "plots")
+        os.makedirs(plots_dir, exist_ok=True)
+        plot_hic_comparison(sim_contact, hic_r, plots_dir, name="hic_comparison_single")
+
+    return {
+        "diag_decay_r": r_dd,      "diag_decay_p": p_dd,
+        "insulation_r": r_ins,     "insulation_p": p_ins,
+        "pc1_r":        r_pc1,     "pc1_p":        p_pc1,
+        "pearson_r":    r_pearson, "pearson_p":    p_pearson,
+        "spearman_r":   r_spearman,"spearman_p":   p_spearman,
+    }
+
+
+def validate_hic_ensemble(
+    cif_paths: list,
+    hic_matrix: np.ndarray,
+    insulation_window: int = 10,
+    max_diag: int | None = None,
+    eps: float = 1e-3,
+    save_path: str | None = None,
+    log=None,
+) -> dict:
+    """Validate an ensemble of simulated structures against experimental Hi-C.
+
+    The simulated contact proxy is the **inverse-average** of distance maps
+    across all trajectory frames:
+
+        C_sim = mean_k[ 1 / (D_k + ε) ]
+
+    This is the standard ensemble-to-contact conversion for polymer simulations.
+    Three metrics are then computed identically to ``validate_hic_model``.
+
+    Parameters
+    ----------
+    cif_paths : list of str
+        Paths to per-frame CIF files from the MD trajectory.
+    hic_matrix : ndarray, shape (M, M)
+        Experimental Hi-C contact matrix.
+    insulation_window : int
+        Half-width of the insulation-score sliding window.
+    max_diag : int or None
+        Number of diagonals in the decay profile.
+    eps : float
+        Regularisation for 1/(d + ε).
+    log : logging.Logger, optional
+
+    Returns
+    -------
+    dict with keys:
+        'diag_decay_r', 'diag_decay_p',
+        'insulation_r', 'insulation_p',
+        'pc1_r',        'pc1_p'
+    """
+    from .utils import get_coordinates_cif, model_distance_heatmap
+    _log = log or logger
+
+    _log.info(f"Computing inverse-average contact map from {len(cif_paths)} frames …")
+    inv_avg = None
+    for path in cif_paths:
+        coords   = get_coordinates_cif(path)
+        dist_map = model_distance_heatmap(coords)
+        inv      = inverse_contact_matrix(dist_map, eps=eps)
+        if inv_avg is None:
+            inv_avg = inv
+        else:
+            inv_avg += inv
+    inv_avg /= len(cif_paths)
+
+    N     = inv_avg.shape[0]
+    hic_r = _pool_matrix(hic_matrix, N)
+    if max_diag is None:
+        max_diag = N // 2
+
+    # ── 1. Diagonal decay ─────────────────────────────────────────────────────
+    sim_decay = diagonal_decay_profile(inv_avg, max_diag)
+    exp_decay = diagonal_decay_profile(hic_r,   max_diag)
+    r_dd, p_dd = _pearson(sim_decay, exp_decay)
+
+    # ── 2. Insulation score ───────────────────────────────────────────────────
+    sim_ins = insulation_score(inv_avg, insulation_window)
+    exp_ins = insulation_score(hic_r,   insulation_window)
+    r_ins, p_ins = _pearson(sim_ins, exp_ins)
+
+    # ── 3. PC1 (A/B compartments) ─────────────────────────────────────────────
+    sim_pc1 = pc1_of_oe(inv_avg)
+    exp_pc1 = pc1_of_oe(hic_r)
+    r_pc1, p_pc1 = _pearson(np.abs(sim_pc1), np.abs(exp_pc1))
+
+    log_table(
+        [
+            ("Frames averaged",     str(len(cif_paths))),
+            ("Diagonal decay r",    f"{r_dd:.4f}  (p={p_dd:.2e})"),
+            ("Insulation score r",  f"{r_ins:.4f}  (p={p_ins:.2e})"),
+            ("|PC1| r",             f"{r_pc1:.4f}  (p={p_pc1:.2e})"),
+        ],
+        title="Hi-C Validation — ensemble",
+        log_fn=_log.info,
+    )
+
+    # ── 4. Direct matrix similarity ───────────────────────────────────────────
+    sim_flat = _upper_tri(inv_avg)
+    exp_flat = _upper_tri(hic_r)
+    r_pearson, p_pearson = _pearson(sim_flat, exp_flat)
+    r_spearman, p_spearman = _spearman(sim_flat, exp_flat)
+
+    log_table(
+        [
+            ("Pearson r (matrix)",   f"{r_pearson:.4f}  (p={p_pearson:.2e})"),
+            ("Spearman r (matrix)",  f"{r_spearman:.4f}  (p={p_spearman:.2e})"),
+        ],
+        title="Hi-C Validation — direct similarity",
+        log_fn=_log.info,
+    )
+
+    if save_path is not None:
+        from .plots import plot_hic_comparison
+        import os
+        plots_dir = os.path.join(save_path, "plots")
+        os.makedirs(plots_dir, exist_ok=True)
+        plot_hic_comparison(inv_avg, hic_r, plots_dir, name="hic_comparison_ensemble")
+
+    return {
+        "diag_decay_r": r_dd,      "diag_decay_p": p_dd,
+        "insulation_r": r_ins,     "insulation_p": p_ins,
+        "pc1_r":        r_pc1,     "pc1_p":        p_pc1,
+        "pearson_r":    r_pearson, "pearson_p":    p_pearson,
+        "spearman_r":   r_spearman,"spearman_p":   p_spearman,
+    }

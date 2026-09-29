@@ -12,6 +12,10 @@ from .initial_structure_tools import build_init_mmcif, write_cmm, write_mmcif_ch
 from .nucleosome_interpolation import NucleosomeInterpolation
 from .utils import *
 from .plots import *
+from .read_hic import read_hic_matrix
+from .hic_force import build_hic_force
+from .validation import validate_hic_model, validate_hic_ensemble
+from .logger import log_table
 
 logger = logging.getLogger(__name__)
 
@@ -116,20 +120,120 @@ class MultiMM:
             else:
                 raise ValueError("Compartments file should be in .bed format.")
 
-        # Loops
-        if str(args.LOOPS_PATH).lower().endswith(".bedpe"):
-            self.ms, self.ns, self.ds, self.chr_ends, self.chrom_idxs = import_mns_from_bedpe(
-                bedpe_file=args.LOOPS_PATH,
-                N_beads=self.args.N_BEADS,
-                coords=coords,
-                chrom=chrom,
-                path=self.save_path,
-                shuffle=args.SHUFFLE_CHROMS,
-                seed=args.SHUFFLING_SEED,
-                down_prob=args.DOWNSAMPLING_PROB,
-            )
+        # Loops (optional)
+        if not _is_empty(args.LOOPS_PATH):
+            if str(args.LOOPS_PATH).lower().endswith(".bedpe"):
+                self.ms, self.ns, self.ds, self.chr_ends, self.chrom_idxs = import_mns_from_bedpe(
+                    bedpe_file=args.LOOPS_PATH,
+                    N_beads=self.args.N_BEADS,
+                    coords=coords,
+                    chrom=chrom,
+                    path=self.save_path,
+                    shuffle=args.SHUFFLE_CHROMS,
+                    seed=args.SHUFFLING_SEED,
+                    down_prob=args.DOWNSAMPLING_PROB,
+                )
+            else:
+                raise ValueError("LOOPS_PATH must point to a .bedpe file.")
         else:
-            raise ValueError("You did not provide appropriate loop file. Loop .bedpe file is obligatory.")
+            if args.LE_USE_HARMONIC_BOND:
+                raise ValueError(
+                    "LE_USE_HARMONIC_BOND=True but no LOOPS_PATH provided. "
+                    "Either supply a loops file or disable LE_USE_HARMONIC_BOND."
+                )
+            logger.info("No loops file provided — loop extrusion force will be skipped.")
+
+        # Ensure chr_ends is always a numpy array (build_init_mmcif does arithmetic on it)
+        if self.chr_ends is not None and not isinstance(self.chr_ends, np.ndarray):
+            self.chr_ends = np.asarray(self.chr_ends, dtype=int)
+            logger.debug("chr_ends converted to numpy array (was list/other sequence).")
+
+        # Fallback chr_ends/chrom_idxs when neither loops nor compartments populated them
+        if self.chr_ends is None:
+            # Single-region or no-data run: treat the whole bead array as one segment
+            self.chr_ends = np.array([0, self.args.N_BEADS])
+            self.chrom_idxs = [0]
+            logger.info(
+                "chr_ends not set by loops or compartments; using single-segment fallback "
+                f"[0, {self.args.N_BEADS}]."
+            )
+
+        # ── validation warnings ───────────────────────────────────────────────
+        if args.HIC_USE_FORCE and _is_empty(args.HIC_PATH):
+            raise ValueError(
+                "HIC_USE_FORCE=True but no HIC_PATH provided. "
+                "Either supply a Hi-C file or set HIC_USE_FORCE=False."
+            )
+        if args.COB_USE_COMPARTMENT_BLOCKS and _is_empty(args.COMPARTMENT_PATH):
+            raise ValueError(
+                "COB_USE_COMPARTMENT_BLOCKS=True but no COMPARTMENT_PATH provided."
+            )
+        if args.SCB_USE_SUBCOMPARTMENT_BLOCKS and _is_empty(args.COMPARTMENT_PATH):
+            raise ValueError(
+                "SCB_USE_SUBCOMPARTMENT_BLOCKS=True but no COMPARTMENT_PATH provided."
+            )
+        if args.IBL_USE_B_LAMINA_INTERACTION and _is_empty(args.COMPARTMENT_PATH):
+            raise ValueError(
+                "IBL_USE_B_LAMINA_INTERACTION=True but no COMPARTMENT_PATH provided."
+            )
+        if (
+            args.HIC_USE_FORCE
+            and not _is_empty(args.LOOPS_PATH)
+            and not _is_empty(args.COMPARTMENT_PATH)
+        ):
+            logger.warning(
+                "Hi-C force, loop extrusion, and compartment blocks are all enabled. "
+                "This combination may over-constrain the simulation — consider whether you need all three."
+            )
+        if not _is_empty(args.CHROM) and _is_empty(args.COMPARTMENT_PATH):
+            logger.warning(
+                "Running chromosome-level simulation without compartment data. "
+                "Consider supplying COMPARTMENT_PATH for better structural accuracy."
+            )
+        if (
+            not _is_empty(args.LOC_START)
+            and _is_empty(args.LOOPS_PATH)
+            and not args.HIC_USE_FORCE
+        ):
+            logger.warning(
+                "Running a TAD/region simulation without loops or Hi-C data. "
+                "The polymer will lack long-range structural constraints."
+            )
+
+        # Hi-C data loading
+        self.hic_matrix = None
+        if not _is_empty(args.HIC_PATH):
+            hic_chrom = chrom if not _is_empty(chrom) else None
+            hic_start = args.LOC_START if args.LOC_START is not None else None
+            hic_end   = args.LOC_END   if args.LOC_END   is not None else None
+            logger.info(f"Loading Hi-C data from {args.HIC_PATH} …")
+            try:
+                region = (hic_start, hic_end) if hic_start is not None and hic_end is not None else None
+                self.hic_matrix, _ = read_hic_matrix(
+                    path=args.HIC_PATH,
+                    chrom=hic_chrom,
+                    N_beads=args.N_BEADS,
+                    region=region,
+                    normalization=args.HIC_NORMALIZATION,
+                    max_gap=args.HIC_MAX_GAP,
+                )
+                nz  = int(np.count_nonzero(self.hic_matrix))
+                tot = int(self.hic_matrix.size)
+                log_table(
+                    [
+                        ("File",          args.HIC_PATH),
+                        ("Shape",         str(self.hic_matrix.shape)),
+                        ("Non-zero",      f"{nz} / {tot}  ({100*nz/tot:.1f}%)"),
+                        ("Normalization", args.HIC_NORMALIZATION),
+                        ("Max gap",       f"{args.HIC_MAX_GAP}%"),
+                    ],
+                    title="Hi-C matrix loaded",
+                    log_fn=logger.info,
+                )
+            except Exception as exc:
+                logger.error(f"Failed to load Hi-C data: {exc}")
+                if args.HIC_USE_FORCE:
+                    raise
 
         # Nucleosomes
         if args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH is not None:
@@ -187,26 +291,18 @@ class MultiMM:
         for _ in range(self.system.getNumParticles()):
             self.ev_force.addParticle()
 
-        logger.info(f"Initializing excluded volume force (mode={mode})")
-
         # 1. DEFAULT: power-law excluded volume (current model)
         if mode == "powerlaw":
 
-            logger.info("Using power-law excluded volume model")
-
             self.ev_force.setEnergyFunction("epsilon*(sigma/(r + r_small))^EV_POWER")
             self.ev_force.addGlobalParameter("EV_POWER", self.args.EV_POWER)
-
-            logger.info(f"EV_POWER = {self.args.EV_POWER}")
+            logger.info(f"Excluded volume: power-law (EV_POWER={self.args.EV_POWER}, sigma={sigma_val:.4f} nm)")
 
         # 2. GAUSSIAN CORE (very soft polymer melt limit)
         elif mode == "gaussian_core":
 
-            logger.info("Using Gaussian-core excluded volume model")
-
             self.ev_force.setEnergyFunction("epsilon * exp(-r^2/(2*sigma^2))")
-
-            logger.info("No additional parameters required for Gaussian-core model")
+            logger.info(f"Excluded volume: Gaussian-core (sigma={sigma_val:.4f} nm)")
 
         else:
             logger.error(f"Unknown EV_FORCE_TYPE: {mode}")
@@ -761,20 +857,15 @@ class MultiMM:
         forcefield = ForceField(self.args.FORCEFIELD_PATH)
         self.system = forcefield.createSystem(self.pdb.topology)
 
-        logger.info(f"Integrator type selected: {self.args.SIM_INTEGRATOR_TYPE}")
-
         match self.args.SIM_INTEGRATOR_TYPE:
 
             case "verlet":
-                logger.info("Using Verlet integrator")
                 self.integrator = mm.VerletIntegrator(self.args.SIM_INTEGRATOR_STEP)
 
             case "variable_verlet":
-                logger.info("Using Variable Verlet integrator")
                 self.integrator = mm.VariableVerletIntegrator(self.SIM_ERROR_TOLERANCE)
 
             case "langevin":
-                logger.info("Using Langevin integrator")
                 self.integrator = mm.LangevinIntegrator(
                     self.args.SIM_TEMPERATURE,
                     self.args.SIM_FRICTION_COEFF,
@@ -782,7 +873,6 @@ class MultiMM:
                 )
 
             case "variable_langevin":
-                logger.info("Using Variable Langevin integrator")
                 self.integrator = mm.VariableLangevinIntegrator(
                     self.args.SIM_TEMPERATURE,
                     self.args.SIM_FRICTION_COEFF,
@@ -790,7 +880,6 @@ class MultiMM:
                 )
 
             case "amd":
-                logger.info("Using AMD integrator")
                 self.integrator = mm.amd.AMDIntegrator(
                     self.args.SIM_INTEGRATOR_STEP,
                     self.args.SIM_AMD_ALPHA,
@@ -798,14 +887,43 @@ class MultiMM:
                 )
 
             case "brownian":
-                logger.info("Using Brownian integrator")
                 self.integrator = mm.BrownianIntegrator(
                     self.args.SIM_TEMPERATURE,
                     self.args.SIM_FRICTION_COEFF,
                     self.args.SIM_INTEGRATOR_STEP,
                 )
 
+        logger.info(f"Integrator: {self.args.SIM_INTEGRATOR_TYPE}")
+
         logger.info("Simulation initialization complete")
+
+    def add_hic_force(self):
+        """Add Hi-C contact-guided force using the pre-loaded hic_matrix."""
+        if self.hic_matrix is None:
+            logger.warning("add_hic_force() called but hic_matrix is None — skipping.")
+            return
+        log_table(
+            [
+                ("Mode",         self.args.HIC_FORCE_MODE),
+                ("Normalization",self.args.HIC_NORMALIZATION),
+                ("K (SVD rank)", self.args.HIC_N_COMPONENTS),
+                ("k_scale",      f"{self.args.HIC_K_SCALE} kJ/mol"),
+                ("Matrix shape", str(self.hic_matrix.shape)),
+            ],
+            title="Hi-C force — parameters",
+            log_fn=logger.info,
+        )
+        force = build_hic_force(
+            H_raw=self.hic_matrix,
+            N_beads=self.args.N_BEADS,
+            r_comp=self.r_comp,
+            mode=self.args.HIC_FORCE_MODE,
+            K=self.args.HIC_N_COMPONENTS,
+            k_scale=self.args.HIC_K_SCALE,
+            already_balanced=True,   # read_hic_matrix already normalises
+        )
+        self.system.addForce(force)
+        logger.info("Hi-C force added.")
 
     def add_forcefield(self):
         """Here we define the forcefield of MultiMM."""
@@ -813,45 +931,52 @@ class MultiMM:
         logger.info("Importing forcefield...")
 
         if self.args.EV_USE_EXCLUDED_VOLUME:
-            logger.info("Adding excluded volume force")
             self.add_evforce()
 
         if self.args.COB_USE_COMPARTMENT_BLOCKS:
-            logger.info("Adding compartment blocks force")
             self.add_compartment_blocks()
 
         if self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
-            logger.info("Adding subcompartment blocks force")
             self.add_subcompartment_blocks()
 
         if self.args.CHB_USE_CHROMOSOMAL_BLOCKS:
-            logger.info("Adding chromosomal blocks force")
             self.add_chromosomal_blocks()
 
         if self.args.SC_USE_SPHERICAL_CONTAINER:
-            logger.info("Adding spherical container force")
             self.add_spherical_container()
 
         if self.args.IBL_USE_B_LAMINA_INTERACTION:
-            logger.info("Adding lamina interaction force")
             self.add_Blamina_interaction()
 
         if self.args.CF_USE_CENTRAL_FORCE:
-            logger.info("Adding central force")
             self.add_central_force()
 
         if self.args.POL_USE_HARMONIC_BOND:
-            logger.info("Adding harmonic bond force")
             self.add_harmonic_bonds()
 
-        if self.args.LE_USE_HARMONIC_BOND:
-            logger.info("Adding loop extrusion force")
+        if self.args.LE_USE_HARMONIC_BOND and self.ms is not None:
             self.add_loops()
 
+        if self.args.HIC_USE_FORCE:
+            self.add_hic_force()
+
         if self.args.POL_USE_HARMONIC_ANGLE:
-            logger.info("Adding angular stiffness force")
             self.add_stiffness()
 
+        active = [
+            ("Excluded volume",       "✓" if self.args.EV_USE_EXCLUDED_VOLUME else "–"),
+            ("Harmonic bonds",        "✓" if self.args.POL_USE_HARMONIC_BOND else "–"),
+            ("Harmonic angles",       "✓" if self.args.POL_USE_HARMONIC_ANGLE else "–"),
+            ("Loop extrusion",        "✓" if (self.args.LE_USE_HARMONIC_BOND and self.ms is not None) else "–"),
+            ("Compartment blocks",    "✓" if self.args.COB_USE_COMPARTMENT_BLOCKS else "–"),
+            ("Subcompartment blocks", "✓" if self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS else "–"),
+            ("Chromosomal blocks",    "✓" if self.args.CHB_USE_CHROMOSOMAL_BLOCKS else "–"),
+            ("Spherical container",   "✓" if self.args.SC_USE_SPHERICAL_CONTAINER else "–"),
+            ("B-lamina interaction",  "✓" if self.args.IBL_USE_B_LAMINA_INTERACTION else "–"),
+            ("Central force",         "✓" if self.args.CF_USE_CENTRAL_FORCE else "–"),
+            ("Hi-C guided force",     "✓" if self.args.HIC_USE_FORCE else "–"),
+        ]
+        log_table(active, title="Forcefield — active terms", log_fn=logger.info)
         logger.info("Forcefield construction complete.")
 
     def min_energy(self):
@@ -890,9 +1015,8 @@ class MultiMM:
             self.state.getPositions(),
             open(self.save_path + "model/MultiMM_minimized.cif", "w"),
         )
-        logger.info(
-            f"--- Energy minimization done!! Executed in {(time.time() - start_time)//3600:.0f} hours, {(time.time() - start_time)%3600//60:.0f} minutes and  {(time.time() - start_time)%60:.0f} seconds. :D ---"
-        )
+        elapsed = time.time() - start_time
+        logger.info(f"Energy minimization complete in {elapsed:.1f}s")
 
     def save_chromosomes(self):
         V = get_coordinates_mm(self.state.getPositions())
@@ -988,9 +1112,7 @@ class MultiMM:
             self.md_history,
             self.save_path
         )
-        logger.info(
-            f"Everything is done! Simulation finished succesfully!\nMD finished in {elapsed//3600:.0f} hours, {elapsed%3600//60:.0f} minutes and  {elapsed%60:.0f} seconds. ---\n"
-        )
+        logger.info(f"MD finished in {elapsed:.1f}s — structure saved to {self.save_path}model/MultiMM_afterMD.cif")
 
     def nuc_interpolation(self):
         logger.info("Running nucleosome interpolation...")
@@ -1007,9 +1129,7 @@ class MultiMM:
         write_mmcif_chrom(Vnuc, path=self.save_path + "model/MultiMM_minimized_with_nucs.cif")
         end = time.time()
         elapsed = end - start
-        logger.info(
-            f"Nucleosome interpolation finished succesfully in {elapsed//3600:.0f} hours, {elapsed%3600//60:.0f} minutes and  {elapsed%60:.0f} seconds."
-        )
+        logger.info(f"Nucleosome interpolation complete in {elapsed:.1f}s")
 
     def set_radiuses(self):
         # --------------------------------------------
@@ -1055,13 +1175,16 @@ class MultiMM:
         self.radius1 = R1
         self.r_comp = r_comp
 
-        logger.info(
-            "[Radiuses] "
-            f"b0={b0:.4f} nm | "
-            f"N={N:.0f} | "
-            f"R1={R1:.4f} nm | "
-            f"R2={R2:.4f} nm | "
-            f"r_comp={r_comp:.4f} nm"
+        log_table(
+            [
+                ("Bead spacing b0",  f"{b0:.4f} nm"),
+                ("N beads",         f"{N:.0f}"),
+                ("R nucleus",       f"{R2:.4f} nm"),
+                ("R nucleolus",     f"{R1:.4f} nm"),
+                ("r_comp",          f"{r_comp:.4f} nm"),
+            ],
+            title="System geometry",
+            log_fn=logger.info,
         )
 
     def make_plots(self):
@@ -1099,7 +1222,7 @@ class MultiMM:
                     name=out_name
                 )
             else:
-                logger.warning("\033[93mHeatmap creation skipped because system is too large for visualization.\033[0m")
+                logger.warning("Heatmap skipped — system is too large for visualization (N_BEADS ≥ 50 000).")
 
             # structure analysis (NEW)
             analyze_structure(
@@ -1240,6 +1363,42 @@ class MultiMM:
         # Run nucleosome interpolation
         if self.args.NUC_DO_INTERPOLATION and self.args.ATACSEQ_PATH is not None:
             self.nuc_interpolation()
+
+        # Hi-C validation — diagonal decay, insulation score, PC1 correlation
+        if self.args.HIC_USE_FORCE and self.hic_matrix is not None:
+            logger.info("Running Hi-C validation …")
+            if self.args.SIM_RUN_MD:
+                # Ensemble validation: use all saved MD frames
+                n_frames = self.args.SIM_N_STEPS // self.args.SIM_SAMPLING_STEP
+                frame_paths = [
+                    self.save_path + f"md_frames/frame_{i+1}.cif"
+                    for i in range(n_frames)
+                    if os.path.isfile(self.save_path + f"md_frames/frame_{i+1}.cif")
+                ]
+                if frame_paths:
+                    metrics = validate_hic_ensemble(frame_paths, self.hic_matrix, save_path=self.save_path, log=logger)
+                else:
+                    logger.warning("No MD frame files found — falling back to minimized structure.")
+                    metrics = validate_hic_model(
+                        self.save_path + "model/MultiMM_minimized.cif",
+                        self.hic_matrix, save_path=self.save_path, log=logger,
+                    )
+            else:
+                metrics = validate_hic_model(
+                    self.save_path + "model/MultiMM_minimized.cif",
+                    self.hic_matrix, save_path=self.save_path, log=logger,
+                )
+            np.save(self.save_path + "metadata/hic_validation.npy", metrics)
+            log_table(
+                [
+                    ("Diagonal decay r",   f"{metrics['diag_decay_r']:.4f}  (p={metrics['diag_decay_p']:.2e})"),
+                    ("Insulation score r", f"{metrics['insulation_r']:.4f}  (p={metrics['insulation_p']:.2e})"),
+                    ("|PC1| r",            f"{metrics['pc1_r']:.4f}  (p={metrics['pc1_p']:.2e})"),
+                    ("Saved to",           self.save_path + "metadata/hic_validation.npy"),
+                ],
+                title="Hi-C validation summary",
+                log_fn=logger.info,
+            )
 
         save_args_to_txt(self.args, self.args.OUT_PATH + "/metadata/parameters.txt")
 
