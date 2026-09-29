@@ -99,6 +99,19 @@ class SimulationConfig(BaseModel):
         "validate_default": True,
     }
 
+    @model_validator(mode="after")
+    def warn_hic_k_scale(self) -> "SimulationConfig":
+        """Emit a runtime warning when HIC_K_SCALE is outside the recommended range."""
+        k = self.HIC_K_SCALE
+        if k > 200.0:
+            logger.warning(
+                "HIC_K_SCALE=%.1f is above the recommended maximum of 200 kJ/mol. "
+                "Very high values can over-constrain the polymer, reduce conformational "
+                "diversity, and cause MD instability. Consider reducing to 10–200.",
+                k,
+            )
+        return self
+
     @model_validator(mode="before")
     @classmethod
     def clean_fields(cls, data: Any) -> Any:
@@ -173,21 +186,40 @@ class SimulationConfig(BaseModel):
         default=False,
         description="Apply Hi-C contact-guided force to the simulation.",
     )
-    HIC_FORCE_MODE: str = Field(
-        default="svd",
-        description="Hi-C force functional form. Options: svd (default), svd_multiscale, crossentropy.",
-    )
     HIC_NORMALIZATION: str = Field(
         default="KR",
         description="Hi-C matrix normalisation method. Options: KR (default), VC, VC_SQRT, NONE.",
     )
-    HIC_N_COMPONENTS: int = Field(
-        default=5,
-        description="Number of SVD components used in svd / svd_multiscale mode.",
-    )
     HIC_K_SCALE: float = Field(
-        default=130.0,
-        description="Global energy scale for Hi-C force [kJ/mol].",
+        default=20.0,
+        description=(
+            "Global energy scale for the Hi-C cross-entropy force [kJ/mol].  "
+            "Recommended range: 5–20 kJ/mol.  "
+            "The sigmoid wells become very stiff at high k; "
+            "values above 30 kJ/mol shrink thermal fluctuations to <0.1 Å and freeze MD.  "
+            "Values above 200 trigger a runtime warning."
+        ),
+    )
+    HIC_ALPHA: float = Field(
+        default=3.0,
+        description=(
+            "Steepness of the contact-probability sigmoid  "
+            "P(r) = 1 / (1 + (r/r_c)^alpha).  "
+            "Controls how sharply the force transitions between attraction and repulsion "
+            "at the contact radius r_c.  "
+            "Lower values (2) give a broad, gradual transition; higher values (4–6) "
+            "give a sharper, TAD-like step.  Recommended range: 2–4."
+        ),
+    )
+    HIC_THRESHOLD: float = Field(
+        default=0.01,
+        description=(
+            "Minimum normalised contact value c_ij to include a bond in the force.  "
+            "Pairs below this value are ignored, keeping the bond list sparse.  "
+            "Lower values add more bonds (denser, slower); higher values prune weak contacts "
+            "(sparser, faster but may miss distal interactions).  "
+            "Recommended range: 0.005–0.05."
+        ),
     )
     HIC_MAX_GAP: int = Field(
         default=10,
@@ -292,7 +324,14 @@ class SimulationConfig(BaseModel):
         default=False, description="Sets initial velocities based on Boltzmann distribution"
     )
     SIM_TEMPERATURE: OpenMMQuantity = Field(default="310 kelvin", description="Simulation temperature")
-    TRJ_FRAMES: int = Field(default=2000, description="Number of trajectory frames to save.")
+    TRJ_FRAMES: int | None = Field(
+        default=None,
+        description=(
+            "Number of CIF frames to save during MD.  When set, SIM_SAMPLING_STEP is "
+            "overridden to SIM_N_STEPS // TRJ_FRAMES so that exactly TRJ_FRAMES "
+            "structures are written.  When None, SIM_SAMPLING_STEP is used as-is."
+        ),
+    )
 
     EV_FORCE_TYPE: str = Field(
         default="powerlaw",

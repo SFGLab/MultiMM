@@ -901,14 +901,18 @@ def plot_hic_comparison(
     name: str = "hic_comparison",
     low_percentile: float = 1.0,
     high_percentile: float = 99.0,
+    rw_matrix: "np.ndarray | None" = None,
 ) -> None:
     """Save a side-by-side heatmap figure comparing simulated vs. experimental Hi-C.
 
-    Each matrix is log1p-transformed then independently normalised to its own
-    [low_percentile, high_percentile] range before display.  Independent
-    normalisation is critical: a shared colour scale causes the simulated map
-    to appear washed-out because the experimental matrix contains sharp diagonal
-    and TAD-corner hot spots with much higher absolute values.
+    When *rw_matrix* is supplied a third panel is added showing the random-walk
+    ensemble contact map, providing a null-model baseline for visual comparison.
+
+    Each matrix is log1p-transformed then OE-normalised and independently
+    clipped to its own [low_percentile, high_percentile] range before display.
+    Independent normalisation is critical: a shared colour scale causes the
+    simulated map to appear washed-out because the experimental matrix contains
+    sharp diagonal and TAD-corner hot spots with much higher absolute values.
 
     Parameters
     ----------
@@ -925,6 +929,9 @@ def plot_hic_comparison(
         Lower percentile for per-matrix colour clipping (removes dark background bias).
     high_percentile : float
         Upper percentile for per-matrix colour clipping (avoids saturation from hot spots).
+    rw_matrix : ndarray, shape (N, N) or None
+        Optional random-walk ensemble contact map.  When provided a third panel
+        is added to the figure labelled "Random Walk (null model)".
     """
     import os
     import numpy as np
@@ -945,7 +952,18 @@ def plot_hic_comparison(
     # and Pearson r between simulated and experimental maps.
     sim_log = _oe_normalize(sim_log)
     exp_log = _oe_normalize(exp_log)
-    logger.info("Applied OE normalisation to both sim and exp matrices for comparison")
+
+    matrices = [exp_log, sim_log]
+    titles   = ["Experimental Hi-C", "Simulated (contact proxy)"]
+
+    if rw_matrix is not None:
+        rw_log = np.log1p(rw_matrix)
+        rw_log = _oe_normalize(rw_log)
+        matrices.append(rw_log)
+        titles.append("Random Walk (null model)")
+        logger.info("Applied OE normalisation to sim, exp, and RW matrices for comparison")
+    else:
+        logger.info("Applied OE normalisation to both sim and exp matrices for comparison")
 
     def _normalise(m: np.ndarray) -> np.ndarray:
         """Clip to [low, high] percentile and rescale to [0, 1]."""
@@ -954,24 +972,26 @@ def plot_hic_comparison(
         hi = float(np.percentile(finite, high_percentile))
         return np.clip((m - lo) / (hi - lo + 1e-10), 0.0, 1.0)
 
-    sim_norm = _normalise(sim_log)
-    exp_norm = _normalise(exp_log)
+    normed = [_normalise(m) for m in matrices]
+
+    n_panels  = len(normed)
+    fig_width = 6 * n_panels   # 12 for 2 panels, 18 for 3
 
     fig, axes = plt.subplots(
-        1, 2,
-        figsize=(12, 5),
+        1, n_panels,
+        figsize=(fig_width, 5),
         dpi=150,
         constrained_layout=True,
     )
 
+    if n_panels == 1:
+        axes = [axes]
+
     cmap = "YlOrRd"
     norm = mcolors.Normalize(vmin=0.0, vmax=1.0)
 
-    for ax, mat, title in zip(
-        axes,
-        [exp_norm, sim_norm],
-        ["Experimental Hi-C", "Simulated (contact proxy)"],
-    ):
+    im = None
+    for ax, mat, title in zip(axes, normed, titles):
         im = ax.imshow(mat, cmap=cmap, norm=norm, origin="upper", aspect="auto")
         ax.set_title(title, fontsize=13, fontweight="bold")
         ax.set_xlabel("Genomic bin", fontsize=11)

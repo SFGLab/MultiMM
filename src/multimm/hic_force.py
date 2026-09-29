@@ -1,25 +1,19 @@
 """
-hic_force.py  —  Hi-C-guided force fields for MultiMM / OpenMM
+hic_force.py  —  Hi-C cross-entropy force for MultiMM / OpenMM
 ===============================================================
 
-Organised in four clearly-separated layers:
+Organised in three clearly-separated layers:
 
   Layer 1 — Pre-processing   (pure numpy, no OpenMM)
       symmetrize_and_clean()
       diagonal_normalize()
-      compute_oe_matrix()
       resize_matrix()
 
-  Layer 2 — Decomposition    (pure numpy, no OpenMM)
-      svd_decompose()
+  Layer 2 — OpenMM force builder
+      build_crossentropy_force()  → sparse CustomBondForce
 
-  Layer 3 — OpenMM force builders   (return mm.Force objects)
-      build_svd_force()
-      build_crossentropy_force()
-
-  Layer 4 — Public entry point
-      build_hic_force()  — cleans → resizes → normalises → decomposes
-                           → dispatches to the right builder
+  Layer 3 — Public entry point
+      build_hic_force()  — cleans → resizes → normalises → builds force
 
 All layers emit structured log messages through the module logger
 (see logger.py for setup).
@@ -29,14 +23,13 @@ Usage in model.py
     from hic_force import build_hic_force
 
     force = build_hic_force(args.hic_matrix, N_beads=self.N,
-                            r_comp=self.r_beads * 3, mode='svd')
+                            r_comp=self.r_comp)
     self.system.addForce(force)
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Literal, Tuple
 
 import numpy as np
 from scipy.ndimage import zoom
@@ -133,50 +126,6 @@ def diagonal_normalize(H: np.ndarray, n_iter: int = 50) -> np.ndarray:
     return H
 
 
-def compute_oe_matrix(H: np.ndarray, pseudocount: float = 1e-6) -> np.ndarray:
-    """
-    Compute the log Observed / Expected (O/E) matrix.
-
-        OE[i, j] = log( H[i, j] / E[i, j] )
-
-    where E[i, j] is the genome-wide mean contact frequency at genomic
-    separation |i − j|, capturing the expected polymer distance-decay.
-
-    Values in ℝ:  positive → attraction,  negative → repulsion.
-    The main diagonal is set to 0.
-
-    Parameters
-    ----------
-    H           : (N, N) ndarray — balanced contact matrix
-    pseudocount : small constant added before the log to avoid log(0)
-
-    Returns
-    -------
-    OE : (N, N) ndarray, float64
-    """
-    N = H.shape[0]
-    log.info("compute_oe_matrix: N=%d, pseudocount=%.1e", N, pseudocount)
-
-    H = H.copy() + pseudocount
-
-    # vectorised per-diagonal means (expected contact at each separation)
-    expected = np.ones(N, dtype=np.float64)
-    for k in range(1, N):
-        diag_vals  = np.diagonal(H, offset=k)
-        expected[k] = diag_vals.mean() if diag_vals.size else 1.0
-
-    idx = np.arange(N)
-    sep = np.abs(idx[:, None] - idx[None, :])      # (N, N) separation matrix
-    E   = expected[sep]                             # (N, N) expected matrix
-
-    OE  = np.log(H / E)
-    np.fill_diagonal(OE, 0.0)
-
-    log.debug("  OE  min=%.3f  max=%.3f  mean=%.3f",
-              OE.min(), OE.max(), OE.mean())
-    return OE
-
-
 def resize_matrix(H: np.ndarray, N_target: int) -> np.ndarray:
     """
     Bilinear resampling of a square Hi-C matrix to a new resolution.
@@ -212,297 +161,8 @@ def resize_matrix(H: np.ndarray, N_target: int) -> np.ndarray:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Layer 2 — SVD decomposition  (pure numpy)
+# Layer 2 — Cross-entropy force builder
 # ═════════════════════════════════════════════════════════════════════════════
-
-def svd_decompose(
-    H_oe : np.ndarray,
-    K    : int = 10,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Truncated eigendecomposition of the symmetric O/E matrix.
-
-    Because H_oe is symmetric, SVD reduces to eigendecomposition:
-
-        H_oe  ≈  Σ_{k=1}^{K}  λ_k · v_k · v_k^T
-
-    The K components with the **largest |λ_k|** are retained.
-
-    Per-particle scalars that encode both sign and magnitude:
-
-        a_k(i) = sign(λ_k) · √|λ_k| · v_k(i)
-
-    so that  a_k(i) · a_k(j) = sign(λ_k) · |λ_k| · v_k(i) · v_k(j),
-    and the sum Σ_k a_k(i)·a_k(j) reconstructs H_oe[i,j] exactly for K=N.
-
-    Parameters
-    ----------
-    H_oe : (N, N) ndarray — O/E matrix (symmetric)
-    K    : number of eigenvectors to retain
-
-    Returns
-    -------
-    lam  : (K,) eigenvalues, sorted by |λ| descending
-    vecs : (N, K) eigenvectors (columns)
-    A    : (N, K) per-particle parameter matrix  a_k(i)
-    """
-    N = H_oe.shape[0]
-    K = min(K, N - 1)
-    log.info("svd_decompose: N=%d, K=%d", N, K)
-
-    eigvals, eigvecs = np.linalg.eigh(H_oe)       # ascending order
-    order            = np.argsort(np.abs(eigvals))[::-1][:K]
-    lam              = eigvals[order]              # (K,)
-    vecs             = eigvecs[:, order]           # (N, K)
-
-    signs  = np.sign(lam)
-    scales = np.sqrt(np.abs(lam))
-    A      = vecs * (signs * scales)[None, :]     # (N, K)
-
-    # Normalise so that the maximum self-dot-product (= diagonal of rank-K approx)
-    # equals 1.  This makes k_scale directly control the energy ceiling in kJ/mol.
-    diag_vals = np.sum(A ** 2, axis=1)           # (N,)  A[i]·A[i] per bead
-    max_diag  = diag_vals.max()
-    explained = np.abs(lam).sum() / np.abs(eigvals).sum() * 100
-    if max_diag > 0:
-        A /= np.sqrt(max_diag)
-        log_table(
-            [
-                ("N",                  N),
-                ("K retained",         K),
-                ("Variance explained", f"{explained:.1f}%"),
-                ("A normalised by √",  f"{max_diag:.4g}"),
-                ("Max self-dot-prod",  "1.0"),
-                ("λ[:5]",             str(np.round(lam[:5], 4))),
-            ],
-            title="SVD decomposition",
-            log_fn=log.info,
-        )
-    else:
-        log.warning("  A matrix is all-zero after decomposition — Hi-C force will have no effect")
-    return lam, vecs, A
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Per-component σ helpers  (used by multi-scale SVD)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def compute_sigma_eigenvalue(
-    eigvals  : np.ndarray,
-    sigma_max: float,
-    beta     : float = 0.5,
-) -> np.ndarray:
-    """
-    Assign per-component length scales from eigenvalue magnitudes.
-
-        σ_k = σ_max · (|λ_k| / |λ_1|)^β
-
-    Larger eigenvalues → larger spatial scale.  β = 0.5 is a sensible
-    default; reduce it to compress the range, increase it to spread it.
-
-    Parameters
-    ----------
-    eigvals   : (K,) eigenvalues sorted by |λ| descending (from svd_decompose)
-    sigma_max : length scale for the dominant component [nm]
-    beta      : power-law exponent (default 0.5)
-
-    Returns
-    -------
-    sigmas : (K,) per-component length scales [nm], descending
-    """
-    ratios = np.abs(eigvals) / (np.abs(eigvals[0]) + 1e-12)
-    sigmas = sigma_max * np.power(ratios, beta)
-    log.debug("compute_sigma_eigenvalue: σ range [%.3f, %.3f] nm",
-              sigmas[-1], sigmas[0])
-    return sigmas
-
-
-def compute_sigma_autocorr(
-    vecs  : np.ndarray,
-    r_bead: float,
-    nu    : float = 1.0 / 3.0,
-) -> np.ndarray:
-    """
-    Assign per-component length scales from eigenvector autocorrelation lengths.
-
-    The genomic autocorrelation length of v_k is the weighted mean separation:
-
-        ξ_k = Σ_s  s · |ρ_k(s)|  /  Σ_s |ρ_k(s)|
-
-    where ρ_k(s) = mean( v_k(i) · v_k(i+s) ) over all i.
-
-    Converted to 3D via polymer scaling:
-
-        σ_k = r_bead · ξ_k^ν
-
-    with ν = 1/3 for a fractal/compact globule (default) or 1/2 for an
-    ideal chain.
-
-    Parameters
-    ----------
-    vecs   : (N, K) eigenvectors, columns from svd_decompose()
-    r_bead : bead radius / unit length [nm]
-    nu     : polymer scaling exponent
-
-    Returns
-    -------
-    sigmas : (K,) per-component length scales [nm]
-    """
-    N, K   = vecs.shape
-    sigmas = np.zeros(K)
-    seps   = np.arange(1, N, dtype=np.float64)   # separations 1 … N-1
-
-    for k in range(K):
-        v       = vecs[:, k]
-        # vectorised: autocorrelation at each separation s in one pass
-        rho     = np.array([np.mean(v[:N - s] * v[s:]) for s in range(1, N)])
-        abs_rho = np.abs(rho)
-        total   = abs_rho.sum()
-        xi_k    = (seps * abs_rho).sum() / (total + 1e-12)
-        sigmas[k] = r_bead * (xi_k ** nu)
-
-    log.debug("compute_sigma_autocorr: σ range [%.3f, %.3f] nm",
-              sigmas.min(), sigmas.max())
-    return sigmas
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# Layer 3 — OpenMM force builders
-# ═════════════════════════════════════════════════════════════════════════════
-
-def build_svd_force(
-    A           : np.ndarray,
-    r_comp      : float,
-    k_scale     : float = 1.0,
-    force_group : int   = 1,
-) -> mm.CustomNonbondedForce:
-    """
-    Construct a CustomNonbondedForce from the SVD parameter matrix *A*.
-
-    Physics
-    -------
-    Given the per-particle matrix A  (shape N × K, from svd_decompose),
-    the pairwise energy is:
-
-        U(i, j; r) = −k_scale · [Σ_{k=1}^{K} a_k(i) · a_k(j)] · g(r)
-
-    where g(r) = exp(−r² / (2σ²)),  σ = r_comp / 3,  cutoff at 3σ.
-
-    Same-type beads (A or B compartment) accumulate a positive dot product
-    → attractive;  opposite types → repulsive.  This is the rank-K
-    generalisation of the existing compartment-block force in MultiMM.
-
-    Parameters
-    ----------
-    A           : (N_beads, K) ndarray — output of svd_decompose()
-    r_comp      : compartment length scale [nm]; sets σ = r_comp / 3
-    k_scale     : global energy scale [kJ/mol]
-    force_group : OpenMM force-group index
-
-    Returns
-    -------
-    force : mm.CustomNonbondedForce
-    """
-    N_beads, K = A.shape
-    sigma  = r_comp / 3.0
-    cutoff = 3.0 * sigma
-
-    log.info("build_svd_force: N=%d, K=%d, σ=%.3f nm, cutoff=%.3f nm",
-             N_beads, K, sigma, cutoff)
-
-    # energy expression: inner product of K-dim vectors, Gaussian envelope
-    dot_terms  = " + ".join(f"h{k+1}1*h{k+1}2" for k in range(K))
-    expression = f"-hic_k * ({dot_terms}) * exp(-r^2 / (2*hic_sigma^2))"
-
-    force = mm.CustomNonbondedForce(expression)
-    force.addGlobalParameter("hic_k",     k_scale)
-    force.addGlobalParameter("hic_sigma", sigma)
-
-    for k in range(K):
-        force.addPerParticleParameter(f"h{k+1}")
-
-    for i in range(N_beads):
-        force.addParticle(list(A[i]))             # K per-particle values
-
-    # NoCutoff: the Gaussian exp(-r²/2σ²) already decays to ~0 beyond the cutoff
-    # distance, so a hard cutoff is unnecessary and would conflict with other
-    # CustomNonbondedForce instances that use NoCutoff (required by OpenCL/CUDA).
-    force.setNonbondedMethod(mm.CustomNonbondedForce.NoCutoff)
-    force.setForceGroup(force_group)
-
-    log.info("  SVD force ready  (%d particles, %d parameters/particle)",
-             N_beads, K)
-    return force
-
-
-def build_svd_force_multiscale(
-    A           : np.ndarray,
-    sigmas      : np.ndarray,
-    k_scale     : float = 1.0,
-    force_group : int   = 1,
-) -> mm.CustomNonbondedForce:
-    """
-    Multi-scale SVD force: each eigenvector gets its own Gaussian σ_k.
-
-    Physics
-    -------
-        U(i, j; r) = −k_scale · Σ_k  a_k(i)·a_k(j) · exp(−r² / (2σ_k²))
-
-    Each component k acts at its own 3D length scale σ_k:
-      k=1 (compartments) → large σ → long-range
-      k~5 (TADs)         → medium σ
-      k>>5 (loops)       → small σ → short tether
-
-    The cutoff is set to 3·σ_1 (longest-range component); shorter
-    components decay naturally within that envelope.
-
-    Parameters
-    ----------
-    A           : (N_beads, K) ndarray — from svd_decompose()
-    sigmas      : (K,) per-component length scales [nm], descending
-                  Use compute_sigma_eigenvalue() or compute_sigma_autocorr()
-    k_scale     : global energy scale [kJ/mol]
-    force_group : OpenMM force-group index
-
-    Returns
-    -------
-    force : mm.CustomNonbondedForce
-    """
-    N_beads, K = A.shape
-    if len(sigmas) != K:
-        raise ValueError(f"sigmas length ({len(sigmas)}) must match K={K}")
-
-    cutoff = 3.0 * float(sigmas[0])          # dominated by longest-range σ
-
-    log.info("build_svd_force_multiscale: N=%d, K=%d, cutoff=%.3f nm",
-             N_beads, K, cutoff)
-    log.info("  σ: [%s] nm",
-             ", ".join(f"{s:.3f}" for s in sigmas))
-
-    # one Gaussian term per component, each with its own global sigma
-    terms      = " + ".join(
-        f"h{k+1}1*h{k+1}2*exp(-r^2/(2*hic_sigma_{k+1}^2))"
-        for k in range(K)
-    )
-    expression = f"-hic_k * ({terms})"
-
-    force = mm.CustomNonbondedForce(expression)
-    force.addGlobalParameter("hic_k", k_scale)
-    for k in range(K):
-        force.addGlobalParameter(f"hic_sigma_{k+1}", float(sigmas[k]))
-    for k in range(K):
-        force.addPerParticleParameter(f"h{k+1}")
-    for i in range(N_beads):
-        force.addParticle(list(A[i]))
-
-    # NoCutoff: Gaussian terms decay naturally; avoids cutoff-method mismatch on OpenCL/CUDA.
-    force.setNonbondedMethod(mm.CustomNonbondedForce.NoCutoff)
-    force.setForceGroup(force_group)
-
-    log.info("  multi-scale SVD force ready  (%d particles, %d components)",
-             N_beads, K)
-    return force
-
 
 def build_crossentropy_force(
     C           : np.ndarray,
@@ -576,9 +236,6 @@ def build_crossentropy_force(
                     "checking matrix normalisation")
 
     # ── calibration diagnostics ──────────────────────────────────────────────
-    # The force formula is F_ij = k_scale·α/r·(c_ij − P(r)).
-    # At large r (P≈0): F ≈ k_scale·α·c_ij/r  (attractive).
-    # Typical force per bond at a 1 nm inter-bead separation:
     f_typical = k_scale * alpha * float(c_vals.mean()) / 1.0   # kJ/mol/nm
     bonds_per_bead = 2.0 * n_bonds / N_beads
     log.info(
@@ -588,13 +245,21 @@ def build_crossentropy_force(
         k_scale, alpha, float(c_vals.mean()),
         f_typical, bonds_per_bead, f_typical * bonds_per_bead,
     )
-    # kT ≈ 2.49 kJ/mol at 300 K; warn if total force per bead < ~10 kT/nm
     if f_typical * bonds_per_bead < 25.0:
         log.warning(
             "  Hi-C cross-entropy force may be too weak to drive folding "
             "(total force/bead < 10 kT/nm at 1 nm).  Consider increasing "
             "HIC_K_SCALE (current %.2f kJ/mol); 5–20 kJ/mol is typical.",
             k_scale,
+        )
+    elif k_scale > 30.0:
+        log.warning(
+            "  HIC_K_SCALE=%.2f kJ/mol is very high for crossentropy mode.  "
+            "The effective spring constant at equilibrium is ~%.0f kJ/mol/nm², "
+            "shrinking thermal fluctuations to <0.1 Å and freezing MD sampling.  "
+            "For crossentropy, use HIC_K_SCALE in the 5–20 kJ/mol range.",
+            k_scale,
+            k_scale * alpha ** 2 * 0.25 / (r_comp ** 2),
         )
 
     # OpenMM expression  — note: OpenMM's parser uses `x^y`, not `pow(x, y)`
@@ -619,25 +284,21 @@ def build_crossentropy_force(
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Layer 4 — Public entry point
+# Layer 3 — Public entry point
 # ═════════════════════════════════════════════════════════════════════════════
 
 def build_hic_force(
     H_raw            : np.ndarray,
     N_beads          : int,
     r_comp           : float,
-    mode             : Literal["svd", "svd_multiscale", "crossentropy"] = "svd",
-    K                : int   = 10,
     threshold        : float = 0.01,
     alpha            : float = 3.0,
     k_scale          : float = 1.0,
     force_group      : int   = 1,
     already_balanced : bool  = False,
-    sigma_beta       : float = 0.5,
-    r_bead           : float = None,
-) -> mm.Force:
+) -> mm.CustomBondForce:
     """
-    Full pipeline: raw Hi-C array → OpenMM Force object.
+    Full pipeline: raw Hi-C array → sparse CrossEntropy force.
 
     Pipeline
     --------
@@ -645,89 +306,43 @@ def build_hic_force(
       │  symmetrize_and_clean()
       │  resize_matrix()              ← to N_beads × N_beads
       │  diagonal_normalize()         ← skip if already_balanced=True
-      │
-      ├─ mode='svd'
-      │    compute_oe_matrix()
-      │    svd_decompose()            → A  (N × K)
-      │    build_svd_force(A)         → CustomNonbondedForce, single σ
-      │
-      ├─ mode='svd_multiscale'
-      │    compute_oe_matrix()
-      │    svd_decompose()            → lam, vecs, A
-      │    compute_sigma_eigenvalue() → sigmas (K,)   [fast, default]
-      │    compute_sigma_autocorr()   → sigmas (K,)   [if r_bead given]
-      │    build_svd_force_multiscale → CustomNonbondedForce, per-component σ
-      │
-      └─ mode='crossentropy'
-           build_crossentropy_force(C) → sparse CustomBondForce
+      └─ build_crossentropy_force()   → sparse CustomBondForce
 
     Parameters
     ----------
     H_raw            : (M, M) ndarray — raw Hi-C counts (any resolution).
                        Resampled to N_beads × N_beads if M ≠ N_beads.
     N_beads          : number of simulation beads.
-    r_comp           : compartment / contact length scale [nm].
-                       All SVD modes: σ_max = r_comp (single) or dominant σ.
-                       CrossEntropy: r_c of the sigmoid.
-    mode             : 'svd'           → single-σ CustomNonbondedForce
-                       'svd_multiscale'→ per-component σ CustomNonbondedForce
-                       'crossentropy'  → sparse CustomBondForce
-    K                : (SVD modes) rank of eigendecomposition.
-    threshold        : (crossentropy) minimum normalised c_ij for a bond.
-    alpha            : (crossentropy) sigmoid steepness (2–4 typical).
+    r_comp           : sigmoid contact radius r_c [nm].
+    threshold        : minimum normalised c_ij to add a bond.
+    alpha            : sigmoid steepness (2–4 typical).
     k_scale          : global energy scale [kJ/mol].
+                       Recommended range: 5–20 kJ/mol.
+                       Values > 30 kJ/mol freeze MD sampling (runtime warning).
     force_group      : OpenMM force-group index.
     already_balanced : True → skip diagonal_normalize().
-    sigma_beta       : (svd_multiscale) exponent for eigenvalue-based σ scaling.
-                       Ignored if r_bead is provided (autocorr method used instead).
-    r_bead           : (svd_multiscale, optional) bead radius [nm].
-                       When given, uses autocorrelation-based σ (more principled).
-                       When None, uses eigenvalue-based σ (faster).
 
     Returns
     -------
-    force : mm.CustomNonbondedForce  (mode='svd' or 'svd_multiscale')
-         or mm.CustomBondForce       (mode='crossentropy')
+    force : mm.CustomBondForce
 
     Examples
     --------
-    >>> # single-scale SVD
-    >>> force = build_hic_force(hic_array, N_beads=500, r_comp=6.0,
-    ...                         mode='svd', K=10, k_scale=1.0)
-    >>> system.addForce(force)
-
-    >>> # multi-scale SVD, eigenvalue method
-    >>> force = build_hic_force(hic_array, N_beads=500, r_comp=6.0,
-    ...                         mode='svd_multiscale', K=15, sigma_beta=0.5)
-    >>> system.addForce(force)
-
-    >>> # multi-scale SVD, autocorrelation method
-    >>> force = build_hic_force(hic_array, N_beads=500, r_comp=6.0,
-    ...                         mode='svd_multiscale', K=15, r_bead=1.0)
-    >>> system.addForce(force)
-
-    >>> # cross-entropy
-    >>> force = build_hic_force(hic_array, N_beads=500, r_comp=2.0,
-    ...                         mode='crossentropy', threshold=0.05)
+    >>> force = build_hic_force(hic_array, N_beads=500, r_comp=0.15,
+    ...                         k_scale=10.0)
     >>> system.addForce(force)
     """
-    valid_modes = ("svd", "svd_multiscale", "crossentropy")
-    if mode not in valid_modes:
-        raise ValueError(
-            f"mode must be one of {valid_modes}, got '{mode!r}'"
-        )
-
     log_table(
         [
-            ("Mode",          mode),
             ("N beads",       N_beads),
             ("r_comp",        f"{r_comp:.3f} nm"),
-            ("K (SVD rank)",  K),
+            ("threshold",     threshold),
+            ("alpha",         alpha),
             ("k_scale",       f"{k_scale:.3f} kJ/mol"),
             ("Force group",   force_group),
             ("Input shape",   str(H_raw.shape)),
         ],
-        title="Hi-C Force — build",
+        title="Hi-C Force — build (crossentropy)",
         log_fn=log.info,
     )
 
@@ -742,41 +357,15 @@ def build_hic_force(
     else:
         log.info("diagonal_normalize: skipped (already_balanced=True)")
 
-    # ── Layers 2+3: decompose + build ───────────────────────────────────────
-    if mode == "svd":
-        H_oe         = compute_oe_matrix(H)
-        lam, vecs, A = svd_decompose(H_oe, K=K)
-        force        = build_svd_force(A, r_comp,
-                                       k_scale=k_scale,
-                                       force_group=force_group)
+    # ── Layer 2: build force ─────────────────────────────────────────────────
+    force = build_crossentropy_force(
+        H, r_comp,
+        threshold=threshold,
+        alpha=alpha,
+        k_scale=k_scale,
+        force_group=force_group,
+    )
 
-    elif mode == "svd_multiscale":
-        H_oe         = compute_oe_matrix(H)
-        lam, vecs, A = svd_decompose(H_oe, K=K)
-
-        if r_bead is not None:
-            log.info("  sigma method: autocorrelation (r_bead=%.3f nm)", r_bead)
-            sigmas = compute_sigma_autocorr(vecs, r_bead=r_bead)
-        else:
-            log.info("  sigma method: eigenvalue (beta=%.2f)", sigma_beta)
-            sigmas = compute_sigma_eigenvalue(lam, sigma_max=r_comp,
-                                              beta=sigma_beta)
-
-        # clip: [one bead diameter, r_comp]
-        lo     = r_bead if r_bead is not None else r_comp / 10.0
-        sigmas = np.clip(sigmas, lo, r_comp)
-
-        force = build_svd_force_multiscale(A, sigmas,
-                                           k_scale=k_scale,
-                                           force_group=force_group)
-
-    else:  # mode == "crossentropy"
-        force = build_crossentropy_force(H, r_comp,
-                                         threshold=threshold,
-                                         alpha=alpha,
-                                         k_scale=k_scale,
-                                         force_group=force_group)
-
-    log.info("build_hic_force: done (%s force, group %d)", mode, force_group)
+    log.info("build_hic_force: done (crossentropy, group %d)", force_group)
     log.info("═" * 60)
     return force

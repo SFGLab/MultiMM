@@ -20,43 +20,39 @@ from .logger import setup_logger
 setup_logger()
 logger = logging.getLogger(__name__)
 
-STARTUP_BANNER_LINES = [
-    "#########################################################################",
-    "# 🧬 MultiMM Chromatin Simulation Platform 🧬",
-    "#########################################################################",
-    "# Creator: Sebastian Korsak (Warsaw, Poland)",
-    "# Nucleosome interpolation implementation: Krzystof Banecki",
-    "# Web-server & infrastructure: Patryk Prusak",
-    "# email us here: s.korsak@datascience.edu.pl, k.banecki@datascience.edu.pl, d.plewczynski@datascience.edu.pl",
-    "#",
-    "# 🚀 Starting simulation pipeline...",
-    "# ✨ Wishing you smooth, stable and beautiful chromatin dynamics!",
-    "# 🧪 May your contacts be meaningful and your loops well-formed",
-    "# 🔬 Happy modeling!",
-    "#########################################################################",
-]
-
-# ANSI colors (soft scientific palette)
-COLORS = [
-    "\033[96m",  # cyan
-    "\033[95m",  # magenta
-    "\033[94m",  # blue
-    "\033[92m",  # green
-    "\033[93m",  # yellow
-    "\033[91m",  # red
-]
-
-RESET = "\033[0m"
+RESET  = "\033[0m"
+BOLD   = "\033[1m"
+CYAN   = "\033[38;5;75m"   # steel blue – professional, readable
 
 
 def print_startup_banner(logger):
-    """
-    Print colorful MultiMM startup banner.
-    """
+    """Print a clean, single-color startup banner for MultiMM."""
 
-    for i, line in enumerate(STARTUP_BANNER_LINES):
-        color = COLORS[i % len(COLORS)]
-        logger.info(f"{color}{line}{RESET}")
+    W = 72  # total banner width (inner)
+    border = CYAN + BOLD + "═" * W + RESET
+
+    def _row(text: str = "") -> str:
+        pad = W - 2 - len(text)
+        return CYAN + BOLD + "║ " + RESET + text + " " * max(pad, 0) + CYAN + BOLD + "║" + RESET
+
+    lines = [
+        border,
+        _row(),
+        _row("  MultiMM  ·  Chromatin 3D Structure Simulation Platform"),
+        _row(),
+        _row("  Creator : Sebastian Korsak  (Warsaw, Poland)"),
+        _row("  Nucleosome interpolation : Krzysztof Banecki"),
+        _row("  Web-server & infrastructure : Patryk Prusak"),
+        _row(),
+        _row("  Contact : s.korsak@datascience.edu.pl"),
+        _row("            d.plewczynski@datascience.edu.pl"),
+        _row(),
+        _row("  Starting simulation pipeline … good luck!"),
+        _row(),
+        border,
+    ]
+    for line in lines:
+        logger.info(line)
 
 class Tee:
     def __init__(self, *streams):
@@ -70,6 +66,11 @@ class Tee:
     def flush(self):
         for s in self.streams:
             s.flush()
+
+    def isatty(self) -> bool:
+        # Delegate to the first stream (the real terminal).
+        # This preserves ANSI colour detection after Tee wraps sys.stdout.
+        return hasattr(self.streams[0], "isatty") and self.streams[0].isatty()
 
 class ArgumentChanger:
 
@@ -489,6 +490,11 @@ def main():
 
         log_dir = os.path.join(args.OUT_PATH, "metadata")
         os.makedirs(log_dir, exist_ok=True)
+
+        # Wire the Python logging FileHandler to the output directory so that
+        # all logger.info/warning/debug calls are saved to multimm.log in
+        # addition to the stdout Tee below.
+        setup_logger(log_file=os.path.join(log_dir, "multimm.log"))
 
         log_path = os.path.join(log_dir, "output.log")
 

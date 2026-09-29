@@ -15,7 +15,8 @@ from .plots import *
 from .read_hic import read_hic_matrix
 from .hic_force import build_hic_force
 from .validation import validate_hic_model, validate_hic_ensemble
-from .logger import log_table
+from .logger import log_table, log_section, log_success
+from .quality_tests import run_quality_tests
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,11 @@ class MultiMM:
             "kinetic": [],
             "total": [],
             "temperature": [],
+            "rmsd": [],          # per-sampling-step RMSD vs minimised structure (nm)
         }
+
+        # Positions saved right after energy minimisation (used for MD mobility check)
+        self.minimized_positions = None
 
         # Import args
         self.args = args
@@ -200,7 +205,12 @@ class MultiMM:
                 "The polymer will lack long-range structural constraints."
             )
 
-        # Hi-C data loading
+        # ── Hyperparameter summary ────────────────────────────────────────────
+        self._log_hyperparameters()
+
+        # ── Data Loading ──────────────────────────────────────────────────────
+        log_section("Data Loading")
+
         self.hic_matrix = None
         if not _is_empty(args.HIC_PATH):
             hic_chrom = chrom if not _is_empty(chrom) else None
@@ -262,6 +272,70 @@ class MultiMM:
             for i in range(len(self.chr_ends) - 1):
                 self.chrom_spin[self.chr_ends[i] : self.chr_ends[i + 1]] = self.chrom_idxs[i]
                 self.chrom_strength[self.chr_ends[i] : self.chr_ends[i + 1]] = chrom_strength[i]
+
+        log_success("Data Loading", logger)
+
+    def _log_hyperparameters(self) -> None:
+        """Print a compact summary table of key simulation hyperparameters."""
+        a = self.args
+
+        def _fmt(v) -> str:
+            """Format a config value for display (strip Quantity units verbosely)."""
+            try:
+                from openmm.unit import Quantity as Q
+                if isinstance(v, Q):
+                    return str(v)
+            except Exception:
+                pass
+            if v is None or (isinstance(v, str) and v.strip() == ""):
+                return "—"
+            return str(v)
+
+        rows = [
+            # ── Region ──────────────────────────────────────────────────────────
+            "Region",
+            ("Platform",          _fmt(a.PLATFORM)),
+            ("N beads",           _fmt(a.N_BEADS)),
+            ("Chromosome",        _fmt(a.CHROM) if not _is_empty(a.CHROM) else "genome-wide"),
+            ("LOC start / end",   f"{a.LOC_START} – {a.LOC_END}" if a.LOC_START is not None else "—"),
+            ("Modelling level",   _fmt(a.MODELLING_LEVEL) if not _is_empty(a.MODELLING_LEVEL) else "custom"),
+            # ── Input data ──────────────────────────────────────────────────────
+            "Input data",
+            ("Loops",             _fmt(a.LOOPS_PATH)),
+            ("Compartments",      _fmt(a.COMPARTMENT_PATH)),
+            ("ATAC-seq",          _fmt(a.ATACSEQ_PATH)),
+            ("Hi-C matrix",       _fmt(a.HIC_PATH)),
+            # ── Polymer backbone ─────────────────────────────────────────────────
+            "Polymer backbone",
+            ("Bond r₀",           _fmt(a.POL_HARMONIC_BOND_R0)),
+            ("Bond k",            _fmt(a.POL_HARMONIC_BOND_K)),
+            ("Angle k",           _fmt(a.POL_HARMONIC_ANGLE_CONSTANT_K)),
+            # ── Active forces ────────────────────────────────────────────────────
+            "Active forces",
+            ("Loop extrusion",    f"✓  k={_fmt(a.LE_HARMONIC_BOND_K)}  fixed={a.LE_FIXED_DISTANCES}"
+                                   if a.LE_USE_HARMONIC_BOND else "—"),
+            ("Hi-C force",        f"✓  crossentropy  k_scale={a.HIC_K_SCALE}"
+                                   if a.HIC_USE_FORCE else "—"),
+            ("Compartment A/B",   f"✓  Ea={a.COB_EA}  Eb={a.COB_EB}" if a.COB_USE_COMPARTMENT_BLOCKS else "—"),
+            ("Subcompartments",   "✓" if a.SCB_USE_SUBCOMPARTMENT_BLOCKS else "—"),
+            ("Chr territories",   "✓" if a.CHB_USE_CHROMOSOMAL_BLOCKS  else "—"),
+            ("Container",         f"✓  scale={a.SC_SCALE}" if a.SC_USE_SPHERICAL_CONTAINER else "—"),
+            ("B-lamina",          f"✓  scale={a.IBL_SCALE}" if a.IBL_USE_B_LAMINA_INTERACTION else "—"),
+            ("Central force",     f"✓  strength={a.CF_STRENGTH}" if a.CF_USE_CENTRAL_FORCE else "—"),
+            # ── MD ───────────────────────────────────────────────────────────────
+            "Molecular Dynamics",
+            ("Run MD",            "yes" if a.SIM_RUN_MD else "no (energy minimisation only)"),
+            ("Steps",             _fmt(a.SIM_N_STEPS)   if a.SIM_RUN_MD else "—"),
+            ("Temperature",       _fmt(a.SIM_TEMPERATURE) if a.SIM_RUN_MD else "—"),
+            ("Integrator",        f"{a.SIM_INTEGRATOR_TYPE}  dt={_fmt(a.SIM_INTEGRATOR_STEP)}"
+                                   if a.SIM_RUN_MD else "—"),
+            # ── Ensemble ─────────────────────────────────────────────────────────
+            "Ensemble",
+            ("Ensemble",          f"yes  n={a.N_ENSEMBLE}" if a.GENERATE_ENSEMBLE else "no"),
+            ("Output path",       _fmt(a.OUT_PATH)),
+        ]
+
+        log_table(rows, title="Simulation — hyperparameters", log_fn=logger.info)
 
     def add_evforce(self):
         """Excluded volume force with optional soft-core formulations.
@@ -898,17 +972,41 @@ class MultiMM:
         logger.info("Simulation initialization complete")
 
     def add_hic_force(self):
-        """Add Hi-C contact-guided force using the pre-loaded hic_matrix."""
+        """Add Hi-C contact-guided force using the pre-loaded hic_matrix.
+
+        Length-scale choice
+        -------------------
+        SVD modes:    the Gaussian interaction envelope σ = r_comp / 3 must be
+                      a meaningful fraction of the nuclear radius, not of the
+                      bead spacing.  Using r_comp = self.r_comp (= 1.5 × b0 ≈
+                      0.15 nm) gives σ ≈ 0.05 nm — decaying to zero within one
+                      bead diameter.  Hi-C contacts span megabases (many beads)
+                      and must feel each other across 3D distances comparable to
+                      the nucleus.  We therefore use r_comp = self.radius2
+                      (nuclear radius) → σ = R/3, cutoff ≈ R, covering the full
+                      nucleus.
+
+        Crossentropy: r_comp acts as the sigmoid inflection (contact distance).
+                      The bead-spacing value self.r_comp ≈ 1.5 × b0 is correct
+                      for pulling contacted loci to bead-contact distance, but
+                      k_scale should be 5–20 kJ/mol (not 130) to avoid freezing
+                      MD.  See warnings in build_crossentropy_force().
+        """
         if self.hic_matrix is None:
             logger.warning("add_hic_force() called but hic_matrix is None — skipping.")
             return
+
+        # Crossentropy sigmoid inflection = contact distance ≈ bead scale
+        hic_r = self.r_comp
+
         log_table(
             [
-                ("Mode",         self.args.HIC_FORCE_MODE),
-                ("Normalization",self.args.HIC_NORMALIZATION),
-                ("K (SVD rank)", self.args.HIC_N_COMPONENTS),
-                ("k_scale",      f"{self.args.HIC_K_SCALE} kJ/mol"),
-                ("Matrix shape", str(self.hic_matrix.shape)),
+                ("Normalization", self.args.HIC_NORMALIZATION),
+                ("k_scale",       f"{self.args.HIC_K_SCALE} kJ/mol"),
+                ("alpha",         self.args.HIC_ALPHA),
+                ("threshold",     self.args.HIC_THRESHOLD),
+                ("r_comp",        f"{hic_r:.4f} nm"),
+                ("Matrix shape",  str(self.hic_matrix.shape)),
             ],
             title="Hi-C force — parameters",
             log_fn=logger.info,
@@ -916,11 +1014,11 @@ class MultiMM:
         force = build_hic_force(
             H_raw=self.hic_matrix,
             N_beads=self.args.N_BEADS,
-            r_comp=self.r_comp,
-            mode=self.args.HIC_FORCE_MODE,
-            K=self.args.HIC_N_COMPONENTS,
+            r_comp=hic_r,
             k_scale=self.args.HIC_K_SCALE,
-            already_balanced=True,   # read_hic_matrix already normalises
+            alpha=self.args.HIC_ALPHA,
+            threshold=self.args.HIC_THRESHOLD,
+            already_balanced=True,      # read_hic_matrix already normalises
         )
         self.system.addForce(force)
         logger.info("Hi-C force added.")
@@ -1015,6 +1113,16 @@ class MultiMM:
             self.state.getPositions(),
             open(self.save_path + "model/MultiMM_minimized.cif", "w"),
         )
+
+        # Cache minimised positions for the MD-mobility quality check.
+        # getPositions(asNumpy=True) returns an OpenMM Quantity; extract nm values.
+        try:
+            pos_q = self.state.getPositions(asNumpy=True)
+            self.minimized_positions = np.array(pos_q.value_in_unit(nanometers))  # (N, 3)
+        except Exception as _e:
+            logger.debug("Could not cache minimised positions: %s", _e)
+            self.minimized_positions = None
+
         elapsed = time.time() - start_time
         logger.info(f"Energy minimization complete in {elapsed:.1f}s")
 
@@ -1027,10 +1135,33 @@ class MultiMM:
             )
 
     def run_md(self):
+        # ── Determine effective sampling step ──────────────────────────────────
+        # When TRJ_FRAMES is set, override SIM_SAMPLING_STEP so that exactly
+        # TRJ_FRAMES CIF files are produced from SIM_N_STEPS total MD steps.
+        # When TRJ_FRAMES is None, use SIM_SAMPLING_STEP directly and derive
+        # the number of frames from SIM_N_STEPS // SIM_SAMPLING_STEP.
+        if self.args.TRJ_FRAMES is not None:
+            _sampling_step = max(1, self.args.SIM_N_STEPS // self.args.TRJ_FRAMES)
+            _n_frames      = self.args.TRJ_FRAMES
+            logger.info(
+                "TRJ_FRAMES=%d → overriding SIM_SAMPLING_STEP to %d "
+                "(SIM_N_STEPS=%d / TRJ_FRAMES=%d)",
+                _n_frames, _sampling_step,
+                self.args.SIM_N_STEPS, self.args.TRJ_FRAMES,
+            )
+        else:
+            _sampling_step = self.args.SIM_SAMPLING_STEP
+            _n_frames      = self.args.SIM_N_STEPS // _sampling_step
+
+        logger.info(
+            "Running relaxation — %d frames × %d steps = %d total MD steps …",
+            _n_frames, _sampling_step, _n_frames * _sampling_step,
+        )
+
         self.simulation.reporters.append(
             StateDataReporter(
                 sys.stdout,
-                self.args.SIM_SAMPLING_STEP,
+                _sampling_step,
                 step=True,
                 totalEnergy=True,
                 kineticEnergy=True,
@@ -1042,14 +1173,15 @@ class MultiMM:
         self.simulation.reporters.append(
             DCDReporter(
                 self.save_path + "metadata/MultiMM_annealing.dcd",
-                self.args.SIM_N_STEPS // self.args.TRJ_FRAMES,
+                _sampling_step,
             )
         )
-        logger.info("Running relaxation...")
-        start = time.time()
-        for i in range(self.args.SIM_N_STEPS // self.args.SIM_SAMPLING_STEP):
 
-            self.simulation.step(self.args.SIM_SAMPLING_STEP)
+        start = time.time()
+
+        for i in range(_n_frames):
+
+            self.simulation.step(_sampling_step)
 
             state = self.simulation.context.getState(
                 getPositions=True,
@@ -1093,7 +1225,21 @@ class MultiMM:
 
             self.md_history["temperature"].append(temp)
 
-            # SAVE FRAME
+            # RMSD vs minimised structure (COM-removed, in nm)
+            if self.minimized_positions is not None:
+                try:
+                    pos_q = state.getPositions(asNumpy=True)
+                    pos   = np.array(pos_q.value_in_unit(nanometers))   # (N, 3)
+                    ref   = self.minimized_positions                     # (N, 3)
+                    pos_c = pos - pos.mean(axis=0)
+                    ref_c = ref - ref.mean(axis=0)
+                    rmsd  = float(np.sqrt(np.mean(np.sum((pos_c - ref_c) ** 2, axis=1))))
+                    self.md_history["rmsd"].append(rmsd)
+                except Exception:
+                    pass   # silently skip on rare Quantity conversion issues
+
+            # SAVE FRAME — every iteration saves one CIF; loop runs TRJ_FRAMES
+            # times so exactly TRJ_FRAMES files are written.
             self.state = state
             PDBxFile.writeFile(
                 self.pdb.topology,
@@ -1336,70 +1482,106 @@ class MultiMM:
 
     def run(self):
         """Energy minimization for GW model."""
-        # Estimation of parameters
+        # ── Data Preprocessing ────────────────────────────────────────────────
+        log_section("Data Preprocessing")
         self.set_radiuses()
+        log_success("Data Preprocessing", logger)
 
-        # Initialize simulation
+        # ── Model Preparation ─────────────────────────────────────────────────
+        log_section("Model Preparation")
         self.initialize_simulation()
-
-        # Import forcefield
         self.add_forcefield()
+        log_success("Model Preparation", logger)
 
-        # Run simulation / Energy minimization
+        # ── Energy Minimization ───────────────────────────────────────────────
+        log_section("Energy Minimization")
         self.min_energy()
         if _is_empty(self.args.GENE_ID) and _is_empty(self.args.GENE_NAME) and self.args.LOC_START is None:
             self.save_chromosomes()
+        log_success("Energy Minimization", logger)
 
-        # Run molecular dynamics
+        # ── Molecular Dynamics Relaxation ─────────────────────────────────────
         if self.args.SIM_RUN_MD:
+            log_section("Molecular Dynamics Relaxation")
             self.run_md()
+            log_success("Molecular Dynamics Relaxation", logger)
 
-        # Make diagnostic plots
+        # ── Visualization ─────────────────────────────────────────────────────
         if self.args.SAVE_PLOTS:
-            logger.info("Creating and saving plots...")
+            log_section("Visualization")
+            logger.info("Creating and saving diagnostic plots …")
             self.make_plots()
-            logger.info("Done! :)\n")
-        
+            log_success("Visualization", logger)
+
         # Run nucleosome interpolation
         if self.args.NUC_DO_INTERPOLATION and self.args.ATACSEQ_PATH is not None:
             self.nuc_interpolation()
 
-        # Hi-C validation — diagonal decay, insulation score, PC1 correlation
+        # ── Validation ────────────────────────────────────────────────────────
         if self.args.HIC_USE_FORCE and self.hic_matrix is not None:
+            log_section("Validation")
             logger.info("Running Hi-C validation …")
+            # Match n_rw to the actual frame count: if TRJ_FRAMES was set use
+            # that; otherwise derive from SIM_N_STEPS / SIM_SAMPLING_STEP.
+            _n_rw = (
+                self.args.TRJ_FRAMES
+                if self.args.TRJ_FRAMES is not None
+                else self.args.SIM_N_STEPS // self.args.SIM_SAMPLING_STEP
+            )
             if self.args.SIM_RUN_MD:
-                # Ensemble validation: use all saved MD frames
-                n_frames = self.args.SIM_N_STEPS // self.args.SIM_SAMPLING_STEP
-                frame_paths = [
-                    self.save_path + f"md_frames/frame_{i+1}.cif"
-                    for i in range(n_frames)
-                    if os.path.isfile(self.save_path + f"md_frames/frame_{i+1}.cif")
-                ]
+                # Ensemble validation: collect all saved MD frame CIFs.
+                import glob as _glob
+                frame_dir = self.save_path + "md_frames/"
+                frame_paths = sorted(
+                    _glob.glob(frame_dir + "frame_*.cif"),
+                    key=lambda p: int(p.rsplit("_", 1)[-1].split(".")[0]),
+                )
                 if frame_paths:
-                    metrics = validate_hic_ensemble(frame_paths, self.hic_matrix, save_path=self.save_path, log=logger)
+                    metrics = validate_hic_ensemble(
+                        frame_paths, self.hic_matrix,
+                        save_path=self.save_path, log=logger,
+                        n_rw=_n_rw,
+                        confine_radius_nm=self.radius2,
+                    )
                 else:
                     logger.warning("No MD frame files found — falling back to minimized structure.")
                     metrics = validate_hic_model(
                         self.save_path + "model/MultiMM_minimized.cif",
                         self.hic_matrix, save_path=self.save_path, log=logger,
+                        n_rw=_n_rw,
+                        confine_radius_nm=self.radius2,
                     )
             else:
                 metrics = validate_hic_model(
                     self.save_path + "model/MultiMM_minimized.cif",
                     self.hic_matrix, save_path=self.save_path, log=logger,
+                    n_rw=_n_rw,
+                    confine_radius_nm=self.radius2,
                 )
             np.save(self.save_path + "metadata/hic_validation.npy", metrics)
-            log_table(
-                [
-                    ("Diagonal decay r",   f"{metrics['diag_decay_r']:.4f}  (p={metrics['diag_decay_p']:.2e})"),
-                    ("Insulation score r", f"{metrics['insulation_r']:.4f}  (p={metrics['insulation_p']:.2e})"),
-                    ("|PC1| r",            f"{metrics['pc1_r']:.4f}  (p={metrics['pc1_p']:.2e})"),
-                    ("Saved to",           self.save_path + "metadata/hic_validation.npy"),
-                ],
-                title="Hi-C validation summary",
-                log_fn=logger.info,
-            )
+            logger.info("Hi-C validation metrics saved → %smetadata/hic_validation.npy", self.save_path)
+            log_success("Validation", logger)
 
         save_args_to_txt(self.args, self.args.OUT_PATH + "/metadata/parameters.txt")
 
-        print("\033[1;32m✅ MultiMM ran successfully!!!\033[0m\n")
+        # ── Quality Control ───────────────────────────────────────────────────
+        log_section("Quality Control")
+        logger.info("Running post-simulation quality tests …")
+        try:
+            final_coords = get_coordinates_mm(self.state.getPositions())
+            run_quality_tests(
+                coords=final_coords,
+                args=self.args,
+                md_history=self.md_history if self.args.SIM_RUN_MD else None,
+                compartments=self.Cs,
+                chr_ends=self.chr_ends,
+                ms=self.ms,
+                ns=self.ns,
+                nucleus_radius_nm=getattr(self, "radius2", None),
+                save_path=self.save_path,
+            )
+        except Exception as _qt_exc:
+            logger.warning("Quality tests raised an exception and were skipped: %s", _qt_exc)
+        log_success("Quality Control", logger)
+
+        log_success("MultiMM", logger)

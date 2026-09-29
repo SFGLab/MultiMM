@@ -22,6 +22,7 @@ from .utils import (
     remove_diagonals,
     compute_compartments,
 )
+from .read_hic import pool_to_n_beads as _pool_to_n_beads
 
 logger = logging.getLogger(__name__)
 
@@ -600,18 +601,16 @@ def regions_pipeline(regions_dir, chroms, starts, ends, N_ens=1000):
 # ── Low-level metric helpers ──────────────────────────────────────────────────
 
 def _pool_matrix(m: np.ndarray, N: int) -> np.ndarray:
-    """Down-sample or up-sample *m* to an N×N matrix by mean-pooling."""
-    M = m.shape[0]
-    if M == N:
+    """Re-sample *m* to an N×N matrix using fractional-overlap pooling.
+
+    Delegates to :func:`read_hic.pool_to_n_beads` which uses a fractional
+    overlap weight matrix (``np.linspace`` bin edges) so that every genomic bin
+    contributes proportionally to the output — no bins are silently truncated
+    when ``m.shape[0] % N != 0``.
+    """
+    if m.shape[0] == N:
         return m.astype(float)
-    if M > N:
-        # mean-pool: reshape into (N, block, N, block)
-        block = M // N
-        trimmed = m[: N * block, : N * block]
-        return trimmed.reshape(N, block, N, block).mean(axis=(1, 3))
-    # upsample (simple repeat — rare in practice)
-    factor = N // M
-    return np.repeat(np.repeat(m, factor, axis=0), factor, axis=1).astype(float)
+    return _pool_to_n_beads(m, N)
 
 
 def diagonal_decay_profile(mat: np.ndarray, max_diag: int | None = None) -> np.ndarray:
@@ -744,6 +743,253 @@ def _upper_tri(mat: np.ndarray) -> np.ndarray:
     return mat[idx]
 
 
+# ── Random-walk baseline ─────────────────────────────────────────────────────
+
+def _rw_baseline_contact(
+    N: int,
+    n_rw: int = 20,
+    step_nm: float = 0.1,
+    eps: float = 1e-3,
+    seed: int = 0,
+    confine_radius_nm: float | None = None,
+) -> np.ndarray:
+    """Generate a null-model (random-walk ensemble) average contact map.
+
+    Builds *n_rw* simple 3-D random walks of length *N* (bond length
+    *step_nm* nm) optionally confined inside a sphere of radius
+    *confine_radius_nm*, computes the 1/(d+ε) contact proxy for each,
+    and returns the average as a float64 N×N matrix.
+
+    Confinement is implemented as elastic reflection: at each step, if the
+    bead would land outside the sphere, it is reflected back along the
+    radial direction.  This gives a realistic confined-polymer null model
+    comparable to the nuclear boundary used in the actual MD simulation.
+
+    Without confinement an N=1000 chain with step_nm=0.1 has end-to-end
+    ≈ 3.16 nm, far larger than a typical nucleus (~1 nm at simulation
+    scale), so the unconfined walk produces artificially high diagonal
+    correlations simply because beads at similar genomic position are
+    close in 3-D by construction (not by folding) — inflating the RW
+    baseline.
+
+    Parameters
+    ----------
+    N                  : number of beads
+    n_rw               : number of independent realisations to average
+                         (default 20 — enough for stable mean)
+    step_nm            : bond length in nm (match POL_HARMONIC_BOND_R0)
+    eps                : regularisation in 1/(d+ε)
+    seed               : numpy random seed for reproducibility
+    confine_radius_nm  : sphere radius in nm.  None → unconfined (legacy).
+                         Recommended: set to the simulation nuclear radius
+                         (radius2 attribute of the Model object).
+    """
+    rng = np.random.default_rng(seed)
+    acc: np.ndarray | None = None
+    for _ in range(n_rw):
+        # Independent 3-D Gaussian random walk with fixed bond length
+        steps = rng.normal(0.0, 1.0, size=(N - 1, 3))
+        steps *= step_nm / np.linalg.norm(steps, axis=1, keepdims=True)
+
+        if confine_radius_nm is not None:
+            R = float(confine_radius_nm)
+            # Walk bead-by-bead with sphere-wall reflection
+            pos = np.zeros(3)
+            coords_list = [pos.copy()]
+            for s in steps:
+                candidate = pos + s
+                dist = np.linalg.norm(candidate)
+                if dist > R:
+                    # Reflect: mirror the overshoot back along radial direction
+                    radial_unit = candidate / (dist + 1e-30)
+                    overshoot   = dist - R
+                    candidate   = candidate - 2.0 * overshoot * radial_unit
+                    # Safety: clamp (rare numerical edge case)
+                    d2 = np.linalg.norm(candidate)
+                    if d2 > R:
+                        candidate = candidate * (R / (d2 + 1e-30))
+                pos = candidate
+                coords_list.append(pos.copy())
+            coords = np.array(coords_list, dtype=np.float32)
+        else:
+            coords = np.vstack(
+                [np.zeros((1, 3)), np.cumsum(steps, axis=0)]
+            )
+
+        frame = _coords_to_inv_contact_f32(coords, eps=eps)
+        if acc is None:
+            acc = frame.astype(np.float64)
+        else:
+            acc += frame.astype(np.float64)
+    return acc / n_rw
+
+
+# ── Fast ensemble accumulator ─────────────────────────────────────────────────
+
+def _coords_to_inv_contact_f32(coords: np.ndarray, eps: float = 1e-3) -> np.ndarray:
+    """Compute 1/(||r_i - r_j|| + ε) in float32 without materialising a
+    separate distance matrix.
+
+    Uses the Gram-matrix identity:
+        D²_ij = ||r_i||² + ||r_j||² - 2 · r_i · r_j
+
+    All operations run in float32 and are done in-place so peak memory is
+    exactly one N×N float32 array plus the small coordinate buffer.
+
+    Parameters
+    ----------
+    coords : (N, 3) float array (any dtype — cast internally)
+    eps : float
+
+    Returns
+    -------
+    inv : (N, N) float32
+    """
+    X  = np.asarray(coords, dtype=np.float32)
+    sq = np.einsum("ij,ij->i", X, X)          # (N,) — squared norms
+    # D² = sq_i + sq_j - 2 X X^T  (written in-place into the output buffer)
+    inv = np.dot(X, X.T)                       # (N, N) — Gram matrix
+    inv *= -2.0
+    inv += sq[:, None]
+    inv += sq[None, :]
+    np.maximum(inv, 0.0, out=inv)              # numerical safety (may go tiny-negative)
+    np.sqrt(inv, out=inv)                      # now D
+    inv += eps                                 # D + ε
+    np.reciprocal(inv, out=inv)               # 1 / (D + ε)
+    return inv
+
+
+def _accumulate_ensemble(
+    cif_paths: list,
+    eps: float = 1e-3,
+    log=None,
+) -> np.ndarray:
+    """Streaming accumulation of the inverse-contact ensemble average.
+
+    Memory cost: one float32 N×N accumulator  +  one float32 N×N working buffer
+    (both reused across frames — no extra allocations inside the loop).
+
+    Returns
+    -------
+    inv_avg : (N, N) float64  (upcast at the end for downstream precision)
+    """
+    _log = log or logger
+    _log.info("Streaming inverse-contact accumulation over %d frames …", len(cif_paths))
+
+    acc: np.ndarray | None = None
+
+    for path in tqdm(cif_paths, desc="Frames", leave=False):
+        coords = get_coordinates_cif(path)          # (N, 3) float64
+        frame  = _coords_to_inv_contact_f32(coords, eps=eps)   # (N, N) float32, in-place
+        if acc is None:
+            acc = frame                              # first frame — reuse buffer
+        else:
+            acc += frame                             # in-place accumulation
+
+    if acc is None:
+        raise ValueError("No frames were loaded.")
+
+    acc /= len(cif_paths)                           # normalise in-place
+    return acc.astype(np.float64, copy=False)       # upcast once
+
+
+# ── Computer-vision similarity metrics ───────────────────────────────────────
+
+def _ssim(a: np.ndarray, b: np.ndarray, win: int = 7) -> float:
+    """Structural Similarity Index (SSIM) between two 2-D matrices.
+
+    A sliding-window measure that decomposes similarity into luminance,
+    contrast, and structure components.  Unlike Pearson r it is sensitive
+    to *local* spatial patterns — a TAD shifted by a few bins lowers SSIM
+    even if the global statistics are unchanged.
+
+    Range: [-1, 1],  1 = identical.
+    """
+    try:
+        from skimage.metrics import structural_similarity
+        # Normalise using the *reference* matrix b's robust range (1st–99th
+        # percentile).  Joint min/max lets outliers in either matrix squish
+        # both images into a tiny common range, making a flat RW map look
+        # nearly identical to a structured sim map → inflated RW SSIM.
+        # By anchoring the range to b (experiment/reference) and clipping a
+        # (simulation/RW), we preserve the actual dynamic range difference.
+        lo   = np.percentile(b, 1)
+        hi   = np.percentile(b, 99)
+        span = hi - lo
+        if span < 1e-12:
+            span = 1e-12
+        a_n = np.clip((a - lo) / span, 0.0, 1.0)
+        b_n = np.clip((b - lo) / span, 0.0, 1.0)
+        val, _ = structural_similarity(
+            a_n, b_n,
+            data_range=1.0,
+            win_size=win | 1,     # must be odd
+            full=True,
+        )
+        return float(val)
+    except ImportError:
+        logger.warning("scikit-image not available — SSIM skipped.")
+        return float("nan")
+
+
+def _gmsd(a: np.ndarray, b: np.ndarray) -> float:
+    """Gradient Magnitude Similarity Deviation (GMSD).
+
+    Measures how well *edges* (TAD boundaries, compartment borders) are
+    preserved.  Uses a Prewitt-style finite-difference gradient.
+    Lower GMSD = better edge alignment; 0 = identical gradients.
+
+    Reference: Xue et al. (2014) IEEE Trans. Image Process.
+    """
+    def _grad_mag(m: np.ndarray) -> np.ndarray:
+        gx = ndimage.prewitt(m, axis=0)
+        gy = ndimage.prewitt(m, axis=1)
+        return np.hypot(gx, gy)
+
+    gm_a = _grad_mag(a.astype(float))
+    gm_b = _grad_mag(b.astype(float))
+    c    = 0.0026  # stability constant (same as original paper)
+    gms  = (2.0 * gm_a * gm_b + c) / (gm_a ** 2 + gm_b ** 2 + c)
+    return float(gms.std())   # deviation of the per-pixel GMS map
+
+
+def _mutual_information(a: np.ndarray, b: np.ndarray, bins: int = 64) -> float:
+    """Normalised Mutual Information between two matrices.
+
+    Robust to monotonic rescalings — captures non-linear dependency that
+    Pearson r misses.  Normalised to [0, 1] via NMI = 2·MI / (H_a + H_b).
+
+    Higher is better;  0 = independent,  1 = perfectly predictable.
+    """
+    a_f = a.ravel().astype(float)
+    b_f = b.ravel().astype(float)
+    hist2d, _, _ = np.histogram2d(a_f, b_f, bins=bins)
+    pxy  = hist2d / hist2d.sum()
+    px   = pxy.sum(axis=1, keepdims=True)
+    py   = pxy.sum(axis=0, keepdims=True)
+    mask = pxy > 0
+    mi   = float(np.sum(pxy[mask] * np.log(pxy[mask] / (px * py + 1e-300)[mask])))
+    hx   = float(-np.sum(px[px > 0] * np.log(px[px > 0])))
+    hy   = float(-np.sum(py[py > 0] * np.log(py[py > 0])))
+    denom = hx + hy
+    return mi / denom if denom > 0 else 0.0
+
+
+def _hic_cv_metrics(
+    sim_oe: np.ndarray,
+    exp_oe: np.ndarray,
+) -> dict:
+    """Compute all computer-vision similarity metrics on the OE matrices.
+
+    Returns a dict with keys: ssim, gmsd, nmi
+    """
+    return {
+        "ssim": _ssim(sim_oe, exp_oe),
+        "gmsd": _gmsd(sim_oe, exp_oe),
+        "nmi":  _mutual_information(sim_oe, exp_oe),
+    }
+
+
 # ── Public validation API ─────────────────────────────────────────────────────
 
 def validate_hic_model(
@@ -752,6 +998,9 @@ def validate_hic_model(
     insulation_window: int = 10,
     max_diag: int | None = None,
     save_path: str | None = None,
+    n_rw: int = 20,
+    rw_step_nm: float = 0.1,
+    confine_radius_nm: float | None = None,
     log=None,
 ) -> dict:
     """Validate a single simulated structure against experimental Hi-C.
@@ -784,31 +1033,30 @@ def validate_hic_model(
     dict with keys:
         'diag_decay_r', 'diag_decay_p',
         'insulation_r', 'insulation_p',
-        'pc1_r',        'pc1_p'
+        'pc1_r',        'pc1_p',
+        'pearson_r',    'pearson_p',
+        'spearman_r',   'spearman_p',
+        'ssim',         'gmsd',         'nmi'
     """
-    from .utils import get_coordinates_cif, model_distance_heatmap
     _log = log or logger
 
-    coords   = get_coordinates_cif(cif_path)
-    dist_map = model_distance_heatmap(coords)
-    N        = dist_map.shape[0]
+    # Use the fast Gram-matrix accumulator (float32, in-place, no temp arrays)
+    coords      = get_coordinates_cif(cif_path)
+    sim_contact = _coords_to_inv_contact_f32(coords).astype(np.float64, copy=False)
+    N           = sim_contact.shape[0]
 
     # Resize experimental matrix to match simulation resolution
     hic_r = _pool_matrix(hic_matrix, N)
     if max_diag is None:
         max_diag = N // 2
 
-    # Contact proxy: 1/(d + ε)
-    sim_contact = inverse_contact_matrix(dist_map)
-
     # ── 1. Diagonal decay ─────────────────────────────────────────────────────
     sim_decay = diagonal_decay_profile(sim_contact, max_diag)
     exp_decay = diagonal_decay_profile(hic_r,       max_diag)
     r_dd, p_dd = _pearson(sim_decay, exp_decay)
 
-    # OE-normalize both matrices once — used for insulation score and direct
-    # matrix comparison (removes shared distance-decay baseline so correlations
-    # reflect structural features rather than the trivial decay).
+    # OE-normalize both matrices once — removes shared distance-decay baseline
+    # so all subsequent metrics reflect structural features, not trivial decay.
     sim_oe = oe_matrix(sim_contact)
     exp_oe = oe_matrix(hic_r)
 
@@ -818,48 +1066,107 @@ def validate_hic_model(
     r_ins, p_ins = _pearson(sim_ins, exp_ins)
 
     # ── 3. PC1 (A/B compartments) ─────────────────────────────────────────────
+    # Eigenvectors are defined only up to sign; use |r| (abs Pearson between
+    # the raw PC1 vectors) instead of correlating |PC1|, which loses
+    # compartment-identity information.
     sim_pc1 = pc1_of_oe(sim_contact)
     exp_pc1 = pc1_of_oe(hic_r)
-    r_pc1, p_pc1 = _pearson(np.abs(sim_pc1), np.abs(exp_pc1))
+    r_pc1_raw, p_pc1 = _pearson(sim_pc1, exp_pc1)
+    r_pc1 = abs(r_pc1_raw)
 
-    log_table(
-        [
+    # ── 4. Direct matrix correlations (OE) ───────────────────────────────────
+    sim_flat = _upper_tri(sim_oe)
+    exp_flat = _upper_tri(exp_oe)
+    r_pearson,  p_pearson  = _pearson(sim_flat, exp_flat)
+    r_spearman, p_spearman = _spearman(sim_flat, exp_flat)
+
+    # ── 5. Computer-vision structural similarity (OE) ─────────────────────────
+    cv = _hic_cv_metrics(sim_oe, exp_oe)
+
+    # ── 6. Random-walk null-model baseline ────────────────────────────────────
+    # Generates n_rw independent random-walk chains with the same bond length
+    # as the simulation, averages their contact maps, and computes the same
+    # metrics — giving a physically grounded lower-bound for each score.
+    try:
+        rw_contact = _rw_baseline_contact(
+            N, n_rw=n_rw, step_nm=rw_step_nm,
+            confine_radius_nm=confine_radius_nm,
+        )
+        rw_oe      = oe_matrix(rw_contact)
+
+        rw_decay            = diagonal_decay_profile(rw_contact, max_diag)
+        r_dd_rw,  _         = _pearson(rw_decay, exp_decay)
+
+        rw_ins              = insulation_score(rw_oe, insulation_window)
+        r_ins_rw, _         = _pearson(rw_ins, exp_ins)
+
+        rw_pc1              = pc1_of_oe(rw_contact)
+        r_pc1_rw_raw, _     = _pearson(rw_pc1, exp_pc1)
+        r_pc1_rw            = abs(r_pc1_rw_raw)
+
+        rw_flat             = _upper_tri(rw_oe)
+        r_pear_rw,  _       = _pearson(rw_flat, exp_flat)
+        r_spear_rw, _       = _spearman(rw_flat, exp_flat)
+
+        cv_rw               = _hic_cv_metrics(rw_oe, exp_oe)
+        rw_ok = True
+    except Exception as _rw_err:
+        _log.warning("RW baseline failed: %s", _rw_err)
+        rw_ok = False
+
+    def _fmt(sim_val, rw_val, p=None):
+        """Format  'sim  (RW: rw)'  or  'sim  (p=…)  (RW: rw)'."""
+        rw_s = f"{rw_val:.4f}" if (rw_ok and not isinstance(rw_val, float | None) or rw_ok) else "n/a"
+        if p is not None:
+            return f"{sim_val:.4f}  (p={p:.2e})  [RW: {rw_s}]"
+        return f"{sim_val:.4f}  [RW: {rw_s}]"
+
+    if rw_ok:
+        table_rows = [
+            ("Metric",              "MultiMM  [RW baseline]"),
+            ("Diagonal decay r",    _fmt(r_dd,       r_dd_rw,  p_dd)),
+            ("Insulation score r",  _fmt(r_ins,      r_ins_rw, p_ins)),
+            ("|PC1| r",             _fmt(r_pc1,      r_pc1_rw, p_pc1)),
+            ("Pearson r (OE tri)",  _fmt(r_pearson,  r_pear_rw,  p_pearson)),
+            ("Spearman r (OE tri)", _fmt(r_spearman, r_spear_rw, p_spearman)),
+            ("SSIM",                f"{cv['ssim']:.4f}  (local pattern)  [RW: {cv_rw['ssim']:.4f}]"),
+            ("GMSD ↓ better",       f"{cv['gmsd']:.4f}  (edge deviation)  [RW: {cv_rw['gmsd']:.4f}]"),
+            ("NMI",                 f"{cv['nmi']:.4f}  (mutual info)  [RW: {cv_rw['nmi']:.4f}]"),
+        ]
+    else:
+        table_rows = [
             ("Diagonal decay r",    f"{r_dd:.4f}  (p={p_dd:.2e})"),
             ("Insulation score r",  f"{r_ins:.4f}  (p={p_ins:.2e})"),
             ("|PC1| r",             f"{r_pc1:.4f}  (p={p_pc1:.2e})"),
-        ],
-        title="Hi-C Validation — single structure",
-        log_fn=_log.info,
-    )
+            ("Pearson r (OE tri)",  f"{r_pearson:.4f}  (p={p_pearson:.2e})"),
+            ("Spearman r (OE tri)", f"{r_spearman:.4f}  (p={p_spearman:.2e})"),
+            ("SSIM",                f"{cv['ssim']:.4f}  (local pattern similarity)"),
+            ("GMSD",                f"{cv['gmsd']:.4f}  (boundary edge deviation, ↓ better)"),
+            ("NMI",                 f"{cv['nmi']:.4f}  (non-linear mutual information)"),
+        ]
 
-    # ── 4. Direct matrix similarity (on OE-normalized matrices) ──────────────
-    sim_flat = _upper_tri(sim_oe)
-    exp_flat = _upper_tri(exp_oe)
-    r_pearson, p_pearson = _pearson(sim_flat, exp_flat)
-    r_spearman, p_spearman = _spearman(sim_flat, exp_flat)
-
-    log_table(
-        [
-            ("Pearson r (matrix)",   f"{r_pearson:.4f}  (p={p_pearson:.2e})"),
-            ("Spearman r (matrix)",  f"{r_spearman:.4f}  (p={p_spearman:.2e})"),
-        ],
-        title="Hi-C Validation — direct similarity",
-        log_fn=_log.info,
-    )
+    log_table(table_rows, title="Hi-C Validation — single structure", log_fn=_log.info)
 
     if save_path is not None:
         from .plots import plot_hic_comparison
         import os
         plots_dir = os.path.join(save_path, "plots")
         os.makedirs(plots_dir, exist_ok=True)
-        plot_hic_comparison(sim_contact, hic_r, plots_dir, name="hic_comparison_single")
+        plot_hic_comparison(
+            sim_contact, hic_r, plots_dir,
+            name="hic_comparison_single",
+            rw_matrix=rw_contact if rw_ok else None,
+        )
 
     return {
-        "diag_decay_r": r_dd,      "diag_decay_p": p_dd,
-        "insulation_r": r_ins,     "insulation_p": p_ins,
-        "pc1_r":        r_pc1,     "pc1_p":        p_pc1,
-        "pearson_r":    r_pearson, "pearson_p":    p_pearson,
-        "spearman_r":   r_spearman,"spearman_p":   p_spearman,
+        "diag_decay_r": r_dd,       "diag_decay_p": p_dd,
+        "insulation_r": r_ins,      "insulation_p": p_ins,
+        "pc1_r":        r_pc1,      "pc1_p":        p_pc1,
+        "pearson_r":    r_pearson,  "pearson_p":    p_pearson,
+        "spearman_r":   r_spearman, "spearman_p":   p_spearman,
+        "ssim":         cv["ssim"],
+        "gmsd":         cv["gmsd"],
+        "nmi":          cv["nmi"],
     }
 
 
@@ -870,6 +1177,9 @@ def validate_hic_ensemble(
     max_diag: int | None = None,
     eps: float = 1e-3,
     save_path: str | None = None,
+    n_rw: int = 20,
+    rw_step_nm: float = 0.1,
+    confine_radius_nm: float | None = None,
     log=None,
 ) -> dict:
     """Validate an ensemble of simulated structures against experimental Hi-C.
@@ -901,22 +1211,18 @@ def validate_hic_ensemble(
     dict with keys:
         'diag_decay_r', 'diag_decay_p',
         'insulation_r', 'insulation_p',
-        'pc1_r',        'pc1_p'
+        'pc1_r',        'pc1_p',
+        'pearson_r',    'pearson_p',
+        'spearman_r',   'spearman_p',
+        'ssim',         'gmsd',         'nmi'
     """
-    from .utils import get_coordinates_cif, model_distance_heatmap
     _log = log or logger
 
-    _log.info(f"Computing inverse-average contact map from {len(cif_paths)} frames …")
-    inv_avg = None
-    for path in cif_paths:
-        coords   = get_coordinates_cif(path)
-        dist_map = model_distance_heatmap(coords)
-        inv      = inverse_contact_matrix(dist_map, eps=eps)
-        if inv_avg is None:
-            inv_avg = inv
-        else:
-            inv_avg += inv
-    inv_avg /= len(cif_paths)
+    # ── Fast streaming accumulation (float32, in-place, no temp arrays) ───────
+    # Uses the Gram-matrix identity D²_ij = ||r_i||² + ||r_j||² − 2 r_i·r_j
+    # so no separate N×N distance buffer is ever materialised.
+    # Peak RAM = 2 × N² × 4 bytes (accumulator + one working frame).
+    inv_avg = _accumulate_ensemble(cif_paths, eps=eps, log=_log)
 
     N     = inv_avg.shape[0]
     hic_r = _pool_matrix(hic_matrix, N)
@@ -929,7 +1235,7 @@ def validate_hic_ensemble(
     r_dd, p_dd = _pearson(sim_decay, exp_decay)
 
     # OE-normalize both matrices once — removes shared distance-decay baseline
-    # so insulation score and direct correlations reflect structural features.
+    # so all subsequent metrics reflect structural features, not trivial decay.
     sim_oe = oe_matrix(inv_avg)
     exp_oe = oe_matrix(hic_r)
 
@@ -941,45 +1247,98 @@ def validate_hic_ensemble(
     # ── 3. PC1 (A/B compartments) ─────────────────────────────────────────────
     sim_pc1 = pc1_of_oe(inv_avg)
     exp_pc1 = pc1_of_oe(hic_r)
-    r_pc1, p_pc1 = _pearson(np.abs(sim_pc1), np.abs(exp_pc1))
+    r_pc1_raw, p_pc1 = _pearson(sim_pc1, exp_pc1)
+    r_pc1 = abs(r_pc1_raw)
 
-    log_table(
-        [
+    # ── 4. Direct matrix correlations (OE upper triangle) ────────────────────
+    sim_flat = _upper_tri(sim_oe)
+    exp_flat = _upper_tri(exp_oe)
+    r_pearson,  p_pearson  = _pearson(sim_flat, exp_flat)
+    r_spearman, p_spearman = _spearman(sim_flat, exp_flat)
+
+    # ── 5. Computer-vision structural similarity (OE) ─────────────────────────
+    cv = _hic_cv_metrics(sim_oe, exp_oe)
+
+    # ── 6. Random-walk null-model baseline ────────────────────────────────────
+    try:
+        rw_contact = _rw_baseline_contact(
+            N, n_rw=n_rw, step_nm=rw_step_nm, eps=eps,
+            confine_radius_nm=confine_radius_nm,
+        )
+        rw_oe      = oe_matrix(rw_contact)
+
+        rw_decay            = diagonal_decay_profile(rw_contact, max_diag)
+        r_dd_rw,  _         = _pearson(rw_decay, exp_decay)
+
+        rw_ins              = insulation_score(rw_oe, insulation_window)
+        r_ins_rw, _         = _pearson(rw_ins, exp_ins)
+
+        rw_pc1              = pc1_of_oe(rw_contact)
+        r_pc1_rw_raw, _     = _pearson(rw_pc1, exp_pc1)
+        r_pc1_rw            = abs(r_pc1_rw_raw)
+
+        rw_flat             = _upper_tri(rw_oe)
+        r_pear_rw,  _       = _pearson(rw_flat, exp_flat)
+        r_spear_rw, _       = _spearman(rw_flat, exp_flat)
+
+        cv_rw               = _hic_cv_metrics(rw_oe, exp_oe)
+        rw_ok = True
+    except Exception as _rw_err:
+        _log.warning("RW baseline failed: %s", _rw_err)
+        rw_ok = False
+
+    def _fmt(sim_val, rw_val, p=None):
+        rw_s = f"{rw_val:.4f}" if rw_ok else "n/a"
+        if p is not None:
+            return f"{sim_val:.4f}  (p={p:.2e})  [RW: {rw_s}]"
+        return f"{sim_val:.4f}  [RW: {rw_s}]"
+
+    if rw_ok:
+        table_rows = [
+            ("Frames averaged",     str(len(cif_paths))),
+            ("Metric",              "MultiMM  [RW baseline]"),
+            ("Diagonal decay r",    _fmt(r_dd,       r_dd_rw,   p_dd)),
+            ("Insulation score r",  _fmt(r_ins,      r_ins_rw,  p_ins)),
+            ("|PC1| r",             _fmt(r_pc1,      r_pc1_rw,  p_pc1)),
+            ("Pearson r (OE tri)",  _fmt(r_pearson,  r_pear_rw,  p_pearson)),
+            ("Spearman r (OE tri)", _fmt(r_spearman, r_spear_rw, p_spearman)),
+            ("SSIM",                f"{cv['ssim']:.4f}  (local pattern)  [RW: {cv_rw['ssim']:.4f}]"),
+            ("GMSD ↓ better",       f"{cv['gmsd']:.4f}  (edge deviation)  [RW: {cv_rw['gmsd']:.4f}]"),
+            ("NMI",                 f"{cv['nmi']:.4f}  (mutual info)  [RW: {cv_rw['nmi']:.4f}]"),
+        ]
+    else:
+        table_rows = [
             ("Frames averaged",     str(len(cif_paths))),
             ("Diagonal decay r",    f"{r_dd:.4f}  (p={p_dd:.2e})"),
             ("Insulation score r",  f"{r_ins:.4f}  (p={p_ins:.2e})"),
             ("|PC1| r",             f"{r_pc1:.4f}  (p={p_pc1:.2e})"),
-        ],
-        title="Hi-C Validation — ensemble",
-        log_fn=_log.info,
-    )
+            ("Pearson r (OE tri)",  f"{r_pearson:.4f}  (p={p_pearson:.2e})"),
+            ("Spearman r (OE tri)", f"{r_spearman:.4f}  (p={p_spearman:.2e})"),
+            ("SSIM",                f"{cv['ssim']:.4f}  (local pattern similarity)"),
+            ("GMSD",                f"{cv['gmsd']:.4f}  (boundary edge deviation, ↓ better)"),
+            ("NMI",                 f"{cv['nmi']:.4f}  (non-linear mutual information)"),
+        ]
 
-    # ── 4. Direct matrix similarity (on OE-normalized matrices) ──────────────
-    sim_flat = _upper_tri(sim_oe)
-    exp_flat = _upper_tri(exp_oe)
-    r_pearson, p_pearson = _pearson(sim_flat, exp_flat)
-    r_spearman, p_spearman = _spearman(sim_flat, exp_flat)
-
-    log_table(
-        [
-            ("Pearson r (matrix)",   f"{r_pearson:.4f}  (p={p_pearson:.2e})"),
-            ("Spearman r (matrix)",  f"{r_spearman:.4f}  (p={p_spearman:.2e})"),
-        ],
-        title="Hi-C Validation — direct similarity",
-        log_fn=_log.info,
-    )
+    log_table(table_rows, title="Hi-C Validation — ensemble", log_fn=_log.info)
 
     if save_path is not None:
         from .plots import plot_hic_comparison
         import os
         plots_dir = os.path.join(save_path, "plots")
         os.makedirs(plots_dir, exist_ok=True)
-        plot_hic_comparison(inv_avg, hic_r, plots_dir, name="hic_comparison_ensemble")
+        plot_hic_comparison(
+            inv_avg, hic_r, plots_dir,
+            name="hic_comparison_ensemble",
+            rw_matrix=rw_contact if rw_ok else None,
+        )
 
     return {
-        "diag_decay_r": r_dd,      "diag_decay_p": p_dd,
-        "insulation_r": r_ins,     "insulation_p": p_ins,
-        "pc1_r":        r_pc1,     "pc1_p":        p_pc1,
-        "pearson_r":    r_pearson, "pearson_p":    p_pearson,
-        "spearman_r":   r_spearman,"spearman_p":   p_spearman,
+        "diag_decay_r": r_dd,       "diag_decay_p": p_dd,
+        "insulation_r": r_ins,      "insulation_p": p_ins,
+        "pc1_r":        r_pc1,      "pc1_p":        p_pc1,
+        "pearson_r":    r_pearson,  "pearson_p":    p_pearson,
+        "spearman_r":   r_spearman, "spearman_p":   p_spearman,
+        "ssim":         cv["ssim"],
+        "gmsd":         cv["gmsd"],
+        "nmi":          cv["nmi"],
     }
