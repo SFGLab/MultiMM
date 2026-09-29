@@ -174,8 +174,8 @@ class SimulationConfig(BaseModel):
         description="Apply Hi-C contact-guided force to the simulation.",
     )
     HIC_FORCE_MODE: str = Field(
-        default="crossentropy",
-        description="Hi-C force functional form. Options: svd, svd_multiscale, crossentropy (default).",
+        default="svd",
+        description="Hi-C force functional form. Options: svd (default), svd_multiscale, crossentropy.",
     )
     HIC_NORMALIZATION: str = Field(
         default="KR",
@@ -186,7 +186,7 @@ class SimulationConfig(BaseModel):
         description="Number of SVD components used in svd / svd_multiscale mode.",
     )
     HIC_K_SCALE: float = Field(
-        default=100.0,
+        default=130.0,
         description="Global energy scale for Hi-C force [kJ/mol].",
     )
     HIC_MAX_GAP: int = Field(

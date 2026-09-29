@@ -911,8 +911,9 @@ def compute_compartments(matrix):
     pc2 : ndarray, shape (N,)
     """
     assert matrix.shape[0] == matrix.shape[1], "Matrix must be square"
-    # already_oe=True: skip OE step; the corrcoef inside hic_pc1 handles normalisation
-    return hic_pc1(np.nan_to_num(matrix), already_oe=True, k=2)
+    # already_oe=False: apply OE normalization before computing the Pearson
+    # correlation matrix and eigenvectors — the input is NOT pre-OE-normalized.
+    return hic_pc1(np.nan_to_num(matrix), already_oe=False, k=2)
 
 
 # =============================================================================

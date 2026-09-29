@@ -806,9 +806,15 @@ def validate_hic_model(
     exp_decay = diagonal_decay_profile(hic_r,       max_diag)
     r_dd, p_dd = _pearson(sim_decay, exp_decay)
 
+    # OE-normalize both matrices once — used for insulation score and direct
+    # matrix comparison (removes shared distance-decay baseline so correlations
+    # reflect structural features rather than the trivial decay).
+    sim_oe = oe_matrix(sim_contact)
+    exp_oe = oe_matrix(hic_r)
+
     # ── 2. Insulation score ───────────────────────────────────────────────────
-    sim_ins = insulation_score(sim_contact, insulation_window)
-    exp_ins = insulation_score(hic_r,       insulation_window)
+    sim_ins = insulation_score(sim_oe, insulation_window)
+    exp_ins = insulation_score(exp_oe, insulation_window)
     r_ins, p_ins = _pearson(sim_ins, exp_ins)
 
     # ── 3. PC1 (A/B compartments) ─────────────────────────────────────────────
@@ -826,9 +832,9 @@ def validate_hic_model(
         log_fn=_log.info,
     )
 
-    # ── 4. Direct matrix similarity ───────────────────────────────────────────
-    sim_flat = _upper_tri(sim_contact)
-    exp_flat = _upper_tri(hic_r)
+    # ── 4. Direct matrix similarity (on OE-normalized matrices) ──────────────
+    sim_flat = _upper_tri(sim_oe)
+    exp_flat = _upper_tri(exp_oe)
     r_pearson, p_pearson = _pearson(sim_flat, exp_flat)
     r_spearman, p_spearman = _spearman(sim_flat, exp_flat)
 
@@ -922,9 +928,14 @@ def validate_hic_ensemble(
     exp_decay = diagonal_decay_profile(hic_r,   max_diag)
     r_dd, p_dd = _pearson(sim_decay, exp_decay)
 
+    # OE-normalize both matrices once — removes shared distance-decay baseline
+    # so insulation score and direct correlations reflect structural features.
+    sim_oe = oe_matrix(inv_avg)
+    exp_oe = oe_matrix(hic_r)
+
     # ── 2. Insulation score ───────────────────────────────────────────────────
-    sim_ins = insulation_score(inv_avg, insulation_window)
-    exp_ins = insulation_score(hic_r,   insulation_window)
+    sim_ins = insulation_score(sim_oe, insulation_window)
+    exp_ins = insulation_score(exp_oe, insulation_window)
     r_ins, p_ins = _pearson(sim_ins, exp_ins)
 
     # ── 3. PC1 (A/B compartments) ─────────────────────────────────────────────
@@ -943,9 +954,9 @@ def validate_hic_ensemble(
         log_fn=_log.info,
     )
 
-    # ── 4. Direct matrix similarity ───────────────────────────────────────────
-    sim_flat = _upper_tri(inv_avg)
-    exp_flat = _upper_tri(hic_r)
+    # ── 4. Direct matrix similarity (on OE-normalized matrices) ──────────────
+    sim_flat = _upper_tri(sim_oe)
+    exp_flat = _upper_tri(exp_oe)
     r_pearson, p_pearson = _pearson(sim_flat, exp_flat)
     r_spearman, p_spearman = _spearman(sim_flat, exp_flat)
 

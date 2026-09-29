@@ -46,21 +46,23 @@ PyPI package: https://pypi.org/project/MultiMM/
 
 ## Model Overview
 
-Chromatin is represented as a coarse-grained polymer. The total energy $E$ decomposes into physically motivated terms:
+Chromatin is represented as a coarse-grained polymer. The total energy `E` decomposes into physically motivated terms:
 
-$$E = E_{\text{backbone}} + E_{\text{loops}} + E_{\text{block}} + E_{\text{excluded}} + E_{\text{confinement}} + E_{\text{chromosomal}} + E_{\text{Hi-C}}$$
+```
+E = E_backbone + E_loops + E_block + E_excluded + E_confinement + E_chromosomal + E_HiC
+```
 
 Each term encodes a distinct biological mechanism:
 
 | Term | Mechanism |
 |---|---|
-| $E_{\text{backbone}}$ | Polymer connectivity and stiffness |
-| $E_{\text{loops}}$ | Long-range loop extrusion or experimental contact constraints |
-| $E_{\text{block}}$ | Compartment and subcompartment phase separation |
-| $E_{\text{excluded}}$ | Steric repulsion between beads |
-| $E_{\text{confinement}}$ | Nuclear geometry: spherical container and lamina affinity |
-| $E_{\text{chromosomal}}$ | Chromosome territory formation and global compaction |
-| $E_{\text{Hi-C}}$ | Data-driven contact restraint from a raw Hi-C matrix |
+| `E_backbone` | Polymer connectivity and stiffness |
+| `E_loops` | Long-range loop extrusion or experimental contact constraints |
+| `E_block` | Compartment and subcompartment phase separation |
+| `E_excluded` | Steric repulsion between beads |
+| `E_confinement` | Nuclear geometry: spherical container and lamina affinity |
+| `E_chromosomal` | Chromosome territory formation and global compaction |
+| `E_HiC` | Data-driven contact restraint from a raw Hi-C matrix |
 
 ---
 
@@ -70,33 +72,43 @@ The backbone encodes chain connectivity and local rigidity through two standard 
 
 **Harmonic bond** (nearest-neighbor connectivity):
 
-$$E_{\text{bond}} = \sum_{i} \frac{k_b}{2} \left( r_{i,i+1} - r_0 \right)^2$$
+```
+E_bond = sum_i  (k_b / 2) * (r_{i,i+1} - r0)^2
+```
 
-where $r_{i,i+1}$ is the distance between consecutive beads, $r_0$ is the equilibrium bond length, and $k_b$ is the bond stiffness.
+where `r_{i,i+1}` is the distance between consecutive beads, `r0` is the equilibrium bond length, and `k_b` is the bond stiffness.
 
 **Harmonic angle** (chain stiffness / persistence length):
 
-$$E_{\text{angle}} = \sum_{i} \frac{k_\theta}{2} \left( \theta_i - \theta_0 \right)^2$$
+```
+E_angle = sum_i  (k_theta / 2) * (theta_i - theta0)^2
+```
 
-where $\theta_i$ is the angle formed by three consecutive beads $(i, i+1, i+2)$, $\theta_0$ is the preferred angle, and $k_\theta$ controls bending rigidity. Together these reproduce a discretized worm-like chain.
+where `theta_i` is the angle formed by three consecutive beads `(i, i+1, i+2)`, `theta0` is the preferred angle, and `k_theta` controls bending rigidity. Together these reproduce a discretized worm-like chain.
 
 ---
 
 ### Loop Interactions
 
-Long-range loop constraints tether pairs of beads $(m, n)$ identified from loop-calling experiments. Three functional forms are available.
+Long-range loop constraints tether pairs of beads `(m, n)` identified from loop-calling experiments. Three functional forms are available.
 
 **Harmonic** (default):
 
-$$E_{\text{loops}}^{\text{harmonic}} = \sum_{(m,n)} \frac{k}{2} \left( r_{mn} - r_0 \right)^2$$
+```
+E_loops_harmonic = sum_{(m,n)}  (k / 2) * (r_mn - r0)^2
+```
 
 **Soft FENE-like** (bounded, avoids divergence at large extension):
 
-$$E_{\text{loops}}^{\text{fene}} = \sum_{(m,n)} \frac{k (r_{mn} - r_0)^2}{1 + \alpha (r_{mn} - r_0)^2}$$
+```
+E_loops_fene = sum_{(m,n)}  k * (r_mn - r0)^2 / (1 + alpha * (r_mn - r0)^2)
+```
 
 **Gaussian tether** (smooth, fully bounded):
 
-$$E_{\text{loops}}^{\text{gaussian}} = \sum_{(m,n)} k \left( 1 - e^{-(r_{mn} - r_0)^2 / \sigma^2} \right)$$
+```
+E_loops_gaussian = sum_{(m,n)}  k * (1 - exp(-(r_mn - r0)^2 / sigma^2))
+```
 
 Loop bond strengths can be fixed (`LE_FIXED_DISTANCES = True`) or scaled by experimental contact frequency (`LE_FIXED_DISTANCES = False`). Providing `LOOPS_PATH` is optional; the simulation runs without loops if it is not supplied.
 
@@ -104,36 +116,44 @@ Loop bond strengths can be fixed (`LE_FIXED_DISTANCES = True`) or scaled by expe
 
 ### Block-Copolymer Compartmentalization
 
-State-dependent pairwise attractions drive compartment phase separation. Each bead carries a label $s_i$ representing compartment identity.
+State-dependent pairwise attractions drive compartment phase separation. Each bead carries a label `s_i` representing compartment identity.
 
 **Compartment level (A/B):**
 
-$$E_{\text{comp}} = -\sum_{i<j} \epsilon(s_i, s_j) \exp\!\left( -\frac{r_{ij}^2}{2r_c^2} \right)$$
+```
+E_comp = -sum_{i<j}  eps(s_i, s_j) * exp(-r_ij^2 / (2 * r_c^2))
+```
 
-The coupling $\epsilon(s_i, s_j)$ is attractive for like compartments (A–A, B–B) and weak or repulsive otherwise, reproducing large-scale A/B segregation.
+The coupling `eps(s_i, s_j)` is attractive for like compartments (A–A, B–B) and weak or repulsive otherwise, reproducing large-scale A/B segregation.
 
 **Subcompartment level (A1/A2/B1/B2):**
 
-$$E_{\text{sub}} = -\sum_{i<j} \epsilon_{\alpha\beta} \exp\!\left( -\frac{r_{ij}^2}{2r_{sc}^2} \right), \quad s_i = \alpha,\; s_j = \beta$$
+```
+E_sub = -sum_{i<j}  eps_ab * exp(-r_ij^2 / (2 * r_sc^2)),   s_i = alpha, s_j = beta
+```
 
 This promotes finer microphase separation inside A/B compartments.
 
 **Chromosome territory (self-compaction):**
 
-$$E_{\text{chrom}} = \sum_{i<j} \delta_{\chi_i, \chi_j} \, V(r_{ij})$$
+```
+E_chrom = sum_{i<j}  delta(chi_i, chi_j) * V(r_ij)
+```
 
-where $\chi_i$ is the chromosome label and $V(r)$ is a soft attractive potential acting only between beads on the same chromosome. The default polynomial form is:
+where `chi_i` is the chromosome label and `V(r)` is a soft attractive potential acting only between beads on the same chromosome. The default polynomial form is:
 
-$$V(r) = dE \left( k_C r^4 - r^3 + r^2 \right)$$
+```
+V(r) = dE * (k_C * r^4 - r^3 + r^2)
+```
 
 **Alternative interaction kernels** (experimental):
 
 | Kernel | Expression | Effect |
 |---|---|---|
-| Yukawa | $V(r) \sim -e^{-r/\lambda}/r$ | Screened, longer-range |
-| Power-law | $V(r) \sim -1/(r^\alpha + \varepsilon)$ | Scale-free attraction |
-| Theta (contact) | $V(r) \sim -\Theta(r_c - r)$ | Binary hard-cutoff |
-| Saturating | $V(r) \sim -1/(1 + k_C r^2)$ | Bounded, prevents over-collapse |
+| Yukawa | `V(r) ~ -exp(-r/lambda) / r` | Screened, longer-range |
+| Power-law | `V(r) ~ -1 / (r^alpha + eps)` | Scale-free attraction |
+| Theta (contact) | `V(r) ~ -Theta(r_c - r)` | Binary hard-cutoff |
+| Saturating | `V(r) ~ -1 / (1 + k_C * r^2)` | Bounded, prevents over-collapse |
 
 ---
 
@@ -141,22 +161,26 @@ $$V(r) = dE \left( k_C r^4 - r^3 + r^2 \right)$$
 
 **Spherical container** — soft penalty for excursions outside the nuclear shell:
 
-$$E_{\text{container}} = C \sum_i \left[ \max(0,\, r_i - R_2)^2 + \max(0,\, R_1 - r_i)^2 \right]$$
+```
+E_container = C * sum_i [ max(0, r_i - R2)^2 + max(0, R1 - r_i)^2 ]
+```
 
-where $r_i$ is the radial distance from the nuclear center. This confines chromatin between radii $R_1$ and $R_2$.
+where `r_i` is the radial distance from the nuclear center. This confines chromatin between radii `R1` and `R2`.
 
 **B-lamina interaction** — anchors B-compartment chromatin to the nuclear periphery:
 
-$$E_{\text{lamina}} = -\sum_i B(s_i)\, V(r_i)$$
+```
+E_lamina = -sum_i  B(s_i) * V(r_i)
+```
 
-where $B(s_i)$ selects B-compartment beads. Available radial profiles:
+where `B(s_i)` selects B-compartment beads. Available radial profiles:
 
 | Mode | Expression | Description |
 |---|---|---|
-| `sin` (default) | $V(r) = \sin^8\!\left(\tfrac{\pi(r-R_1)}{R_2-R_1}\right) - 1$ | Sharp peripheral preference |
-| `gaussian_shell` | $V(r) \sim -\left[e^{-(r-R_1)^2/2\sigma^2} + e^{-(r-R_2)^2/2\sigma^2}\right]$ | Localized at both boundaries |
-| `harmonic_shell` | $V(r) \sim (r - r_0)^2,\quad r_0 = (R_1+R_2)/2$ | Pulls toward mid-shell |
-| `logistic_shell` | Smooth sigmoidal walls at $R_1$ and $R_2$ | Smooth boundary transition |
+| `sin` (default) | `V(r) = sin^8(pi*(r-R1)/(R2-R1)) - 1` | Sharp peripheral preference |
+| `gaussian_shell` | `V(r) ~ -(exp(-(r-R1)^2/(2*s^2)) + exp(-(r-R2)^2/(2*s^2)))` | Localized at both boundaries |
+| `harmonic_shell` | `V(r) ~ (r - r0)^2,  r0 = (R1+R2)/2` | Pulls toward mid-shell |
+| `logistic_shell` | Smooth sigmoidal walls at `R1` and `R2` | Smooth boundary transition |
 
 ---
 
@@ -166,38 +190,47 @@ When a raw Hi-C contact matrix is provided (`HIC_PATH`), it is used directly as 
 
 **Pipeline:**
 
-1. The matrix is loaded from `.hic`, `.cool`, or `.mcool`, auto-selecting resolution and resampling to exactly $N_\text{beads} \times N_\text{beads}$ via weighted average pooling (`read_hic.py`).
-2. Knight–Ruiz iterative balancing: $H \leftarrow D^{-1} H D^{-1}$ until row marginals ≈ 1.
-3. Observed/Expected normalisation: $OE[i,j] = \log\!\left(H[i,j] / E[i,j]\right)$, where $E[i,j]$ is the genome-wide mean contact frequency at separation $|i-j|$.
-4. Truncated eigendecomposition of the symmetric OE matrix: $OE \approx \sum_{k=1}^{K} \lambda_k \mathbf{v}_k \mathbf{v}_k^T$.
+1. The matrix is loaded from `.hic`, `.cool`, or `.mcool`, auto-selecting resolution and resampling to exactly `N_beads x N_beads` via weighted average pooling (`read_hic.py`).
+2. Knight–Ruiz iterative balancing: `H <- D^{-1} H D^{-1}` until row marginals ≈ 1.
+3. Observed/Expected normalisation: `OE[i,j] = log(H[i,j] / E[i,j])`, where `E[i,j]` is the genome-wide mean contact frequency at separation `|i-j|`.
+4. Truncated eigendecomposition of the symmetric OE matrix: `OE ≈ sum_{k=1}^{K}  lambda_k * v_k * v_k^T`.
 
 Per-particle scalars encoding sign and magnitude:
 
-$$a_k(i) = \text{sign}(\lambda_k) \cdot \sqrt{|\lambda_k|} \cdot v_k(i)$$
+```
+a_k(i) = sign(lambda_k) * sqrt(|lambda_k|) * v_k(i)
+```
 
 Three force modes are available (`HIC_FORCE_MODE`):
 
 **`svd`** — single-scale Gaussian CustomNonbondedForce:
 
-$$U(i,j;\,r) = -k \left[\sum_{k=1}^K a_k(i)\, a_k(j)\right] \exp\!\left(-\frac{r^2}{2\sigma^2}\right)$$
+```
+U(i,j; r) = -k * [sum_{k=1}^K  a_k(i) * a_k(j)] * exp(-r^2 / (2*sigma^2))
+```
 
-where $\sigma = r_c / 3$ and the cutoff is $3\sigma$. Same-type beads accumulate a positive dot product and attract; opposite types repel.
+where `sigma = r_c / 3` and the cutoff is `3*sigma`. Same-type beads accumulate a positive dot product and attract; opposite types repel.
 
-**`svd_multiscale`** — each eigenvector acts at its own spatial scale $\sigma_k$:
+**`svd_multiscale`** — each eigenvector acts at its own spatial scale `sigma_k`:
 
-$$U(i,j;\,r) = -k \sum_{k=1}^K a_k(i)\, a_k(j) \exp\!\left(-\frac{r^2}{2\sigma_k^2}\right)$$
+```
+U(i,j; r) = -k * sum_{k=1}^K  a_k(i) * a_k(j) * exp(-r^2 / (2*sigma_k^2))
+```
 
-The per-component length scales $\sigma_k$ can be assigned by eigenvalue magnitude ($\sigma_k = \sigma_{\max}(|\lambda_k|/|\lambda_1|)^\beta$) or by eigenvector genomic autocorrelation length.
+The per-component length scales `sigma_k` can be assigned by eigenvalue magnitude (`sigma_k = sigma_max * (|lambda_k| / |lambda_1|)^beta`) or by eigenvector genomic autocorrelation length.
 
 **`crossentropy`** — sparse CustomBondForce for sharp contact peaks:
 
-$$P(r) = \frac{1}{1 + (r/r_c)^\alpha}, \qquad U_{ij}(r) = -k\left[c_{ij}\log(P + \varepsilon) + (1-c_{ij})\log(1-P+\varepsilon)\right]$$
+```
+P(r)   = 1 / (1 + (r/r_c)^alpha)
+U_ij(r) = -k * [c_ij * log(P + eps) + (1 - c_ij) * log(1 - P + eps)]
+```
 
-Only pairs with $c_{ij} \geq \text{threshold}$ receive a bond, keeping the bond list sparse.
+Only pairs with `c_ij >= threshold` receive a bond, keeping the bond list sparse.
 
 **Hi-C validation** — after simulation, MultiMM automatically computes:
-- Pearson $r$ between the model distance map and $\log(1 + \text{Hi-C})$ contact frequency (upper triangle, excluding near-diagonal bands).
-- Pearson $r$ between $|\text{PC1}|$ of the model and $|\text{PC1}|$ of the experimental Hi-C matrix.
+- Pearson `r` between the model distance map and `log(1 + Hi-C)` contact frequency (upper triangle, excluding near-diagonal bands).
+- Pearson `r` between `|PC1|` of the model and `|PC1|` of the experimental Hi-C matrix.
 
 Results are saved to `metadata/hic_validation.npy`.
 
@@ -211,31 +244,42 @@ After coarse-grained optimization, nucleosome positions are interpolated using a
 
 ## Internal Parameter Definitions
 
-All geometric and interaction scales are derived from a single microscopic length scale — the polymer bond length $b_0$ (`POL_HARMONIC_BOND_R0`).
+All geometric and interaction scales are derived from a single microscopic length scale — the polymer bond length `b0` (`POL_HARMONIC_BOND_R0`).
 
 **Nuclear radius** (dense globule scaling):
 
-$$R_2 = b_0\, N^{1/3}$$
+```
+R2 = b0 * N^(1/3)
+```
 
-which enforces constant monomer density $N/R_2^3 \approx \text{const}$.
+which enforces constant monomer density `N / R2^3 ≈ const`.
 
-**Inner compartment radius** (fixed volume fraction $f$):
+**Inner compartment radius** (fixed volume fraction `f`):
 
-$$R_1 = R_2\, f^{1/3}$$
+```
+R1 = R2 * f^(1/3)
+```
 
 **Compartment interaction length scale:**
 
-$$r_c \sim \mathcal{O}(b_0) \approx 1.5\, b_0$$
+```
+r_c ~ O(b0) ≈ 1.5 * b0
+```
 
 ensuring interactions remain local relative to the polymer backbone.
 
-**Loop equilibrium distances** — either globally fixed or derived from experimental loop lengths $d_i$:
+**Loop equilibrium distances** — either globally fixed or derived from experimental loop lengths `d_i`:
 
-$$r_0^{(i)} \in \{r_0^{\text{global}},\; d_i\}$$
+```
+r0_i ∈ { r0_global,  d_i }
+```
 
-**State variables** — each bead carries a compartment label $s_i$ and chromosome label $\chi_i$, which modulate interactions through selection rules:
+**State variables** — each bead carries a compartment label `s_i` and chromosome label `chi_i`, which modulate interactions through selection rules:
 
-$$E_{ij} \propto \delta(s_i,\, s_j), \qquad E_{ij} \propto \delta(\chi_i,\, \chi_j)$$
+```
+E_ij ∝ delta(s_i, s_j)       (compartment-selective)
+E_ij ∝ delta(chi_i, chi_j)   (chromosome-selective)
+```
 
 ---
 
@@ -277,7 +321,7 @@ chr1 1850001  2100000   B.1.1.2.2.1.2.1
 
 ### Hi-C contact matrix (`.hic` / `.cool` / `.mcool`)
 
-Any standard Juicer `.hic` file or Cooler `.cool` / `.mcool` file is accepted. MultiMM automatically selects the best available resolution for the requested region and resamples to $N_\text{beads} \times N_\text{beads}$. KR, VC, VC_SQRT, and NONE normalizations are supported.
+Any standard Juicer `.hic` file or Cooler `.cool` / `.mcool` file is accepted. MultiMM automatically selects the best available resolution for the requested region and resamples to `N_beads x N_beads`. KR, VC, VC_SQRT, and NONE normalizations are supported.
 
 ### ATAC-seq signal (`.bw` / `.BigWig`)
 
@@ -369,15 +413,15 @@ When `MODELLING_LEVEL` is set, the specified `N_BEADS` value is overridden. Adva
 **Genome-wide structure with chromosome coloring:**
 
 ```python
-import simulation.plots as splt
+import multimm.plots as splt
 splt.viz_chroms(sim_path)          # add comps=False to disable compartment coloring
 ```
 
 **Any single region or CIF structure:**
 
 ```python
-import simulation.plots as splt
-import simulation.utils as suts
+import multimm.plots as splt
+import multimm.utils as suts
 
 V = suts.get_coordinates_cif(cif_path)
 splt.viz_structure(V)
@@ -454,7 +498,7 @@ Visualization is powered by [PyVista](https://pyvista.org/).
 | `POL_HARMONIC_BOND_R0` | Quantity | 0.1 | nm | Equilibrium bond length |
 | `POL_HARMONIC_BOND_K` | Quantity | 300 000 | kJ mol⁻¹ nm⁻² | Bond stiffness |
 | `POL_USE_HARMONIC_ANGLE` | bool | `True` | — | Harmonic angle (bending rigidity) |
-| `POL_HARMONIC_ANGLE_R0` | Quantity | π | rad | Equilibrium angle |
+| `POL_HARMONIC_ANGLE_R0` | Quantity | pi | rad | Equilibrium angle |
 | `POL_HARMONIC_ANGLE_CONSTANT_K` | Quantity | 100 | kJ mol⁻¹ rad⁻² | Bending stiffness |
 
 ### Excluded Volume
@@ -485,8 +529,8 @@ Visualization is powered by [PyVista](https://pyvista.org/).
 | `HIC_PATH` | str | None | Path to `.hic`, `.cool`, or `.mcool` file |
 | `HIC_FORCE_MODE` | str | `crossentropy` | `svd`, `svd_multiscale`, `crossentropy` |
 | `HIC_NORMALIZATION` | str | `KR` | Matrix normalization: `KR`, `VC`, `VC_SQRT`, `NONE` |
-| `HIC_N_COMPONENTS` | int | 10 | Number of SVD eigenvectors retained |
-| `HIC_K_SCALE` | float | 1.0 | Global energy scale (kJ mol⁻¹) |
+| `HIC_N_COMPONENTS` | int | 5 | Number of SVD eigenvectors retained |
+| `HIC_K_SCALE` | float | 130.0 | Global energy scale (kJ mol⁻¹) |
 | `HIC_MAX_GAP` | int | 10 | Maximum gap fraction (%) tolerated when interpolating missing bins |
 
 ### Compartment and Subcompartment Forces
@@ -509,8 +553,8 @@ Visualization is powered by [PyVista](https://pyvista.org/).
 | Parameter | Type | Default | Units | Description |
 |---|---|---|---|---|
 | `SC_USE_SPHERICAL_CONTAINER` | bool | `False` | — | Enable spherical nuclear boundary |
-| `SC_RADIUS1` | Quantity | auto | nm | Inner radius (nucleolus boundary); derived from $N$ if unset |
-| `SC_RADIUS2` | Quantity | auto | nm | Outer radius (nuclear boundary); derived from $N$ if unset |
+| `SC_RADIUS1` | Quantity | auto | nm | Inner radius (nucleolus boundary); derived from `N` if unset |
+| `SC_RADIUS2` | Quantity | auto | nm | Outer radius (nuclear boundary); derived from `N` if unset |
 | `SC_SCALE` | float | 1 000 | kJ mol⁻¹ nm⁻² | Container wall stiffness |
 
 ### B-Lamina Interaction
@@ -556,7 +600,7 @@ Visualization is powered by [PyVista](https://pyvista.org/).
 | `MAX_NUCS_PER_BEAD` | int | 4 | Maximum nucleosomes per coarse-grained bead |
 | `NUC_RADIUS` | float | 0.1 | Nucleosome helix radius |
 | `POINTS_PER_NUC` | int | 20 | Points per nucleosome helix |
-| `PHI_NORM` | float | π/5 | Zigzag angle |
+| `PHI_NORM` | float | pi/5 | Zigzag angle |
 
 ---
 
@@ -590,7 +634,7 @@ OUT_PATH/
 
 For genome-wide runs, an additional `chromosomes/` folder contains per-chromosome CIF files.
 
-`hic_validation.npy` stores a dictionary with keys `heatmap_r`, `heatmap_p` (Pearson $r$ and $p$-value between model distance map and Hi-C) and `eigvec_r`, `eigvec_p` ($|$PC1$|$ correlation).
+`hic_validation.npy` stores a dictionary with keys `heatmap_r`, `heatmap_p` (Pearson `r` and `p`-value between model distance map and Hi-C) and `eigvec_r`, `eigvec_p` (`|PC1|` correlation).
 
 UCSF Chimera trajectory visualization: https://www.cgl.ucsf.edu/chimera/
 

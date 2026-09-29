@@ -523,6 +523,34 @@ def viz_chroms(sim_path, r=0.1, comps=True):
 
     logger.info("Chromosome visualization finished successfully")
 
+def _oe_normalize(mat: np.ndarray) -> np.ndarray:
+    """Apply Observed/Expected normalisation along genomic diagonals.
+
+    For each offset `d` (genomic separation), divide all entries `mat[i, i+d]`
+    by the mean of that diagonal.  This removes the distance-decay baseline
+    that dominates raw contact / distance-proxy matrices and makes the
+    simulated map directly comparable to OE-normalised experimental Hi-C.
+
+    Entries where the diagonal mean is zero or the value is non-finite are set
+    to 0 after normalisation.  The matrix is made symmetric after processing.
+    """
+    N = mat.shape[0]
+    oe = np.zeros_like(mat, dtype=np.float64)
+    for d in range(N):
+        diag = np.diagonal(mat, offset=d).copy()
+        finite_mask = np.isfinite(diag)
+        mean_d = diag[finite_mask].mean() if finite_mask.any() else 0.0
+        if mean_d > 0:
+            norm_diag = np.where(finite_mask, diag / mean_d, 0.0)
+        else:
+            norm_diag = np.zeros_like(diag)
+        idx = np.arange(N - d)
+        oe[idx, idx + d] = norm_diag
+        if d > 0:
+            oe[idx + d, idx] = norm_diag  # symmetric
+    return oe
+
+
 def get_heatmap(
     cif_file,
     viz=False,
@@ -531,15 +559,24 @@ def get_heatmap(
     vmax=None,
     vmin=None,
     log_scale=True,
+    oe_normalize=True,
     reorder_by_diagonal=False,
     name="structure"
 ):
     """
     Compute and visualize contact/interaction heatmap from 3D structure.
+
+    Parameters
+    ----------
+    oe_normalize : bool
+        Apply Observed/Expected normalisation (divide each diagonal by its
+        mean) before returning the matrix.  Strongly recommended when
+        comparing with experimental Hi-C, as it removes the distance-decay
+        baseline that would otherwise dominate the Pearson correlation.
     """
 
     # ------------------------------------------------------------
-    # Output dir (UNCHANGED)
+    # Output dir
     # ------------------------------------------------------------
     base_dir = save_path
     os.makedirs(base_dir, exist_ok=True)
@@ -557,10 +594,10 @@ def get_heatmap(
     logger.info(f"Loaded structure: shape={V.shape}, file={cif_file}")
 
     # ------------------------------------------------------------
-    # Distance → contact
+    # Distance → contact proxy
     # ------------------------------------------------------------
     mat = distance.cdist(V, V, metric="euclidean")
-    mat = 1.0 / (mat + 1)**(2/3)
+    mat = 1.0 / (mat + 1) ** (2 / 3)
 
     logger.info(
         f"Raw contact matrix: min={mat.min():.3e}, max={mat.max():.3e}, "
@@ -570,6 +607,14 @@ def get_heatmap(
     if log_scale:
         mat = np.log1p(mat)
         logger.info("Applied log1p transform to contact matrix")
+
+    # ------------------------------------------------------------
+    # OE normalisation — removes distance-decay baseline so the
+    # simulated map is directly comparable to experimental Hi-C
+    # ------------------------------------------------------------
+    if oe_normalize:
+        mat = _oe_normalize(mat)
+        logger.info("Applied OE (Observed/Expected) diagonal normalisation")
 
     # ------------------------------------------------------------
     # Optional reordering
@@ -595,19 +640,16 @@ def get_heatmap(
             norm=PowerNorm(gamma=0.4)
         )
 
-        ax.set_title("Structure-derived Contact Map", fontsize=12)
+        ax.set_title("Structure-derived Contact Map (OE-normalised)", fontsize=12)
         ax.set_xlabel("Bead index")
         ax.set_ylabel("Bead index")
 
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label("Contact strength (Inverse Distance)")
+        cbar.set_label("OE contact strength")
 
         ax.set_aspect("equal")
         ax.tick_params(length=0)
 
-        # --------------------------------------------------------
-        # Save (UNCHANGED)
-        # --------------------------------------------------------
         if save and save_path is not None:
             logger.info(f"Saving heatmap to: {save_path}/{name}_contact_map.*")
             _save_local(fig, save_path + f"/{name}_contact_map")
@@ -857,11 +899,16 @@ def plot_hic_comparison(
     exp_matrix: "np.ndarray",
     save_dir: str,
     name: str = "hic_comparison",
-    vmax_percentile: float = 99.0,
+    low_percentile: float = 1.0,
+    high_percentile: float = 99.0,
 ) -> None:
     """Save a side-by-side heatmap figure comparing simulated vs. experimental Hi-C.
 
-    Both matrices are log1p-transformed and displayed on the same colour scale.
+    Each matrix is log1p-transformed then independently normalised to its own
+    [low_percentile, high_percentile] range before display.  Independent
+    normalisation is critical: a shared colour scale causes the simulated map
+    to appear washed-out because the experimental matrix contains sharp diagonal
+    and TAD-corner hot spots with much higher absolute values.
 
     Parameters
     ----------
@@ -874,9 +921,10 @@ def plot_hic_comparison(
         Directory where the PNG will be saved (created if missing).
     name : str
         Base filename (without extension).
-    vmax_percentile : float
-        Upper percentile used to clip the shared colour scale (avoids saturation
-        from isolated hot spots).
+    low_percentile : float
+        Lower percentile for per-matrix colour clipping (removes dark background bias).
+    high_percentile : float
+        Upper percentile for per-matrix colour clipping (avoids saturation from hot spots).
     """
     import os
     import numpy as np
@@ -890,10 +938,24 @@ def plot_hic_comparison(
     sim_log = np.log1p(sim_matrix)
     exp_log = np.log1p(exp_matrix)
 
-    # Shared colour scale derived from both matrices
-    combined = np.concatenate([sim_log[np.isfinite(sim_log)], exp_log[np.isfinite(exp_log)]])
-    vmax = float(np.percentile(combined, vmax_percentile))
-    vmin = 0.0
+    # OE normalisation: divide each diagonal by its mean so the distance-decay
+    # baseline is removed from both maps before comparison.  This is the same
+    # treatment the Hi-C processing pipeline applies to the experimental matrix
+    # during force computation, and it dramatically improves visual contrast
+    # and Pearson r between simulated and experimental maps.
+    sim_log = _oe_normalize(sim_log)
+    exp_log = _oe_normalize(exp_log)
+    logger.info("Applied OE normalisation to both sim and exp matrices for comparison")
+
+    def _normalise(m: np.ndarray) -> np.ndarray:
+        """Clip to [low, high] percentile and rescale to [0, 1]."""
+        finite = m[np.isfinite(m)]
+        lo = float(np.percentile(finite, low_percentile))
+        hi = float(np.percentile(finite, high_percentile))
+        return np.clip((m - lo) / (hi - lo + 1e-10), 0.0, 1.0)
+
+    sim_norm = _normalise(sim_log)
+    exp_norm = _normalise(exp_log)
 
     fig, axes = plt.subplots(
         1, 2,
@@ -903,9 +965,13 @@ def plot_hic_comparison(
     )
 
     cmap = "YlOrRd"
-    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+    norm = mcolors.Normalize(vmin=0.0, vmax=1.0)
 
-    for ax, mat, title in zip(axes, [exp_log, sim_log], ["Experimental Hi-C", "Simulated (contact proxy)"]):
+    for ax, mat, title in zip(
+        axes,
+        [exp_norm, sim_norm],
+        ["Experimental Hi-C", "Simulated (contact proxy)"],
+    ):
         im = ax.imshow(mat, cmap=cmap, norm=norm, origin="upper", aspect="auto")
         ax.set_title(title, fontsize=13, fontweight="bold")
         ax.set_xlabel("Genomic bin", fontsize=11)
@@ -913,7 +979,7 @@ def plot_hic_comparison(
         ax.tick_params(labelsize=9)
 
     cbar = fig.colorbar(im, ax=axes, fraction=0.025, pad=0.02)
-    cbar.set_label("log(1 + contact)", fontsize=10)
+    cbar.set_label("OE-normalised log(1 + contact)  [0 → 1 per matrix]", fontsize=10)
 
     out_path = os.path.join(save_dir, f"{name}.png")
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
