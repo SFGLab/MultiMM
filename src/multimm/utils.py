@@ -166,7 +166,19 @@ def get_coordinates_mm(mm_vec):
 
 
 def get_coordinates_cif(file):
-    """It returns the coordinate matrix V (N,3) from a .cif/.pdb-like file."""
+    """It returns the coordinate matrix V (N,3) from a .cif/.pdb-like file.
+
+    Reads both ``ATOM`` and ``HETATM`` records.  MultiMM writes the two
+    chain-terminus beads (capping residues, e.g. ``ALB``/``CB``) as
+    ``HETATM`` per PDB/mmCIF convention, while interior beads are written as
+    ``ATOM``.  Both represent genuine simulated particles with real
+    coordinates — matching ``N_BEADS`` exactly requires reading both record
+    types.  Previously only ``ATOM`` lines were read, silently dropping the
+    first and last bead of every structure (N_BEADS beads → N_BEADS-2
+    coordinates) and desynchronising bead index ↔ genomic-bin correspondence
+    against the (unshifted) experimental Hi-C matrix in any downstream
+    comparison.
+    """
 
     logger.debug(f"Loading structure file: {file}")
 
@@ -181,7 +193,7 @@ def get_coordinates_cif(file):
         n_lines = len(lines)
 
         for line in lines:
-            if line.startswith("ATOM"):
+            if line.startswith("ATOM") or line.startswith("HETATM"):
                 columns = line.split()
 
                 try:
@@ -189,7 +201,7 @@ def get_coordinates_cif(file):
                     y = float(columns[11])
                     z = float(columns[12])
                 except Exception as e:
-                    logger.warning(f"Skipping malformed ATOM line: {line[:60]}... ({e})")
+                    logger.warning(f"Skipping malformed ATOM/HETATM line: {line[:60]}... ({e})")
                     continue
 
                 V.append([x, y, z])

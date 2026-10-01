@@ -659,238 +659,94 @@ def get_heatmap(
     logger.info("Heatmap computation finished")
     return mat
 
-def plot_md_thermo(history, save_path):
+def plot_md_thermo(history, save_path, target_temperature=None):
     """
-    Plot energy + temperature evolution from MD.
+    Plot energy + temperature (+ RMSD, when available) evolution from MD.
+
+    Two stacked panels:
+      - top: potential / kinetic / total energy (left axis) and temperature
+        (right, twin axis) with ONE combined legend covering every curve.
+      - bottom: RMSD relative to the minimised structure, if the history
+        contains it (one line is dropped cleanly otherwise).
+
+    `target_temperature` (optional, in kelvin) draws a thin reference line
+    at the simulation's set-point temperature so deviations are easy to spot.
     """
 
     logger.info("Creating MD thermodynamics plot...")
 
+    sns.set_style("whitegrid")
+
     steps = history["step"]
+    rmsd = history.get("rmsd", [])
+    has_rmsd = len(rmsd) == len(steps) and len(rmsd) > 0
 
-    fig, ax1 = plt.subplots(figsize=(6, 4))
+    palette = sns.color_palette("deep")
 
-    ax1.plot(steps, history["potential"], label="Potential energy")
-    ax1.plot(steps, history["kinetic"], label="Kinetic energy")
-    ax1.plot(steps, history["total"], label="Total energy")
+    if has_rmsd:
+        fig, (ax1, ax3) = plt.subplots(
+            2, 1, figsize=(9, 7), sharex=True,
+            gridspec_kw={"height_ratios": [2.2, 1], "hspace": 0.08},
+        )
+    else:
+        fig, ax1 = plt.subplots(figsize=(9, 5))
+        ax3 = None
 
-    ax1.set_xlabel("Step")
-    ax1.set_ylabel("Energy")
-    ax1.legend()
-    ax1.grid(True)
+    # ---- top panel: energies (left axis) + temperature (right axis) ----
+    l1, = ax1.plot(steps, history["potential"], color=palette[0], linewidth=1.6,
+                    label="Potential energy")
+    l2, = ax1.plot(steps, history["kinetic"], color=palette[1], linewidth=1.6,
+                    label="Kinetic energy")
+    l3, = ax1.plot(steps, history["total"], color=palette[2], linewidth=2.0,
+                    label="Total energy")
+
+    ax1.set_ylabel("Energy (kJ/mol)")
 
     ax2 = ax1.twinx()
-    ax2.plot(steps, history["temperature"], "k--", label="Temperature")
-    ax2.set_ylabel("Temperature")
+    l4, = ax2.plot(steps, history["temperature"], color=palette[3], linestyle="--",
+                   linewidth=1.6, label="Temperature")
+    ax2.set_ylabel("Temperature (K)")
+    ax2.grid(False)
 
-    plt.title("MultiMM MD Thermodynamics")
+    handles = [l1, l2, l3, l4]
+
+    if target_temperature is not None:
+        l5 = ax2.axhline(target_temperature, color="black", linestyle=":", linewidth=1.2,
+                          label=f"Target T = {target_temperature:.0f} K")
+        handles.append(l5)
+
+    if ax3 is not None:
+        # ---- bottom panel: RMSD vs the minimised structure ----
+        ax3.plot(steps, rmsd, color=palette[4], linewidth=1.6, label="RMSD vs minimised")
+        ax3.fill_between(steps, rmsd, color=palette[4], alpha=0.15)
+        ax3.set_xlabel("Step")
+        ax3.set_ylabel("RMSD (nm)")
+        handles.append(ax3.get_lines()[0])
+        ax3.grid(True, alpha=0.4)
+    else:
+        ax1.set_xlabel("Step")
+
+    ax1.grid(True, alpha=0.4)
+
+    # figure-level title + ONE combined legend covering every curve on
+    # both panels and both y-axes, placed above the title so nothing overlaps
+    fig.suptitle("MultiMM MD Thermodynamics", fontsize=14, fontweight="bold", y=0.99)
+    fig.legend(
+        handles=handles, labels=[h.get_label() for h in handles],
+        loc="upper center", bbox_to_anchor=(0.5, 0.95),
+        ncol=min(len(handles), 3), frameon=True, fontsize=9,
+    )
+
+    fig.tight_layout(rect=[0, 0, 1, 0.84 if ax3 is not None else 0.88])
 
     out = os.path.join(save_path, "plots/md_thermodynamics.png")
-    plt.savefig(out, dpi=300)
-    plt.close()
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    fig.savefig(out, dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
     logger.info(f"MD thermodynamics plot saved to: {out}")
 
-def analyze_structure(V, save_path, name="structure"):
-    """
-    Advanced structural analysis for polymer-like 3D structures.
-
-    Outputs:
-    - detailed report (text)
-    - multiple physically meaningful plots
-    """
-
-    # ------------------------------------------------------------
-    # safety
-    # ------------------------------------------------------------
-    V = np.asarray(V, dtype=np.float64)
-    V = V[np.isfinite(V).all(axis=1)]
-
-    N = len(V)
-
-    base = os.path.join(save_path, "analysis")
-    os.makedirs(base, exist_ok=True)
-
-    def _save_local(fig, fname):
-        path = fname
-        fig.savefig(path + ".png", dpi=300)
-        fig.savefig(path + ".pdf")
-        fig.savefig(path + ".svg")
-        plt.close(fig)
-
-    # center
-    R_cm = np.mean(V, axis=0)
-    Vc = V - R_cm
-
-    # radius of gyration
-    Rg = np.sqrt(np.mean(np.sum(Vc**2, axis=1)))
-
-    # end-to-end
-    Ree = np.linalg.norm(V[-1] - V[0])
-
-    # pairwise distances
-    dmat = distance.cdist(V, V)
-    mean_dist = np.mean(dmat)
-
-    # convex hull
-    try:
-        hull = ConvexHull(V)
-        volume = hull.volume
-    except:
-        volume = np.nan
-
-    density = N / volume if volume > 0 else np.nan
-
-    # gyration tensor
-    G = np.dot(Vc.T, Vc) / N
-    eigvals = np.sort(np.linalg.eigvalsh(G))
-
-    l1, l2, l3 = eigvals
-
-    asphericity = l3 - 0.5 * (l1 + l2)
-    acylindricity = l2 - l1
-
-    # bond lengths
-    bonds = np.linalg.norm(np.diff(V, axis=0), axis=1)
-
-    # angles (stiffness)
-    v1 = V[1:-1] - V[:-2]
-    v2 = V[2:] - V[1:-1]
-
-    cos_angles = np.sum(v1 * v2, axis=1) / (
-        np.linalg.norm(v1, axis=1) * np.linalg.norm(v2, axis=1) + 1e-8
-    )
-
-    angles = np.arccos(np.clip(cos_angles, -1, 1))
-
-    # distance vs genomic separation
-    separations = []
-    spatial_dists = []
-
-    for s in range(1, min(500, N // 2)):
-        idx = np.arange(N - s)
-        d = np.linalg.norm(V[idx + s] - V[idx], axis=1)
-
-        separations.append(s)
-        spatial_dists.append(np.mean(d))
-
-    separations = np.array(separations)
-    spatial_dists = np.array(spatial_dists)
-
-    # local compaction (sliding window Rg)
-    window = max(10, N // 100)
-    local_rg = []
-
-    for i in range(N - window):
-        chunk = V[i:i + window]
-        cm = np.mean(chunk, axis=0)
-        local_rg.append(np.sqrt(np.mean(np.sum((chunk - cm)**2, axis=1))))
-
-    local_rg = np.array(local_rg)
-
-    # REPORT
-    report_path = os.path.join(base, f"{name}_report.txt")
-    os.makedirs(base, exist_ok=True)
-
-    with open(report_path, "w") as f:
-
-        f.write("===== STRUCTURE ANALYSIS =====\n\n")
-
-        f.write(f"N beads: {N}\n\n")
-
-        f.write("---- Global ----\n")
-        f.write(f"Rg: {Rg:.4f}\n")
-        f.write(f"Ree: {Ree:.4f}\n")
-        f.write(f"Mean distance: {mean_dist:.4f}\n\n")
-
-        f.write("---- Volume ----\n")
-        f.write(f"Volume: {volume:.4f}\n")
-        f.write(f"Density: {density:.6f}\n\n")
-
-        f.write("---- Shape ----\n")
-        f.write(f"Eigenvalues: {eigvals}\n")
-        f.write(f"Asphericity: {asphericity:.6f}\n")
-        f.write(f"Acylindricity: {acylindricity:.6f}\n\n")
-
-        f.write("---- Local properties ----\n")
-        f.write(f"Mean bond length: {np.mean(bonds):.4f}\n")
-        f.write(f"Mean angle (rad): {np.mean(angles):.4f}\n\n")
-
-        f.write("Interpretation:\n")
-        f.write("Rg ~ size of polymer\n")
-        f.write("Distance vs separation → scaling law\n")
-        f.write("Angles → stiffness\n")
-        f.write("Local Rg → domain compaction\n")
-
-    # PLOTS
-    os.makedirs(base+'/plots', exist_ok=True)
-
-    # 1. bond lengths
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.hist(bonds, bins=80)
-    ax.set_title("Bond Length Distribution")
-    ax.set_xlabel("Bond length")
-    _save_local(fig, base+f"/plots/{name}_bonds")
-
-    # ------------------------------------------------------------
-
-    # 2. angles
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.hist(angles, bins=80)
-    ax.set_title("Angle Distribution")
-    ax.set_xlabel("Angle (rad)")
-    _save_local(fig, base+f"/plots/{name}_angles")
-
-    # ------------------------------------------------------------
-
-    # 3. distance vs genomic separation (VERY important)
-    fig, ax = plt.subplots(figsize=(6, 5))
-    ax.plot(separations, spatial_dists)
-    ax.set_title("Distance vs Genomic Separation")
-    ax.set_xlabel("Genomic separation (beads)")
-    ax.set_ylabel("Mean spatial distance")
-    _save_local(fig, base+f"/plots/{name}_scaling")
-
-    # ------------------------------------------------------------
-
-    # 4. log-log scaling (polymer physics!!)
-    fig, ax = plt.subplots(figsize=(6, 5))
-    ax.loglog(separations, spatial_dists)
-    ax.set_title("Scaling (log-log)")
-    ax.set_xlabel("s")
-    ax.set_ylabel("R(s)")
-    _save_local(fig, base+f"/plots/{name}_scaling_loglog")
-
-    # ------------------------------------------------------------
-
-    # 5. local compaction
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(local_rg)
-    ax.set_title("Local Compaction (Sliding Rg)")
-    ax.set_xlabel("Bead index")
-    ax.set_ylabel("Local Rg")
-    _save_local(fig, base+f"/plots/{name}_local_compaction")
-
-    # ------------------------------------------------------------
-
-    # 6. radial distribution
-    r = np.linalg.norm(Vc, axis=1)
-
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.hist(r, bins=60)
-    ax.set_title("Radial Distribution")
-    ax.set_xlabel("Distance from COM")
-    _save_local(fig, base+f"/plots/{name}_radial")
-
-    # ------------------------------------------------------------
-    return {
-        "Rg": Rg,
-        "Ree": Ree,
-        "volume": volume,
-        "density": density,
-        "asphericity": asphericity,
-        "acylindricity": acylindricity,
-    }
+from .structural_analysis import analyze_structure  # noqa: F401  (re-exported for backward compatibility)
 
 # ── Hi-C comparison heatmap ───────────────────────────────────────────────────
 

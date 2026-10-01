@@ -6,7 +6,7 @@ import time
 import numpy as np
 import openmm as mm
 from openmm.app import DCDReporter, ForceField, PDBxFile, Simulation, StateDataReporter
-from openmm.unit import Quantity, nanometers
+from openmm.unit import Quantity, nanometers, kelvin
 
 from .initial_structure_tools import build_init_mmcif, write_cmm, write_mmcif_chrom
 from .nucleosome_interpolation import NucleosomeInterpolation
@@ -314,7 +314,7 @@ class MultiMM:
             "Active forces",
             ("Loop extrusion",    f"✓  k={_fmt(a.LE_HARMONIC_BOND_K)}  fixed={a.LE_FIXED_DISTANCES}"
                                    if a.LE_USE_HARMONIC_BOND else "—"),
-            ("Hi-C force",        f"✓  crossentropy  k_scale={a.HIC_K_SCALE}"
+            ("Hi-C force",        f"✓  kernel={a.HIC_KERNEL}  k_scale={a.HIC_K_SCALE}"
                                    if a.HIC_USE_FORCE else "—"),
             ("Compartment A/B",   f"✓  Ea={a.COB_EA}  Eb={a.COB_EB}" if a.COB_USE_COMPARTMENT_BLOCKS else "—"),
             ("Subcompartments",   "✓" if a.SCB_USE_SUBCOMPARTMENT_BLOCKS else "—"),
@@ -327,6 +327,8 @@ class MultiMM:
             ("Run MD",            "yes" if a.SIM_RUN_MD else "no (energy minimisation only)"),
             ("Steps",             _fmt(a.SIM_N_STEPS)   if a.SIM_RUN_MD else "—"),
             ("Temperature",       _fmt(a.SIM_TEMPERATURE) if a.SIM_RUN_MD else "—"),
+            ("Initial velocities", ("random (Boltzmann)" if a.SIM_SET_INITIAL_VELOCITIES else "zero")
+                                   if a.SIM_RUN_MD else "—"),
             ("Integrator",        f"{a.SIM_INTEGRATOR_TYPE}  dt={_fmt(a.SIM_INTEGRATOR_STEP)}"
                                    if a.SIM_RUN_MD else "—"),
             # ── Ensemble ─────────────────────────────────────────────────────────
@@ -986,24 +988,34 @@ class MultiMM:
                       (nuclear radius) → σ = R/3, cutoff ≈ R, covering the full
                       nucleus.
 
-        Crossentropy: r_comp acts as the sigmoid inflection (contact distance).
+        Crossentropy / contact-probability kernels: r_comp acts as the
+                      characteristic contact distance (the sigmoid inflection
+                      for "power_law", the r_c for "exponential"/"erfc").
                       The bead-spacing value self.r_comp ≈ 1.5 × b0 is correct
                       for pulling contacted loci to bead-contact distance, but
                       k_scale should be 5–20 kJ/mol (not 130) to avoid freezing
-                      MD.  See warnings in build_crossentropy_force().
+                      MD.  See warnings in build_crossentropy_force().  The
+                      "gaussian" kernel (default) and "rouse" kernel use
+                      HIC_GAUSSIAN_SIGMA / HIC_ROUSE_KUHN_LENGTH instead, each
+                      falling back to r_comp when not explicitly set.
         """
         if self.hic_matrix is None:
             logger.warning("add_hic_force() called but hic_matrix is None — skipping.")
             return
 
-        # Crossentropy sigmoid inflection = contact distance ≈ bead scale
+        # Contact-probability kernel inflection/width ≈ bead-contact scale
         hic_r = self.r_comp
 
         log_table(
             [
                 ("Normalization", self.args.HIC_NORMALIZATION),
+                ("Kernel",        self.args.HIC_KERNEL),
                 ("k_scale",       f"{self.args.HIC_K_SCALE} kJ/mol"),
-                ("alpha",         self.args.HIC_ALPHA),
+                ("weight_power",  self.args.HIC_WEIGHT_POWER),
+                ("powerlaw_alpha", self.args.HIC_POWERLAW_ALPHA),
+                ("gaussian_sigma", self.args.HIC_GAUSSIAN_SIGMA),
+                ("erfc_sigma",     self.args.HIC_ERFC_SIGMA),
+                ("rouse_kuhn_length", self.args.HIC_ROUSE_KUHN_LENGTH),
                 ("threshold",     self.args.HIC_THRESHOLD),
                 ("r_comp",        f"{hic_r:.4f} nm"),
                 ("Matrix shape",  str(self.hic_matrix.shape)),
@@ -1015,13 +1027,18 @@ class MultiMM:
             H_raw=self.hic_matrix,
             N_beads=self.args.N_BEADS,
             r_comp=hic_r,
+            kernel=self.args.HIC_KERNEL,
             k_scale=self.args.HIC_K_SCALE,
-            alpha=self.args.HIC_ALPHA,
+            alpha=self.args.HIC_POWERLAW_ALPHA,
+            sigma=self.args.HIC_GAUSSIAN_SIGMA,
+            sigma_s=self.args.HIC_ERFC_SIGMA,
+            kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
+            weight_power=self.args.HIC_WEIGHT_POWER,
             threshold=self.args.HIC_THRESHOLD,
             already_balanced=True,      # read_hic_matrix already normalises
         )
         self.system.addForce(force)
-        logger.info("Hi-C force added.")
+        logger.info("Hi-C force added (kernel=%s).", self.args.HIC_KERNEL)
 
     def add_forcefield(self):
         """Here we define the forcefield of MultiMM."""
@@ -1096,7 +1113,20 @@ class MultiMM:
         # Run the simulation
         self.simulation = Simulation(self.pdb.topology, self.system, self.integrator, platform)
         self.simulation.context.setPositions(self.pdb.positions)
-        self.simulation.context.setVelocitiesToTemperature(self.args.SIM_TEMPERATURE, self.args.SHUFFLING_SEED)
+
+        if self.args.SIM_SET_INITIAL_VELOCITIES:
+            # Random initial velocity field drawn from the Maxwell-Boltzmann
+            # distribution at SIM_TEMPERATURE, so the MD run doesn't start
+            # from an unphysical all-zero velocity state.
+            self.simulation.context.setVelocitiesToTemperature(
+                self.args.SIM_TEMPERATURE, self.args.SHUFFLING_SEED
+            )
+            logger.info(
+                f"Initial velocities randomized at {self.args.SIM_TEMPERATURE} "
+                f"(seed={self.args.SHUFFLING_SEED})."
+            )
+        else:
+            logger.info("Initial velocities left at zero (SIM_SET_INITIAL_VELOCITIES=False).")
 
         # Report which platform is being used
         current_platform = self.simulation.context.getPlatform()
@@ -1254,9 +1284,20 @@ class MultiMM:
             self.state.getPositions(),
             open(self.save_path + "model/MultiMM_afterMD.cif", "w"),
         )
+        try:
+            target_temp = self.args.SIM_TEMPERATURE
+            if hasattr(target_temp, "value_in_unit"):
+                target_temp = target_temp.value_in_unit(kelvin)
+            else:
+                target_temp = float(target_temp)
+        except Exception as _e:
+            logger.debug("Could not resolve target temperature for plotting: %s", _e)
+            target_temp = None
+
         plot_md_thermo(
             self.md_history,
-            self.save_path
+            self.save_path,
+            target_temperature=target_temp,
         )
         logger.info(f"MD finished in {elapsed:.1f}s — structure saved to {self.save_path}model/MultiMM_afterMD.cif")
 

@@ -613,6 +613,37 @@ def _pool_matrix(m: np.ndarray, N: int) -> np.ndarray:
     return _pool_to_n_beads(m, N)
 
 
+def _smooth_matrix(m: np.ndarray, sigma: float = 1.0) -> np.ndarray:
+    """Light, symmetric Gaussian smoothing of a contact matrix.
+
+    Applied identically to the simulated, experimental, and random-walk
+    contact maps before any derived metric (decay profile, OE, insulation,
+    PC1, direct correlation, SSIM/GMSD/NMI) is computed from them.
+
+    Rationale: the simulated and random-walk contact proxies are built from
+    1/(d+ε), which is heavy-tailed — any single close approach between two
+    beads in one frame (or one RW realisation) produces a disproportionately
+    large contact value. Comparing *unsmoothed* matrices pixel-for-pixel lets
+    this high-frequency noise dominate alignment-sensitive metrics (PC1,
+    direct Pearson/Spearman, SSIM, NMI), while leaving aggregate metrics
+    (diagonal decay, to a lesser extent insulation) comparatively unaffected
+    — because those average over many pairs instead of comparing individual
+    entries. A small Gaussian blur (sigma ~ 1 bead) suppresses that one-pixel
+    noise while preserving genuine TAD/compartment-scale structure (tens of
+    beads), and is symmetrised afterwards since Gaussian filtering of a
+    symmetric matrix remains symmetric only up to floating-point error.
+
+    Parameters
+    ----------
+    m     : (N, N) ndarray — contact matrix
+    sigma : Gaussian standard deviation, in beads. 0 or None disables smoothing.
+    """
+    if not sigma:
+        return m
+    sm = ndimage.gaussian_filter(m, sigma=sigma, mode="nearest")
+    return 0.5 * (sm + sm.T)
+
+
 def diagonal_decay_profile(mat: np.ndarray, max_diag: int | None = None) -> np.ndarray:
     """Per-diagonal mean contact profile (diagonal decay).
 
@@ -1001,6 +1032,7 @@ def validate_hic_model(
     n_rw: int = 20,
     rw_step_nm: float = 0.1,
     confine_radius_nm: float | None = None,
+    smooth_sigma: float = 1.0,
     log=None,
 ) -> dict:
     """Validate a single simulated structure against experimental Hi-C.
@@ -1026,6 +1058,10 @@ def validate_hic_model(
         Half-width of the insulation-score sliding window (in beads).
     max_diag : int or None
         How many diagonals to include in the decay profile.  Defaults to N//2.
+    smooth_sigma : float
+        Gaussian smoothing (in beads) applied identically to the simulated,
+        experimental, and random-walk contact matrices before any metric is
+        computed — see :func:`_smooth_matrix`.  0 disables smoothing.
     log : logging.Logger, optional
 
     Returns
@@ -1049,6 +1085,12 @@ def validate_hic_model(
     hic_r = _pool_matrix(hic_matrix, N)
     if max_diag is None:
         max_diag = N // 2
+
+    # Smooth sim and exp identically before any derived metric — suppresses
+    # single-bead noise from the heavy-tailed 1/(d+ε) proxy without erasing
+    # TAD/compartment-scale structure. See _smooth_matrix.
+    sim_contact = _smooth_matrix(sim_contact, smooth_sigma)
+    hic_r       = _smooth_matrix(hic_r,       smooth_sigma)
 
     # ── 1. Diagonal decay ─────────────────────────────────────────────────────
     sim_decay = diagonal_decay_profile(sim_contact, max_diag)
@@ -1092,6 +1134,7 @@ def validate_hic_model(
             N, n_rw=n_rw, step_nm=rw_step_nm,
             confine_radius_nm=confine_radius_nm,
         )
+        rw_contact = _smooth_matrix(rw_contact, smooth_sigma)
         rw_oe      = oe_matrix(rw_contact)
 
         rw_decay            = diagonal_decay_profile(rw_contact, max_diag)
@@ -1180,6 +1223,7 @@ def validate_hic_ensemble(
     n_rw: int = 20,
     rw_step_nm: float = 0.1,
     confine_radius_nm: float | None = None,
+    smooth_sigma: float = 1.0,
     log=None,
 ) -> dict:
     """Validate an ensemble of simulated structures against experimental Hi-C.
@@ -1204,6 +1248,10 @@ def validate_hic_ensemble(
         Number of diagonals in the decay profile.
     eps : float
         Regularisation for 1/(d + ε).
+    smooth_sigma : float
+        Gaussian smoothing (in beads) applied identically to the simulated,
+        experimental, and random-walk contact matrices before any metric is
+        computed — see :func:`_smooth_matrix`.  0 disables smoothing.
     log : logging.Logger, optional
 
     Returns
@@ -1228,6 +1276,12 @@ def validate_hic_ensemble(
     hic_r = _pool_matrix(hic_matrix, N)
     if max_diag is None:
         max_diag = N // 2
+
+    # Smooth sim and exp identically before any derived metric — suppresses
+    # single-bead noise from the heavy-tailed 1/(d+ε) proxy without erasing
+    # TAD/compartment-scale structure. See _smooth_matrix.
+    inv_avg = _smooth_matrix(inv_avg, smooth_sigma)
+    hic_r   = _smooth_matrix(hic_r,   smooth_sigma)
 
     # ── 1. Diagonal decay ─────────────────────────────────────────────────────
     sim_decay = diagonal_decay_profile(inv_avg, max_diag)
@@ -1265,6 +1319,7 @@ def validate_hic_ensemble(
             N, n_rw=n_rw, step_nm=rw_step_nm, eps=eps,
             confine_radius_nm=confine_radius_nm,
         )
+        rw_contact = _smooth_matrix(rw_contact, smooth_sigma)
         rw_oe      = oe_matrix(rw_contact)
 
         rw_decay            = diagonal_decay_profile(rw_contact, max_diag)

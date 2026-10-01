@@ -21,7 +21,7 @@ The workflow is illustrated in the schematic above. The user provides chromatin 
 - OpenMM-based simulation engine with GPU acceleration (CUDA / OpenCL) and CPU fallback.
 - User-friendly installation via PyPI; all parameters set in a single `config.ini` file.
 - Multiscale: nucleosome → TAD → compartment → chromosome territory → whole nucleus.
-- Hi-C contact-guided force field: raw `.hic` / `.cool` / `.mcool` matrices used directly as structural restraints via a **cross-entropy** CustomBondForce — a sparse sigmoid bond force that pulls contacting pairs together and pushes non-contacting pairs apart.
+- Hi-C contact-guided force field: raw `.hic` / `.cool` / `.mcool` matrices used directly as structural restraints via a **cross-entropy** CustomBondForce that models contact probability with a pluggable distance kernel (`gaussian` by default; `power_law`/`sigmoid`, `exponential`, `erfc`, and separation-aware `rouse` also available) and weights each pair's force by its own observed contact strength, so weakly-supported pairs stay soft rather than acting as hard constraints.
 - Ensemble generation: multiple independent structures from a single run.
 - Nucleosome interpolation from ATAC-seq signal.
 - **Comprehensive Hi-C validation** computed automatically: diagonal decay correlation, insulation score correlation, |PC1| compartment correlation, Pearson / Spearman OE-matrix correlation, SSIM, GMSD, NMI — each reported alongside a random-walk null-model baseline for direct comparison.
@@ -188,29 +188,38 @@ where `B(s_i)` selects B-compartment beads. Available radial profiles:
 
 ### Hi-C Contact-Guided Force
 
-When a raw Hi-C contact matrix is provided (`HIC_PATH`), it is used directly as a structural restraint through a low-rank decomposition. This is an alternative or complement to loop-extrusion forces and works without requiring explicit loop calls.
+When a raw Hi-C contact matrix is provided (`HIC_PATH`), it is used directly as a structural restraint via a sparse cross-entropy `CustomBondForce`. This is an alternative or complement to loop-extrusion forces and works without requiring explicit loop calls.
 
 **Pipeline:**
 
 1. The matrix is loaded from `.hic`, `.cool`, or `.mcool`, auto-selecting resolution and resampling to exactly `N_beads x N_beads` via weighted average pooling (`read_hic.py`).
-2. Knight–Ruiz iterative balancing: `H <- D^{-1} H D^{-1}` until row marginals ≈ 1.
-3. Observed/Expected normalisation: `OE[i,j] = log(H[i,j] / E[i,j])`, where `E[i,j]` is the genome-wide mean contact frequency at separation `|i-j|`.
-4. Truncated eigendecomposition of the symmetric OE matrix: `OE ≈ sum_{k=1}^{K}  lambda_k * v_k * v_k^T`.
+2. Knight–Ruiz iterative balancing: `H <- D^{-1} H D^{-1}` until row marginals ≈ 1, giving the normalised contact matrix `c_ij ∈ [0, 1]`.
+3. A sparse set of bonds is built for every pair with `c_ij ≥ HIC_THRESHOLD` (a sparsity cutoff only — O(M) bonds, M ≪ N²).
 
-Per-particle scalars encoding sign and magnitude:
-
-```
-a_k(i) = sign(lambda_k) * sqrt(|lambda_k|) * v_k(i)
-```
-
-The Hi-C force uses the **`crossentropy`** mode — a sparse CustomBondForce that models contact probability with a sigmoid and penalises deviations from the observed contact matrix:
+Instead of converting contacts into fixed target distances, the force models the contact *probability* directly as a distance kernel `P_ij(r)` and minimises the binary cross-entropy (negative log-likelihood) against the observed `c_ij`:
 
 ```
-P(r)    = 1 / (1 + (r / r_c)^alpha)
-U_ij(r) = -k * [c_ij * log(P + eps) + (1 - c_ij) * log(1 - P + eps)]
+U_ij(r) = -k * w_ij * [c_ij * log(P + eps) + (1 - c_ij) * log(1 - P + eps)]
+w_ij    = c_ij ^ HIC_WEIGHT_POWER
 ```
 
-When `P > c_ij` the pair is too close → repelled; when `P < c_ij` → attracted. Only pairs with `c_ij ≥ threshold` receive a bond, keeping the bond list sparse (O(M) bonds, M ≪ N²). Recommended `HIC_K_SCALE`: 5–20 kJ mol⁻¹.
+The force is `F_i = -∇_i U`, a self-regulating residual: it pushes pairs apart when the model overshoots the observed contact probability (`P > c_ij`) and pulls them together when it undershoots (`P < c_ij`), vanishing once the structure matches the data. The weight `w_ij` additionally scales *both* branches of the loss by the pair's own observed contact strength, so pairs barely above `HIC_THRESHOLD` exert a correspondingly tiny force (soft) while well-supported contacts (`c_ij` near 1) behave like a firm restraint (hard) — with `HIC_WEIGHT_POWER = 1.0` (default) the force is directly proportional to `c_ij`.
+
+`P_ij(r)` is selected with `HIC_KERNEL`:
+
+| Kernel | `P(r)` | Notes |
+|---|---|---|
+| `gaussian` (default) | `exp(-r² / 2σ²)` | Width `HIC_GAUSSIAN_SIGMA` (defaults to `r_comp`). Decays faster than power-law at large `r`; good for short-range loops. |
+| `power_law` / `sigmoid` | `1 / (1 + (r/r_c)^α)` | Steepness `HIC_POWERLAW_ALPHA`. At `α=2` a Lorentzian; large `α` approaches a step. |
+| `exponential` | `exp(-r/r_c)` | Constant log-derivative — force doesn't vanish at long range (Yukawa-like). |
+| `erfc` | `0.5·erfc((r - r_c) / (√2·σ_s))` | Soft step centred on `r_c`, width `HIC_ERFC_SIGMA`; closest to a binary contact definition. |
+| `rouse` | `erfc(r / √(2·s·b²))` | Separation-aware: `s = \|i-j\|` in beads, Kuhn length `HIC_ROUSE_KUHN_LENGTH`. Each pair's effective contact threshold follows the Gaussian-chain law, automatically tracking the expected diagonal decay. |
+
+Each kernel's extra parameter is named `HIC_<KERNEL>_*` and only takes effect when that kernel is selected via `HIC_KERNEL` — e.g. setting `HIC_ERFC_SIGMA` has no effect unless `HIC_KERNEL=erfc`.
+
+All kernels plug into the same weighted cross-entropy loss above; only `P(r)` changes. Recommended `HIC_K_SCALE`: 5–20 kJ mol⁻¹ (weak contacts are already softened independently via `HIC_WEIGHT_POWER`, so `HIC_K_SCALE` mainly sets how firm the *well-supported* contacts are).
+
+> **Note on compartments (PC1):** this per-pair force optimises individual contact probabilities, not the mean diagonal decay profile or the spectral (PC1) structure of the full contact map — a structure where every `P_ij ≈ c_ij` can still have the wrong A/B compartment signal, since PC1 is a covariance property of the whole matrix rather than of individual pairs. If `|PC1| r` validation is weak, pair this force with the dedicated compartment force (`COB_USE_COMPARTMENT_BLOCKS`, driven by `COMPARTMENT_PATH`) rather than expecting the Hi-C force alone to recover compartment identity.
 
 **Hi-C validation** — after simulation, MultiMM automatically computes seven metrics comparing the model contact map against the experimental Hi-C matrix, each reported alongside a random-walk null-model baseline:
 
@@ -476,10 +485,10 @@ Visualization is powered by [PyVista](https://pyvista.org/).
 | `SIM_N_STEPS` | int | 10 000 | — | Number of MD steps |
 | `SIM_SAMPLING_STEP` | int | 100 | — | Steps between saved trajectory frames |
 | `SIM_TEMPERATURE` | Quantity | 310 | K | Simulation temperature |
+| `SIM_SET_INITIAL_VELOCITIES` | bool | `True` | — | Randomize the initial velocity field (Maxwell-Boltzmann at `SIM_TEMPERATURE`, seeded by `SHUFFLING_SEED`) instead of starting from all-zero velocities |
 | `SIM_INTEGRATOR_TYPE` | str | `langevin` | — | `langevin`, `verlet`, `brownian` |
 | `SIM_INTEGRATOR_STEP` | Quantity | 1 | fs | Integrator time step |
 | `SIM_FRICTION_COEFF` | float | 0.5 | ps⁻¹ | Friction coefficient (Langevin / Brownian) |
-| `SIM_SET_INITIAL_VELOCITIES` | bool | `False` | — | Initialize velocities from Boltzmann distribution |
 | `TRJ_FRAMES` | int | 2 000 | — | Total trajectory frames to save |
 
 ### Polymer Backbone
@@ -519,9 +528,15 @@ Visualization is powered by [PyVista](https://pyvista.org/).
 |---|---|---|---|
 | `HIC_USE_FORCE` | bool | `False` | Use Hi-C matrix as structural restraint |
 | `HIC_PATH` | str | None | Path to `.hic`, `.cool`, or `.mcool` file |
-| `HIC_FORCE_MODE` | str | `crossentropy` | Only `crossentropy` is supported |
 | `HIC_NORMALIZATION` | str | `KR` | Matrix normalization: `KR`, `VC`, `VC_SQRT`, `NONE` |
-| `HIC_K_SCALE` | float | 20.0 | Global energy scale (kJ mol⁻¹). Recommended: 5–20 kJ mol⁻¹. Values > 30 kJ mol⁻¹ freeze MD thermal sampling (runtime warning). |
+| `HIC_KERNEL` | str | `gaussian` | Distance→probability kernel: `gaussian`, `power_law`/`sigmoid`, `exponential`, `erfc`, `rouse` |
+| `HIC_K_SCALE` | float | 20.0 | Global energy scale (kJ mol⁻¹). Recommended: 5–20 kJ mol⁻¹. Values > 30 kJ mol⁻¹ risk freezing MD thermal sampling (runtime warning). |
+| `HIC_WEIGHT_POWER` | float | 1.0 | Exponent β in per-pair weight `c_ij^β`; 1.0 = force proportional to observed contact strength (soft at low `c_ij`, firm at high `c_ij`) |
+| `HIC_POWERLAW_ALPHA` | float | 3.0 | Sigmoid steepness; only takes effect when `HIC_KERNEL=power_law`/`sigmoid` |
+| `HIC_GAUSSIAN_SIGMA` | float | None (→`r_comp`) | Width σ; only takes effect when `HIC_KERNEL=gaussian` |
+| `HIC_ERFC_SIGMA` | float | None (→`0.3·r_comp`) | Softening width; only takes effect when `HIC_KERNEL=erfc` |
+| `HIC_ROUSE_KUHN_LENGTH` | float | None (→`r_comp`) | Kuhn length `b`; only takes effect when `HIC_KERNEL=rouse` |
+| `HIC_THRESHOLD` | float | 0.01 | Minimum `c_ij` to build a bond at all (sparsity cutoff only; force strength still scales continuously with `c_ij` via `HIC_WEIGHT_POWER`) |
 | `HIC_MAX_GAP` | int | 10 | Maximum gap fraction (%) tolerated when interpolating missing bins |
 
 ### Compartment and Subcompartment Forces
@@ -634,52 +649,20 @@ UCSF Chimera trajectory visualization: https://www.cgl.ucsf.edu/chimera/
 
 ---
 
-## Recent Updates
+## Recent Updates ❗
 
-> **Note:** Items marked *experimental* are functional but may change API or behaviour in future releases. Feedback is welcome.
+> Items marked *experimental* may change API or behaviour in future releases.
 
-### Hi-C force simplified to crossentropy-only
-
-All SVD-based Hi-C force modes (`svd`, `svd_multiscale`) have been removed. The codebase now implements a single, well-tested **cross-entropy** CustomBondForce. This eliminates the `HIC_N_COMPONENTS`, `HIC_SIGMA_SCALE`, and `HIC_MIN_SEPARATION` parameters and the OE-matrix / eigenvector pre-processing pipeline. The cross-entropy force is sparser (O(M) bonds), numerically stabler, and easier to tune: only `HIC_K_SCALE` (5–20 kJ mol⁻¹) needs adjustment.
-
-### SVD force sigma bugfix — significant improvement to Hi-C-guided folding
-A critical bug was fixed in the SVD force mode where `sigma` was set to `r_comp/3 ≈ 0.05 nm` (half a bead diameter) instead of a meaningful fraction of the nuclear radius. With the old value, the Gaussian envelope decayed to effectively zero within one bead spacing, meaning Hi-C contacts had no effect on 3D structure and the simulation was indistinguishable from a random walk. The fix passes the nuclear radius as `r_comp` in SVD modes, giving `sigma ≈ R/3` and allowing the force to drive compartmentalisation and TAD formation across the full nucleus. **If you were using `HIC_USE_FORCE = True` in SVD mode before this fix, re-run your simulations** — previous results reflect polymer physics only, not Hi-C restraints.
-
-Two related defaults were also updated: `HIC_N_COMPONENTS` raised from 5 to 15 (to capture TAD-scale features beyond broad compartments), and `HIC_K_SCALE` lowered from 130 to 20 kJ mol⁻¹ (130 kJ mol⁻¹ in crossentropy mode froze MD thermal fluctuations to < 0.1 Å).
-
-### SVD force anti-collapse controls — tunable range and near-diagonal masking
-
-After the sigma fix, sigma = R/3 turned out to be too global for many datasets, causing the dominant eigenvector (biased all-positive by short-range polymer contacts near the diagonal) to attract all beads toward a single point. Two new parameters address this:
-
-- **`HIC_SIGMA_SCALE`** (default `0.20`): sets σ = R × HIC_SIGMA_SCALE. The default gives σ = R/5, confining each eigenvector's influence to pairs within roughly 30% of the nuclear diameter while still covering compartments and TADs. Increase toward 0.33 for a more global force; decrease toward 0.10 for a more local one.
-- **`HIC_MIN_SEPARATION`** (default `5`): zeros out OE-matrix entries with |i−j| ≤ this value before SVD. Short-range contacts (|i−j| small) always have elevated OE values due to polymer connectivity already encoded by backbone bonds. Including them biases the first eigenvector to be uniformly positive, producing an attraction-only force that collapses the structure. Masking 5–10 bead-spacings removes this trivial signal while retaining compartment- and TAD-scale information.
-
-Together, these two parameters give a practical operating range: start with defaults, increase `HIC_SIGMA_SCALE` if the force is too local (structures look random-walk-like), decrease it or raise `HIC_MIN_SEPARATION` if the structure collapses.
-
-### Hi-C contact force *(experimental)*
-A force mode (`HIC_USE_FORCE = True`) restrains the simulation directly using a raw Hi-C contact matrix rather than requiring explicit loop calls. The matrix is KR-balanced, OE-normalised, and decomposed via truncated SVD; three sub-modes are available (`svd`, `svd_multiscale`, `crossentropy`). This is an alternative to the loop-extrusion force and is particularly useful when only a contact matrix — not called loops — is available. Because Hi-C heatmaps encode many spatial scales simultaneously, results can differ from classic loop-extrusion modelling; treat outputs as exploratory until validated on your dataset.
-
-### Coloured structured logger
-All simulation stages now emit time-stamped, colour-coded log lines via a custom `CozyFormatter`. Section banners, per-stage success messages, and boxed summary tables are rendered automatically in any ANSI-capable terminal.
-
-### Hi-C validation suite
-After every simulation run (Hi-C force mode), MultiMM automatically computes seven complementary metrics — diagonal decay, insulation score, |PC1| compartment correlation, Pearson / Spearman OE-matrix correlation, SSIM, GMSD, and NMI — each printed alongside a **random-walk null-model baseline** so you can judge how much of the agreement is trivially explained by polymer physics alone. Results are saved to `metadata/hic_validation.npy`.
-
-### Quality control helpers *(experimental)*
-A suite of up to 12 lightweight post-simulation checks runs automatically and writes `metadata/quality_tests.csv`:
-
-- Energy stability and MD structural mobility (RMSD vs. minimised structure)
-- Bond-distance and angle distributions
-- Excluded-volume overlaps
-- Compartment clustering and **PC1 correlation** with input compartment signal
-- Chromosome territory separation
-- Loop distance compliance and **loop signal enrichment** (anchor distances vs. matched non-loop controls)
-- Container confinement and B-lamina proximity
-
-Each check returns PASS / WARN / FAIL / SKIP with a concrete suggestion when action is needed. The suite is still being calibrated; thresholds and checks may be revised.
-
-### Additional data modalities
-MultiMM now accepts `.cool` and `.mcool` contact matrices in addition to Juicer `.hic` files, auto-selects resolution, and supports KR, VC, VC_SQRT, and NONE normalizations. Ensemble generation with stochastic compartment noise (`COMPARTMENT_NOISE_STD`) and loop downsampling (`DOWNSAMPLING_PROB`) is also supported.
+- **Hi-C validation bugfix:** `get_coordinates_cif` only read `ATOM` lines, silently dropping MultiMM's two `HETATM` chain-terminus beads from every loaded structure and desyncing bead↔genomic-bin alignment in Hi-C validation (the cause of a random-walk baseline scoring as well as, or better than, the real simulation on PC1/Pearson/SSIM/NMI). Now reads `ATOM` and `HETATM`. Also added light Gaussian smoothing (`smooth_sigma`, default 1 bead, 0 to disable) to sim/exp/RW matrices before computing metrics.
+- **Hi-C force — pluggable kernels, soft weighting:** `HIC_KERNEL` selects `gaussian` (new default), `power_law`/`sigmoid`, `exponential`, `erfc`, or `rouse`. Force is now weighted by `c_ij^HIC_WEIGHT_POWER` (default 1.0) so weak contacts stay soft instead of acting as hard constraints; `HIC_THRESHOLD` is sparsity-only now. Backward compatible via `HIC_KERNEL=power_law`, `HIC_WEIGHT_POWER=0`.
+- **Hi-C force simplified to crossentropy-only:** SVD-based modes (`svd`, `svd_multiscale`) removed; a single, sparser, numerically-stabler cross-entropy `CustomBondForce` remains, tuned via `HIC_K_SCALE`.
+- **SVD force sigma bugfix:** `sigma` was `r_comp/3` instead of a fraction of the nuclear radius, making old Hi-C-guided SVD runs indistinguishable from a random walk. Fixed; re-run pre-fix SVD results. Defaults also updated (`HIC_N_COMPONENTS` 5→15, `HIC_K_SCALE` 130→20).
+- **SVD force anti-collapse controls:** added `HIC_SIGMA_SCALE` (default 0.20) and `HIC_MIN_SEPARATION` (default 5) to stop the dominant eigenvector collapsing the structure to a point.
+- **Hi-C contact force** *(experimental)*: restrain directly from a raw contact matrix (KR-balanced, OE-normalised) instead of called loops.
+- **Coloured structured logger:** time-stamped, colour-coded log lines, section banners, and summary tables.
+- **Hi-C validation suite:** seven metrics (diagonal decay, insulation, |PC1|, Pearson/Spearman OE, SSIM, GMSD, NMI) computed automatically against a random-walk baseline, saved to `metadata/hic_validation.npy`.
+- **Quality control helpers** *(experimental)*: up to 12 post-simulation checks (energy, bonds/angles, excluded volume, compartments, territories, loops, confinement) → `metadata/quality_tests.csv`.
+- **Additional data modalities:** `.cool`/`.mcool` support alongside `.hic`, KR/VC/VC_SQRT/NONE normalisation, ensemble generation with compartment noise and loop downsampling.
 
 ---
 

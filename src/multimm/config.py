@@ -193,32 +193,87 @@ class SimulationConfig(BaseModel):
     HIC_K_SCALE: float = Field(
         default=20.0,
         description=(
-            "Global energy scale for the Hi-C cross-entropy force [kJ/mol].  "
+            "Global energy scale for the Hi-C contact-probability force [kJ/mol].  "
             "Recommended range: 5–20 kJ/mol.  "
-            "The sigmoid wells become very stiff at high k; "
+            "The wells around strongly-supported contacts become very stiff at high k; "
             "values above 30 kJ/mol shrink thermal fluctuations to <0.1 Å and freeze MD.  "
-            "Values above 200 trigger a runtime warning."
+            "Values above 200 trigger a runtime warning.  Note: weak contacts are already "
+            "softened independently of k_scale via HIC_WEIGHT_POWER."
         ),
     )
-    HIC_ALPHA: float = Field(
+    HIC_KERNEL: str = Field(
+        default="gaussian",
+        description=(
+            "Distance → contact-probability kernel P(r) used by the Hi-C force.  Each kernel "
+            "has its own extra parameter(s), named HIC_<KERNEL>_* below, that only take effect "
+            "when that kernel is selected.  Options: "
+            "'gaussian' (default, P=exp(-r²/2σ²), width HIC_GAUSSIAN_SIGMA), "
+            "'power_law' / 'sigmoid' (P=1/(1+(r/r_c)^alpha), steepness HIC_POWERLAW_ALPHA), "
+            "'exponential' (P=exp(-r/r_c), persistent long-range pull), "
+            "'erfc' (soft step at r_c with width HIC_ERFC_SIGMA — closest to a binary Hi-C "
+            "contact definition), "
+            "'rouse' (separation-aware Gaussian-chain model, P=erfc(r/sqrt(2*s*b²)) with "
+            "s=|i-j| in beads and Kuhn length HIC_ROUSE_KUHN_LENGTH — automatically reproduces "
+            "the expected diagonal decay per genomic separation)."
+        ),
+    )
+    HIC_POWERLAW_ALPHA: float = Field(
         default=3.0,
         description=(
-            "Steepness of the contact-probability sigmoid  "
-            "P(r) = 1 / (1 + (r/r_c)^alpha).  "
+            "['power_law'/'sigmoid' kernel only] Steepness of the contact-probability sigmoid: "
+            "P(r) = 1 / (1 + (r/r_c)^alpha).  Has no effect unless HIC_KERNEL is 'power_law' or "
+            "'sigmoid'.  "
             "Controls how sharply the force transitions between attraction and repulsion "
             "at the contact radius r_c.  "
             "Lower values (2) give a broad, gradual transition; higher values (4–6) "
             "give a sharper, TAD-like step.  Recommended range: 2–4."
         ),
     )
+    HIC_GAUSSIAN_SIGMA: Optional[float] = Field(
+        default=None,
+        description=(
+            "['gaussian' kernel only] Width σ [nm], P(r)=exp(-r²/2σ²).  Has no effect unless "
+            "HIC_KERNEL='gaussian'.  Defaults to r_comp (the bead-contact length scale) when "
+            "not set."
+        ),
+    )
+    HIC_ERFC_SIGMA: Optional[float] = Field(
+        default=None,
+        description=(
+            "['erfc' kernel only] Softening width σ_s [nm] of the step at r_c.  Has no effect "
+            "unless HIC_KERNEL='erfc'.  Smaller values make the step sharper (σ_s→0 recovers a "
+            "binary Hi-C contact definition).  Defaults to 0.3 * r_comp when not set."
+        ),
+    )
+    HIC_ROUSE_KUHN_LENGTH: Optional[float] = Field(
+        default=None,
+        description=(
+            "['rouse' kernel only] Kuhn (statistical segment) length b [nm], where "
+            "<r²(s)> = s*b² for genomic separation s (in beads).  Has no effect unless "
+            "HIC_KERNEL='rouse'.  Defaults to r_comp when not set."
+        ),
+    )
+    HIC_WEIGHT_POWER: float = Field(
+        default=1.0,
+        description=(
+            "Exponent β in the per-pair force weight w_ij = c_ij^β.  Softens (or hardens) the "
+            "Hi-C force in proportion to the observed contact strength c_ij, independently of "
+            "the distance kernel: with β=1 (default) the force is directly proportional to "
+            "c_ij, so pairs with barely-above-threshold contact evidence exert a "
+            "correspondingly tiny force in both the attractive and repulsive branch, while "
+            "only well-supported contacts (c_ij close to 1) behave like a firm restraint.  "
+            "β<1 softens weak contacts less aggressively; β>1 suppresses them more."
+        ),
+    )
     HIC_THRESHOLD: float = Field(
         default=0.01,
         description=(
-            "Minimum normalised contact value c_ij to include a bond in the force.  "
-            "Pairs below this value are ignored, keeping the bond list sparse.  "
-            "Lower values add more bonds (denser, slower); higher values prune weak contacts "
-            "(sparser, faster but may miss distal interactions).  "
-            "Recommended range: 0.005–0.05."
+            "Minimum normalised contact value c_ij to include a bond in the force at all — "
+            "a sparsity cutoff only (keeps the bond list O(M), M ≪ N²).  It does not by "
+            "itself make the force 'hard': bonds that do get built still have their force "
+            "scaled continuously by c_ij via HIC_WEIGHT_POWER, so pairs just above threshold "
+            "remain nearly inert.  Lower values add more (weaker) bonds; higher values prune "
+            "more aggressively.  Recommended range: 0.005–0.05."
         ),
     )
     HIC_MAX_GAP: int = Field(
@@ -320,10 +375,17 @@ class SimulationConfig(BaseModel):
     SIM_FRICTION_COEFF: float = Field(
         default=0.5, description="Friction coefficient (Used only with langevin integrator)"
     )
-    SIM_SET_INITIAL_VELOCITIES: Boolean = Field(
-        default=False, description="Sets initial velocities based on Boltzmann distribution"
-    )
     SIM_TEMPERATURE: OpenMMQuantity = Field(default="310 kelvin", description="Simulation temperature")
+    SIM_SET_INITIAL_VELOCITIES: Boolean = Field(
+        default=True,
+        description=(
+            "Initialize the MD simulation with a random initial velocity field, drawn from the "
+            "Maxwell-Boltzmann distribution at SIM_TEMPERATURE (OpenMM's setVelocitiesToTemperature), "
+            "seeded by SHUFFLING_SEED. True by default so every run starts from a physically "
+            "realistic, randomized velocity field instead of the all-zero velocities OpenMM uses "
+            "otherwise."
+        ),
+    )
     TRJ_FRAMES: int | None = Field(
         default=None,
         description=(
