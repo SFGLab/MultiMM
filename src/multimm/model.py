@@ -6,15 +6,18 @@ import time
 import numpy as np
 import openmm as mm
 from openmm.app import DCDReporter, ForceField, PDBxFile, Simulation, StateDataReporter
-from openmm.unit import Quantity, nanometers, kelvin
+from openmm.unit import Quantity, nanometers, kelvin, nanometer, picosecond, dalton
 
 from .initial_structure_tools import build_init_mmcif, write_cmm, write_mmcif_chrom
 from .nucleosome_interpolation import NucleosomeInterpolation
 from .utils import *
 from .plots import *
 from .read_hic import read_hic_matrix
-from .hic_force import build_hic_force
-from .validation import validate_hic_model, validate_hic_ensemble
+from .hic_force import build_hic_force, auto_contact_scale
+from .validation import (
+    validate_hic_model, validate_hic_ensemble, validate_loops, validate_compartments,
+    validate_distance_vs_strength,
+)
 from .logger import log_table, log_section, log_success
 from .quality_tests import run_quality_tests
 
@@ -976,35 +979,51 @@ class MultiMM:
     def add_hic_force(self):
         """Add Hi-C contact-guided force using the pre-loaded hic_matrix.
 
-        Length-scale choice
-        -------------------
-        SVD modes:    the Gaussian interaction envelope σ = r_comp / 3 must be
-                      a meaningful fraction of the nuclear radius, not of the
-                      bead spacing.  Using r_comp = self.r_comp (= 1.5 × b0 ≈
-                      0.15 nm) gives σ ≈ 0.05 nm — decaying to zero within one
-                      bead diameter.  Hi-C contacts span megabases (many beads)
-                      and must feel each other across 3D distances comparable to
-                      the nucleus.  We therefore use r_comp = self.radius2
-                      (nuclear radius) → σ = R/3, cutoff ≈ R, covering the full
-                      nucleus.
-
-        Crossentropy / contact-probability kernels: r_comp acts as the
-                      characteristic contact distance (the sigmoid inflection
-                      for "power_law", the r_c for "exponential"/"erfc").
-                      The bead-spacing value self.r_comp ≈ 1.5 × b0 is correct
-                      for pulling contacted loci to bead-contact distance, but
-                      k_scale should be 5–20 kJ/mol (not 130) to avoid freezing
-                      MD.  See warnings in build_crossentropy_force().  The
-                      "gaussian" kernel (default) and "rouse" kernel use
-                      HIC_GAUSSIAN_SIGMA / HIC_ROUSE_KUHN_LENGTH instead, each
-                      falling back to r_comp when not explicitly set.
+        r_comp (and HIC_GAUSSIAN_SIGMA/HIC_ERFC_SIGMA/HIC_ROUSE_KUHN_LENGTH,
+        which fall back to it) is the length scale over which the kernel has
+        any gradient — too small and it can only reinforce pairs already
+        coincidentally close, never pull distant loci together. self.r_comp
+        is nucleus-scale (set in set_radiuses()) for this reason, and this
+        method further auto-calibrates it (HIC_AUTO_SCALE, default True) from
+        a percentile of the real initial pairwise-distance distribution (see
+        hic_force.auto_contact_scale), using a high percentile
+        (HIC_AUTO_SCALE_PERCENTILE, default 50/median) so that most pairs —
+        not just the closest few — start within the kernel's reach. This
+        differs from validation's auto-scale, which uses a low percentile for
+        visual contrast rather than force reach. All affected length
+        parameters are rescaled by the same factor, so only the absolute
+        scale changes, not the kernel shape.
         """
         if self.hic_matrix is None:
             logger.warning("add_hic_force() called but hic_matrix is None — skipping.")
             return
 
-        # Contact-probability kernel inflection/width ≈ bead-contact scale
         hic_r = self.r_comp
+        sigma, sigma_s, kuhn_length = (
+            self.args.HIC_GAUSSIAN_SIGMA, self.args.HIC_ERFC_SIGMA, self.args.HIC_ROUSE_KUHN_LENGTH,
+        )
+        calibrated = None
+        if getattr(self.args, "HIC_AUTO_SCALE", True):
+            try:
+                init_coords = get_coordinates_mm(self.pdb.positions)
+                calibrated = auto_contact_scale(
+                    init_coords, percentile=self.args.HIC_AUTO_SCALE_PERCENTILE,
+                )
+                factor = (calibrated / hic_r) if hic_r > 1e-12 else 1.0
+                hic_r = calibrated
+                sigma = (sigma * factor) if sigma is not None else None
+                sigma_s = (sigma_s * factor) if sigma_s is not None else None
+                kuhn_length = (kuhn_length * factor) if kuhn_length is not None else None
+                logger.info(
+                    "Hi-C force auto-calibrated from initial structure: r_comp=%.4f nm "
+                    "(%.0fth percentile of initial pairwise distances; was %.4f nm)",
+                    calibrated, self.args.HIC_AUTO_SCALE_PERCENTILE, self.r_comp,
+                )
+            except Exception as _e:
+                logger.warning(
+                    "Hi-C force auto-calibration failed (%s) — falling back to r_comp=%.4f nm.",
+                    _e, hic_r,
+                )
 
         log_table(
             [
@@ -1013,32 +1032,44 @@ class MultiMM:
                 ("k_scale",       f"{self.args.HIC_K_SCALE} kJ/mol"),
                 ("weight_power",  self.args.HIC_WEIGHT_POWER),
                 ("powerlaw_alpha", self.args.HIC_POWERLAW_ALPHA),
-                ("gaussian_sigma", self.args.HIC_GAUSSIAN_SIGMA),
-                ("erfc_sigma",     self.args.HIC_ERFC_SIGMA),
-                ("rouse_kuhn_length", self.args.HIC_ROUSE_KUHN_LENGTH),
+                ("gaussian_sigma", sigma),
+                ("erfc_sigma",     sigma_s),
+                ("rouse_kuhn_length", kuhn_length),
                 ("threshold",     self.args.HIC_THRESHOLD),
-                ("r_comp",        f"{hic_r:.4f} nm"),
+                ("r_comp",        f"{hic_r:.4f} nm" + ("  (auto-calibrated)" if calibrated is not None else "")),
+                ("OE normalize",  self.args.HIC_FORCE_OE),
                 ("Matrix shape",  str(self.hic_matrix.shape)),
             ],
             title="Hi-C force — parameters",
             log_fn=logger.info,
         )
-        force = build_hic_force(
+        use_noise = getattr(self.args, "HIC_NOISE_INTENSITY", 0.0) > 0
+        result = build_hic_force(
             H_raw=self.hic_matrix,
             N_beads=self.args.N_BEADS,
             r_comp=hic_r,
             kernel=self.args.HIC_KERNEL,
             k_scale=self.args.HIC_K_SCALE,
             alpha=self.args.HIC_POWERLAW_ALPHA,
-            sigma=self.args.HIC_GAUSSIAN_SIGMA,
-            sigma_s=self.args.HIC_ERFC_SIGMA,
-            kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
+            sigma=sigma,
+            sigma_s=sigma_s,
+            kuhn_length=kuhn_length,
             weight_power=self.args.HIC_WEIGHT_POWER,
             threshold=self.args.HIC_THRESHOLD,
+            oe_normalize=self.args.HIC_FORCE_OE,
             already_balanced=True,      # read_hic_matrix already normalises
+            return_controller=use_noise,
+            noise_seed=self.args.SHUFFLING_SEED,
         )
+        force, self.hic_noise = result if use_noise else (result, None)
         self.system.addForce(force)
         logger.info("Hi-C force added (kernel=%s).", self.args.HIC_KERNEL)
+        if use_noise:
+            logger.info(
+                "Hi-C contact-strength noise enabled: intensity=%.3f, redrawn once per "
+                "saved MD frame around each bond's original value.",
+                self.args.HIC_NOISE_INTENSITY,
+            )
 
     def add_forcefield(self):
         """Here we define the forcefield of MultiMM."""
@@ -1209,9 +1240,29 @@ class MultiMM:
 
         start = time.time()
 
+        # ── Dynamics diagnostics accumulators ───────────────────────────────────
+        # RMSF: per-bead positional fluctuation across the whole trajectory
+        # (COM-removed each frame, two-pass-free online accumulation of the
+        # mean vector and mean squared norm per bead — RMSF_i =
+        # sqrt(mean(|x_i|^2) - |mean(x_i)|^2) over frames).
+        N_beads_md = self.system.getNumParticles()
+        _rmsf_sum = np.zeros((N_beads_md, 3))
+        _rmsf_sumsq = np.zeros(N_beads_md)
+        _rmsf_n = 0
+        _last_velocities_nm_ps = None  # captured each frame; last one kept
+
+        hic_noise = getattr(self, "hic_noise", None)
+
         for i in range(_n_frames):
 
             self.simulation.step(_sampling_step)
+
+            # Re-noise Hi-C contact strengths once per saved frame, anchored
+            # back to the original data each time (see HiCNoiseController) —
+            # a simple stochastic nudge to help the structure explore nearby
+            # configurations instead of settling into one exact attractor.
+            if hic_noise is not None:
+                hic_noise.resample(self.simulation.context, self.args.HIC_NOISE_INTENSITY)
 
             state = self.simulation.context.getState(
                 getPositions=True,
@@ -1268,6 +1319,29 @@ class MultiMM:
                 except Exception:
                     pass   # silently skip on rare Quantity conversion issues
 
+            # RMSF accumulation (COM-removed positions, independent of the
+            # minimised-structure reference above) — a global picture of how
+            # much each bead moves over the whole trajectory, not just a
+            # single-frame snapshot.
+            try:
+                pos_q = state.getPositions(asNumpy=True)
+                pos_f = np.array(pos_q.value_in_unit(nanometers))   # (N, 3)
+                pos_fc = pos_f - pos_f.mean(axis=0)
+                _rmsf_sum += pos_fc
+                _rmsf_sumsq += np.sum(pos_fc ** 2, axis=1)
+                _rmsf_n += 1
+            except Exception:
+                pass
+
+            # Per-bead velocities (nm/ps, OpenMM convention) — keep the last
+            # frame as a representative equilibrium snapshot for the
+            # Maxwell-Boltzmann velocity-distribution diagnostic.
+            try:
+                vel_q = state.getVelocities(asNumpy=True)
+                _last_velocities_nm_ps = np.array(vel_q.value_in_unit(nanometer / picosecond))
+            except Exception:
+                pass
+
             # SAVE FRAME — every iteration saves one CIF; loop runs TRJ_FRAMES
             # times so exactly TRJ_FRAMES files are written.
             self.state = state
@@ -1294,6 +1368,30 @@ class MultiMM:
             logger.debug("Could not resolve target temperature for plotting: %s", _e)
             target_temp = None
 
+        # ── Bead-dynamics diagnostics (velocity/kinetic-energy Boltzmann fit
+        # + per-bead fluctuation across the trajectory) ────────────────────────
+        try:
+            masses_amu = np.array([
+                self.system.getParticleMass(p).value_in_unit(dalton)
+                for p in range(N_beads_md)
+            ])
+            rmsf = None
+            if _rmsf_n > 0:
+                mean_vec = _rmsf_sum / _rmsf_n
+                mean_sq = _rmsf_sumsq / _rmsf_n
+                rmsf = np.sqrt(np.maximum(mean_sq - np.sum(mean_vec ** 2, axis=1), 0.0))
+            if _last_velocities_nm_ps is not None:
+                analyze_dynamics(
+                    velocities=_last_velocities_nm_ps,
+                    masses=masses_amu,
+                    save_path=self.save_path,
+                    name="dynamics",
+                    target_temperature=target_temp,
+                    rmsf=rmsf,
+                )
+        except Exception as _e:
+            logger.warning(f"Dynamics diagnostics failed: {_e}")
+
         plot_md_thermo(
             self.md_history,
             self.save_path,
@@ -1319,9 +1417,8 @@ class MultiMM:
         logger.info(f"Nucleosome interpolation complete in {elapsed:.1f}s")
 
     def set_radiuses(self):
-        # --------------------------------------------
-        # fundamental polymer scale (bead spacing)
-        # --------------------------------------------
+        # Bead spacing, nucleus radius (constant-density globule: R ~ b0*N^(1/3)),
+        # and nucleolus radius (20% inner volume fraction).
         b0 = self.args.POL_HARMONIC_BOND_R0
         if hasattr(b0, "value_in_unit"):
             b0 = b0.value_in_unit(nanometers)
@@ -1329,46 +1426,35 @@ class MultiMM:
             b0 = float(b0)
 
         N = float(self.args.N_BEADS)
-
-        # --------------------------------------------
-        # nucleus as a dense polymer globule
-        # analogy: "packed ball of spaghetti"
-        #
-        # constant-density assumption:
-        # volume ~ N * b0^3  =>  R ~ b0 * N^(1/3)
-        # --------------------------------------------
         R2 = b0 * N ** (1.0 / 3.0)
-
-        # --------------------------------------------
-        # inner compartment (nucleolus-like core)
-        # analogy: "denser droplet inside the globule"
-        #
-        # defined by volume fraction, not geometry
-        # --------------------------------------------
         inner_volume_fraction = 0.20
         R1 = R2 * inner_volume_fraction ** (1.0 / 3.0)
 
-        # --------------------------------------------
-        # interaction range (NOT geometry)
-        #
-        # r_comp controls how far chromatin "feels"
-        # compartments / lamina attraction
-        #
-        # analogy: interaction fuzziness around contact
-        # --------------------------------------------
-        r_comp = 1.5 * b0
+        # r_comp: interaction range for compartment/subcompartment attraction
+        # and the Hi-C force's fallback kernel scale. Must be nucleus-scale
+        # (R2/3) rather than a fixed ~1-2 bead diameters (1.5*b0, kept below
+        # as bead_contact_r for reference only) — a fixed microscale doesn't
+        # grow with N like R2 does, so it left these long-range forces with
+        # ~no gradient at realistic bead separations and no ability to fold
+        # the structure toward the experimental Hi-C map. The Hi-C force
+        # further refines this via its own auto-calibrated scale — see
+        # add_hic_force().
+        bead_contact_r = 1.5 * b0        # kept for reference/diagnostics only
+        r_comp = R2 / 3.0
 
         self.radius2 = R2
         self.radius1 = R1
+        self.bead_contact_r = bead_contact_r
         self.r_comp = r_comp
 
         log_table(
             [
-                ("Bead spacing b0",  f"{b0:.4f} nm"),
-                ("N beads",         f"{N:.0f}"),
-                ("R nucleus",       f"{R2:.4f} nm"),
-                ("R nucleolus",     f"{R1:.4f} nm"),
-                ("r_comp",          f"{r_comp:.4f} nm"),
+                ("Bead spacing b0",      f"{b0:.4f} nm"),
+                ("N beads",              f"{N:.0f}"),
+                ("R nucleus",            f"{R2:.4f} nm"),
+                ("R nucleolus",          f"{R1:.4f} nm"),
+                ("r_comp (long-range)",  f"{r_comp:.4f} nm"),
+                ("bead-contact scale",   f"{bead_contact_r:.4f} nm  (reference only)"),
             ],
             title="System geometry",
             log_fn=logger.info,
@@ -1399,14 +1485,23 @@ class MultiMM:
                 save_path=self.save_path + f"plots/{out_name}.png",
             )
 
-            # heatmap (always)
+            # heatmap (always) — same kernel family/parameters as the Hi-C
+            # force itself (see add_hic_force / validate_hic_model call
+            # sites below), so the structure-derived contact map uses
+            # identical methodology to the force it is diagnosing.
             if self.args.N_BEADS<50000:
                 get_heatmap(
                     cif_path,
                     viz=True,
                     save=True,
                     save_path=self.save_path + f"plots",
-                    name=out_name
+                    name=out_name,
+                    kernel=self.args.HIC_KERNEL,
+                    r_comp=self.r_comp,
+                    alpha=self.args.HIC_POWERLAW_ALPHA,
+                    sigma=self.args.HIC_GAUSSIAN_SIGMA,
+                    sigma_s=self.args.HIC_ERFC_SIGMA,
+                    kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
                 )
             else:
                 logger.warning("Heatmap skipped — system is too large for visualization (N_BEADS ≥ 50 000).")
@@ -1419,9 +1514,10 @@ class MultiMM:
             )
 
             plot_projection(
-                    get_coordinates_mm(self.state.getPositions()),
+                    V,
                     self.Cs,
                     save_path=self.save_path,
+                    name=out_name,
                 )
 
             return V
@@ -1434,6 +1530,7 @@ class MultiMM:
                     get_coordinates_mm(self.state.getPositions()),
                     self.Cs,
                     save_path=self.save_path,
+                    name="genomewide",
                 )
 
             viz_chroms(self.save_path, r=0.2, comps=is_comp)
@@ -1583,6 +1680,12 @@ class MultiMM:
                         save_path=self.save_path, log=logger,
                         n_rw=_n_rw,
                         confine_radius_nm=self.radius2,
+                        kernel=self.args.HIC_KERNEL,
+                        r_comp=self.r_comp,
+                        alpha=self.args.HIC_POWERLAW_ALPHA,
+                        sigma=self.args.HIC_GAUSSIAN_SIGMA,
+                        sigma_s=self.args.HIC_ERFC_SIGMA,
+                        kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
                     )
                 else:
                     logger.warning("No MD frame files found — falling back to minimized structure.")
@@ -1591,6 +1694,12 @@ class MultiMM:
                         self.hic_matrix, save_path=self.save_path, log=logger,
                         n_rw=_n_rw,
                         confine_radius_nm=self.radius2,
+                        kernel=self.args.HIC_KERNEL,
+                        r_comp=self.r_comp,
+                        alpha=self.args.HIC_POWERLAW_ALPHA,
+                        sigma=self.args.HIC_GAUSSIAN_SIGMA,
+                        sigma_s=self.args.HIC_ERFC_SIGMA,
+                        kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
                     )
             else:
                 metrics = validate_hic_model(
@@ -1598,10 +1707,62 @@ class MultiMM:
                     self.hic_matrix, save_path=self.save_path, log=logger,
                     n_rw=_n_rw,
                     confine_radius_nm=self.radius2,
+                    kernel=self.args.HIC_KERNEL,
+                    r_comp=self.r_comp,
+                    alpha=self.args.HIC_POWERLAW_ALPHA,
+                    sigma=self.args.HIC_GAUSSIAN_SIGMA,
+                    sigma_s=self.args.HIC_ERFC_SIGMA,
+                    kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
                 )
             np.save(self.save_path + "metadata/hic_validation.npy", metrics)
             logger.info("Hi-C validation metrics saved → %smetadata/hic_validation.npy", self.save_path)
             log_success("Validation", logger)
+
+        # ── Input-vs-output diagnostics (loops / compartments) ────────────────
+        final_cif = self.save_path + (
+            "model/MultiMM_afterMD.cif" if self.args.SIM_RUN_MD else "model/MultiMM_minimized.cif"
+        )
+
+        # ── Distance vs. experimental strength: does the force actually pull
+        # high-strength (enriched) pairs closer and leave low-strength
+        # (background/depleted) pairs alone? ──────────────────────────────────
+        if self.args.HIC_USE_FORCE and self.hic_matrix is not None:
+            log_section("Distance vs. Strength Validation")
+            try:
+                dvs_metrics = validate_distance_vs_strength(
+                    final_cif, self.hic_matrix, save_path=self.save_path, log=logger,
+                    oe_normalize=self.args.HIC_FORCE_OE,
+                )
+                if dvs_metrics:
+                    np.save(self.save_path + "metadata/distance_vs_strength.npy", dvs_metrics)
+                log_success("Distance vs. Strength Validation", logger)
+            except Exception as exc:
+                logger.warning(f"Distance-vs-strength validation failed: {exc}")
+        if self.ms is not None and self.ns is not None and len(self.ms) > 0:
+            log_section("Loop Validation")
+            logger.info("Checking input loop anchors (.bedpe) against the output structure …")
+            try:
+                loop_metrics = validate_loops(
+                    final_cif, self.ms, self.ns, save_path=self.save_path, log=logger,
+                )
+                if loop_metrics:
+                    np.save(self.save_path + "metadata/loop_validation.npy", loop_metrics)
+                log_success("Loop Validation", logger)
+            except Exception as exc:
+                logger.warning(f"Loop validation failed: {exc}")
+
+        if self.Cs is not None and len(self.Cs) > 0:
+            log_section("Compartment Validation")
+            logger.info("Checking input compartment track (.bed) against the output structure …")
+            try:
+                comp_metrics = validate_compartments(
+                    final_cif, self.Cs, save_path=self.save_path, log=logger,
+                )
+                if comp_metrics:
+                    np.save(self.save_path + "metadata/compartment_validation.npy", comp_metrics)
+                log_success("Compartment Validation", logger)
+            except Exception as exc:
+                logger.warning(f"Compartment validation failed: {exc}")
 
         save_args_to_txt(self.args, self.args.OUT_PATH + "/metadata/parameters.txt")
 

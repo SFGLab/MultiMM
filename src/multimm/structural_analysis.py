@@ -23,9 +23,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.spatial import ConvexHull, distance
-from scipy.stats import gaussian_kde
+from scipy.stats import gaussian_kde, gamma as _gamma_dist
 
 logger = logging.getLogger(__name__)
+
+# Boltzmann constant in MD-conventional kJ/(mol*K) — matches the OpenMM unit
+# system (energy in kJ/mol when mass is in amu and velocity in nm/ps), so no
+# unit conversion is needed when combining with OpenMM-extracted velocities
+# and masses.
+_KB_KJ_PER_MOL_K = 0.0083144626181532
 
 
 def _smart_bin_count(data, lo=15, hi=40):
@@ -305,4 +311,267 @@ def analyze_structure(V, save_path, name="structure"):
         "density": density,
         "asphericity": asphericity,
         "acylindricity": acylindricity,
+    }
+
+
+def _hist_with_fit(ax, data, pdf_fn, color, xlabel, title, fit_label=None,
+                    ref_pdf_fn=None, ref_label=None, ref_color="#898781"):
+    """Smart-binned histogram + an overlaid *theoretical* PDF curve (rather
+    than an empirical KDE — see :func:`_hist_with_kde` for that case).
+
+    Used for the velocity/energy diagnostics, where the question is not
+    "what does the empirical density look like" but "does the empirical
+    density match the Maxwell-Boltzmann prediction".  An optional second
+    reference curve (``ref_pdf_fn``) overlays the theoretical prediction at
+    the simulation's *target* temperature, so a mismatch between the
+    estimated and target curves is immediately visible.
+    """
+    n_bins = _smart_bin_count(data)
+    ax.hist(
+        data, bins=n_bins, density=True,
+        color=color, alpha=0.55, edgecolor="white", linewidth=0.6,
+        label="Data",
+    )
+    xs = np.linspace(np.min(data), np.max(data), 300)
+    try:
+        ax.plot(xs, pdf_fn(xs), color=color, linewidth=2.2,
+                label=fit_label or "Boltzmann fit")
+    except Exception:
+        pass
+    if ref_pdf_fn is not None:
+        try:
+            ax.plot(xs, ref_pdf_fn(xs), color=ref_color, linewidth=1.6, linestyle="--",
+                    label=ref_label or "Target T")
+        except Exception:
+            pass
+    ax.set_title(title, fontsize=11, fontweight="bold")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Density")
+    ax.legend(fontsize=8, frameon=False)
+
+
+def analyze_dynamics(
+    velocities,
+    masses,
+    save_path,
+    name="dynamics",
+    target_temperature=None,
+    rmsf=None,
+    log=None,
+):
+    """
+    Diagnostic analysis of bead *velocities* / kinetic fluctuations — a
+    companion to :func:`analyze_structure` that answers "how much are the
+    beads actually moving", rather than "what does the structure look
+    like".
+
+    Three independent theoretical-distribution checks are performed against
+    the Maxwell-Boltzmann prediction, using a mass-weighted variable
+    (``p = sqrt(m) * v``) so a single pair of curves is valid even when
+    bead masses are heterogeneous:
+
+      1. Mass-weighted speed  ``s = sqrt(m) * |v|``  →  Maxwell speed pdf
+         ``f(s) = sqrt(2/pi) s^2/a^3 exp(-s^2/2a^2)``,  a = sqrt(kB T).
+      2. Mass-weighted velocity components (vx, vy, vz pooled)  →  Normal
+         pdf  N(0, kB T)  (one Cartesian component of a Boltzmann gas).
+      3. Per-bead kinetic energy ``KE = 0.5 m v^2``  →  Gamma(3/2, kB T)
+         (the 3-DOF energy distribution; mass-invariant already, no
+         weighting needed).
+
+    ``kB*T`` is estimated directly from the data via equipartition
+    (``kB*T_est = (2/3) * mean(KE)``) and drawn as the solid fit; when
+    ``target_temperature`` is supplied, the theoretical curve at the
+    simulation's *set-point* temperature is overlaid as a dashed reference,
+    so a mismatch between actual and target thermal energy is immediately
+    visible (e.g. insufficient equilibration, a thermostat that hasn't
+    caught up, or a frozen subset of beads).
+
+    ``rmsf``, when supplied (per-bead root-mean-square fluctuation in nm,
+    accumulated across the MD trajectory), is plotted per bead index to
+    give a *global* picture of which regions of the chain move the most
+    over the whole run — complementary to the single-frame speed snapshot.
+
+    Parameters
+    ----------
+    velocities : (N, 3) ndarray, nm/ps (OpenMM convention)
+    masses     : (N,) ndarray, amu (OpenMM convention) — matched index-wise
+                 to ``velocities``.  Zero-mass entries (virtual sites) are
+                 excluded from the velocity/energy statistics.
+    save_path  : str — same root as :func:`analyze_structure`
+    name       : str — output file stem
+    target_temperature : float, optional — set-point T in Kelvin
+    rmsf       : (N,) ndarray, optional — per-bead RMSF in nm across frames
+    log        : logging.Logger, optional
+    """
+    _log = log or logger
+
+    sns.set_style("whitegrid")
+    plt.rcParams.update({"font.size": 11})
+    palette = sns.color_palette("mako", 6)
+
+    velocities = np.asarray(velocities, dtype=np.float64)
+    masses = np.asarray(masses, dtype=np.float64)
+
+    if velocities.ndim != 2 or velocities.shape[1] != 3 or len(masses) != len(velocities):
+        _log.warning("analyze_dynamics: velocities/masses shape mismatch, skipping.")
+        return {}
+
+    finite = np.isfinite(velocities).all(axis=1) & np.isfinite(masses) & (masses > 0)
+    if finite.sum() < 10:
+        _log.warning("analyze_dynamics: not enough valid (mass>0, finite) beads, skipping.")
+        return {}
+
+    v = velocities[finite]
+    m = masses[finite]
+    N = len(v)
+
+    speed = np.linalg.norm(v, axis=1)                       # (N,) nm/ps
+    ke = 0.5 * m * speed ** 2                                # (N,) kJ/mol (per-bead KE)
+
+    sqrt_m = np.sqrt(m)
+    speed_scaled = sqrt_m * speed                            # ~ Maxwell(a=sqrt(kT))
+    components_scaled = (v * sqrt_m[:, None]).ravel()        # ~ N(0, kT), 3N samples
+
+    mean_ke = float(np.mean(ke))
+    kT_est = (2.0 / 3.0) * mean_ke                           # equipartition: <KE> = 1.5 kT
+    T_est = kT_est / _KB_KJ_PER_MOL_K if kT_est > 0 else float("nan")
+
+    kT_target = None
+    if target_temperature is not None and np.isfinite(target_temperature):
+        kT_target = _KB_KJ_PER_MOL_K * float(target_temperature)
+
+    def _maxwell_speed_pdf(a2):
+        def f(s):
+            return np.sqrt(2.0 / np.pi) * s ** 2 / (a2 ** 1.5) * np.exp(-(s ** 2) / (2.0 * a2))
+        return f
+
+    def _gaussian_pdf(var):
+        def f(x):
+            return 1.0 / np.sqrt(2.0 * np.pi * var) * np.exp(-(x ** 2) / (2.0 * var))
+        return f
+
+    def _ke_pdf(scale):
+        return lambda x: _gamma_dist.pdf(x, a=1.5, scale=scale)
+
+    base = os.path.join(save_path, "analysis")
+    os.makedirs(base + "/plots", exist_ok=True)
+
+    fig, axes = plt.subplots(2, 3, figsize=(16, 9))
+
+    # (1) mass-weighted speed distribution vs Maxwell-Boltzmann
+    _hist_with_fit(
+        axes[0, 0], speed_scaled,
+        pdf_fn=_maxwell_speed_pdf(kT_est) if kT_est > 0 else (lambda x: np.zeros_like(x)),
+        ref_pdf_fn=_maxwell_speed_pdf(kT_target) if kT_target else None,
+        color=palette[0],
+        xlabel=r"$\sqrt{m}\,|v|$  (mass-weighted speed)",
+        title="Speed Distribution vs Maxwell-Boltzmann",
+        fit_label=f"Fit (T≈{T_est:.1f} K)" if np.isfinite(T_est) else "Fit",
+        ref_label=f"Target T = {target_temperature:.0f} K" if target_temperature else None,
+    )
+
+    # (2) mass-weighted velocity components vs Gaussian (1-D Boltzmann)
+    _hist_with_fit(
+        axes[0, 1], components_scaled,
+        pdf_fn=_gaussian_pdf(kT_est) if kT_est > 0 else (lambda x: np.zeros_like(x)),
+        ref_pdf_fn=_gaussian_pdf(kT_target) if kT_target else None,
+        color=palette[1],
+        xlabel=r"$\sqrt{m}\,v_{x,y,z}$  (mass-weighted component)",
+        title="Velocity Components vs Boltzmann (Gaussian)",
+        fit_label=f"Fit (T≈{T_est:.1f} K)" if np.isfinite(T_est) else "Fit",
+        ref_label=f"Target T = {target_temperature:.0f} K" if target_temperature else None,
+    )
+
+    # (3) per-bead kinetic energy vs the 3-DOF Boltzmann energy distribution
+    _hist_with_fit(
+        axes[0, 2], ke,
+        pdf_fn=_ke_pdf(kT_est) if kT_est > 0 else (lambda x: np.zeros_like(x)),
+        ref_pdf_fn=_ke_pdf(kT_target) if kT_target else None,
+        color=palette[2],
+        xlabel="Kinetic energy per bead (kJ/mol)",
+        title="Kinetic Energy vs Boltzmann (Γ(3/2, kT))",
+        fit_label=f"Fit (T≈{T_est:.1f} K)" if np.isfinite(T_est) else "Fit",
+        ref_label=f"Target T = {target_temperature:.0f} K" if target_temperature else None,
+    )
+
+    # (4) per-bead fluctuation across the whole trajectory (RMSF) — "how
+    # much does each part of the chain move, over the whole run"
+    ax = axes[1, 0]
+    has_rmsf = rmsf is not None and np.isfinite(np.asarray(rmsf)).any()
+    if has_rmsf:
+        rmsf = np.asarray(rmsf, dtype=np.float64)
+        idx = np.arange(len(rmsf))
+        ax.plot(idx, rmsf, color=palette[3], linewidth=1.2)
+        mean_rmsf = float(np.nanmean(rmsf))
+        ax.axhline(mean_rmsf, color="black", linestyle="--", linewidth=1,
+                   label=f"Mean = {mean_rmsf:.3f} nm")
+        ax.fill_between(idx, rmsf, mean_rmsf, color=palette[3], alpha=0.15)
+        ax.legend(fontsize=9, frameon=False)
+        ax.set_title("Per-Bead Fluctuation Across Trajectory (RMSF)", fontsize=11, fontweight="bold")
+        ax.set_xlabel("Bead index")
+        ax.set_ylabel("RMSF (nm)")
+    else:
+        ax.axis("off")
+        ax.text(0.5, 0.5, "RMSF not available\n(no trajectory accumulated)",
+                transform=ax.transAxes, ha="center", va="center", fontsize=10, color="#898781")
+
+    # (5) instantaneous speed by bead index — single-frame snapshot of "who
+    # is moving fast right now", complementary to the trajectory-wide RMSF
+    ax = axes[1, 1]
+    full_speed = np.full(len(velocities), np.nan)
+    full_speed[finite] = speed
+    idx_all = np.arange(len(velocities))
+    ax.plot(idx_all, full_speed, color=palette[4], linewidth=0.8, alpha=0.85)
+    ax.axhline(np.nanmean(full_speed), color="black", linestyle="--", linewidth=1,
+               label=f"Mean = {np.nanmean(full_speed):.3f} nm/ps")
+    ax.legend(fontsize=9, frameon=False)
+    ax.set_title("Instantaneous Speed by Bead Index", fontsize=11, fontweight="bold")
+    ax.set_xlabel("Bead index")
+    ax.set_ylabel("Speed |v| (nm/ps)")
+
+    # (6) summary scorecard
+    ax = axes[1, 2]
+    ax.axis("off")
+    ax.set_title("Summary", fontsize=11, fontweight="bold", loc="left")
+
+    summary_lines = [
+        ("N beads (m>0)", f"{N}"),
+        ("Estimated T (equipartition)", f"{T_est:.1f} K" if np.isfinite(T_est) else "—"),
+    ]
+    if target_temperature is not None:
+        delta = T_est - target_temperature if np.isfinite(T_est) else float("nan")
+        summary_lines.append(("Target T", f"{target_temperature:.1f} K"))
+        summary_lines.append(("ΔT (est. − target)", f"{delta:+.1f} K" if np.isfinite(delta) else "—"))
+    summary_lines += [
+        ("Mean speed |v|", f"{np.mean(speed):.4f} nm/ps"),
+        ("Mean kinetic energy", f"{mean_ke:.4f} kJ/mol"),
+    ]
+    if has_rmsf:
+        summary_lines.append(("Mean RMSF", f"{np.nanmean(rmsf):.4f} nm"))
+        summary_lines.append(("Max RMSF (most mobile bead)", f"{np.nanmax(rmsf):.4f} nm"))
+
+    y = 0.92
+    for label, value in summary_lines:
+        ax.text(0.0, y, label, transform=ax.transAxes, fontsize=10, ha="left", va="top")
+        ax.text(1.0, y, value, transform=ax.transAxes, fontsize=10, ha="right", va="top",
+                fontweight="bold", color=palette[5])
+        y -= 0.12
+
+    fig.suptitle(f"Bead Dynamics Diagnostics — {name}", fontsize=15, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(base + f"/plots/{name}_dynamics.png", dpi=250)
+    plt.close(fig)
+
+    _log.info(
+        f"Dynamics diagnostics: T_est≈{T_est:.1f} K"
+        + (f" (target {target_temperature:.1f} K)" if target_temperature is not None else "")
+        + f", mean speed={np.mean(speed):.4f} nm/ps, mean KE={mean_ke:.4f} kJ/mol"
+    )
+
+    return {
+        "T_estimated": T_est,
+        "target_temperature": float(target_temperature) if target_temperature is not None else None,
+        "mean_speed": float(np.mean(speed)),
+        "mean_kinetic_energy": mean_ke,
+        "mean_rmsf": float(np.nanmean(rmsf)) if has_rmsf else None,
     }

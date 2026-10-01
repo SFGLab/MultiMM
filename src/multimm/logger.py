@@ -198,6 +198,93 @@ def setup_logger(
             root.info("Log file: %s", abs_log)
 
 
+# ── Progress bar ──────────────────────────────────────────────────────────────
+
+def _format_eta(seconds: float) -> str:
+    """Format a duration in seconds as H:MM:SS (or MM:SS under an hour)."""
+    import math
+    if not math.isfinite(seconds) or seconds < 0:
+        return "—"
+    seconds = int(round(seconds))
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+
+
+class ProgressLogger:
+    """A single in-place progress line — deliberately not tqdm, since tqdm's
+    bare '\\r' redraw interleaves badly with this project's newline-per-record
+    logger. On a TTY, writes the bar directly to the console with '\\r'
+    (the logger is used only for a start line and the final 100% line);
+    otherwise falls back to throttled logger lines (every ``every_pct``%).
+
+    Shared across the project: ``from .logger import ProgressLogger``.
+    """
+
+    def __init__(self, n: int, log, label: str, every_pct: float = 5.0, bar_width: int = 24):
+        self.n = max(1, int(n))
+        self.log = log
+        self.label = label
+        self.every_pct = every_pct
+        self.bar_width = bar_width
+        self.start = time.time()
+        self._last_pct = -1
+        self._last_line_len = 0
+        # Prefer stdout (where the console logger writes), fall back to
+        # stderr, so the bar and the logger's own lines never fight over
+        # which stream "owns" the cursor.
+        self._stream = (
+            sys.stdout if getattr(sys.stdout, "isatty", lambda: False)()
+            else (sys.stderr if getattr(sys.stderr, "isatty", lambda: False)() else None)
+        )
+        self._started = False
+
+    def _format_line(self, done: int, pct: float) -> str:
+        elapsed = time.time() - self.start
+        rate = done / elapsed if elapsed > 0 else 0.0
+        eta = (self.n - done) / rate if rate > 0 else float("nan")
+        filled = int(round(self.bar_width * pct / 100.0))
+        bar = "█" * filled + "░" * (self.bar_width - filled)
+        return (
+            f"{self.label:<20} │{bar}│ {pct:3.0f}%  ({done}/{self.n})  "
+            f"{rate:.1f} it/s  eta {_format_eta(eta)}"
+        )
+
+    def update(self, i: int) -> None:
+        """Call once per iteration with the 0-indexed loop counter."""
+        done = i + 1
+        pct = 100.0 * done / self.n
+        is_last = done == self.n
+
+        if self._stream is not None:
+            # In-place redraw: always refresh so the bar/ETA feel live, but
+            # the *logger* (which would print a brand-new timestamped line
+            # every call) is only ever touched once, at the very end.
+            if not self._started:
+                self.log.info("  %s: starting (%d total)…", self.label, self.n)
+                self._started = True
+            text = self._format_line(done, pct)
+            pad = max(self._last_line_len - len(text), 0)
+            self._stream.write("\r  " + text + (" " * pad))
+            self._stream.flush()
+            self._last_line_len = len(text)
+            if is_last:
+                self._stream.write("\n")
+                self._stream.flush()
+                self.log.info("  %s", text)
+            return
+
+        # Non-interactive fallback (piped/captured output): in-place redraw
+        # can't work without a terminal, so fall back to throttled, one-
+        # line-per-update logger output, capped at most once per whole
+        # percentage point and never more often than every ``every_pct``%.
+        step = max(1, round(self.n * self.every_pct / 100.0))
+        if not is_last and (done % step != 0 or int(pct) == self._last_pct):
+            return
+        self._last_pct = int(pct)
+        self.log.info("  %s", self._format_line(done, pct))
+
+
 # ── Table helper ─────────────────────────────────────────────────────────────
 
 def log_table(

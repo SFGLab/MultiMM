@@ -193,12 +193,9 @@ class SimulationConfig(BaseModel):
     HIC_K_SCALE: float = Field(
         default=20.0,
         description=(
-            "Global energy scale for the Hi-C contact-probability force [kJ/mol].  "
-            "Recommended range: 5–20 kJ/mol.  "
-            "The wells around strongly-supported contacts become very stiff at high k; "
-            "values above 30 kJ/mol shrink thermal fluctuations to <0.1 Å and freeze MD.  "
-            "Values above 200 trigger a runtime warning.  Note: weak contacts are already "
-            "softened independently of k_scale via HIC_WEIGHT_POWER."
+            "Global energy scale for the Hi-C force [kJ/mol]. Recommended range: 5–20. "
+            "Values above 30 can freeze MD; above 200 triggers a runtime warning. Weak "
+            "contacts are already softened independently via HIC_WEIGHT_POWER."
         ),
     )
     HIC_KERNEL: str = Field(
@@ -233,7 +230,8 @@ class SimulationConfig(BaseModel):
         default=None,
         description=(
             "['gaussian' kernel only] Width σ [nm], P(r)=exp(-r²/2σ²).  Has no effect unless "
-            "HIC_KERNEL='gaussian'.  Defaults to r_comp (the bead-contact length scale) when "
+            "HIC_KERNEL='gaussian'.  Defaults to r_comp (a nucleus-scale reach, further "
+            "auto-calibrated from the initial structure when HIC_AUTO_SCALE is True) when "
             "not set."
         ),
     )
@@ -256,24 +254,64 @@ class SimulationConfig(BaseModel):
     HIC_WEIGHT_POWER: float = Field(
         default=1.0,
         description=(
-            "Exponent β in the per-pair force weight w_ij = c_ij^β.  Softens (or hardens) the "
-            "Hi-C force in proportion to the observed contact strength c_ij, independently of "
-            "the distance kernel: with β=1 (default) the force is directly proportional to "
-            "c_ij, so pairs with barely-above-threshold contact evidence exert a "
-            "correspondingly tiny force in both the attractive and repulsive branch, while "
-            "only well-supported contacts (c_ij close to 1) behave like a firm restraint.  "
-            "β<1 softens weak contacts less aggressively; β>1 suppresses them more."
+            "Exponent β in the per-pair force weight w_ij = c_ij^β. With β=1 (default) "
+            "force is directly proportional to contact strength c_ij, so weak-evidence "
+            "pairs stay nearly inert. β<1 softens weak contacts less; β>1 suppresses them more."
         ),
     )
     HIC_THRESHOLD: float = Field(
         default=0.01,
         description=(
-            "Minimum normalised contact value c_ij to include a bond in the force at all — "
-            "a sparsity cutoff only (keeps the bond list O(M), M ≪ N²).  It does not by "
-            "itself make the force 'hard': bonds that do get built still have their force "
-            "scaled continuously by c_ij via HIC_WEIGHT_POWER, so pairs just above threshold "
-            "remain nearly inert.  Lower values add more (weaker) bonds; higher values prune "
-            "more aggressively.  Recommended range: 0.005–0.05."
+            "Minimum normalised contact value c_ij to include a bond at all — a sparsity "
+            "cutoff only (bonds still scale continuously with c_ij via HIC_WEIGHT_POWER). "
+            "Recommended range: 0.005–0.05."
+        ),
+    )
+    HIC_FORCE_OE: Boolean = Field(
+        default=True,
+        description=(
+            "If True (default), target enrichment-above-background (OE ratio minus 1, "
+            "floored at 0) instead of raw contact frequency: pairs at or below the expected "
+            "distance-decay baseline (not enriched — 'towards -1' on the displayed "
+            "log2(O/E) scale) get exactly zero force weight, so they are neither pulled "
+            "together nor pushed apart ('loose'); only genuinely enriched pairs attract, "
+            "most strongly for the most-enriched ('towards +1'). Set False to instead "
+            "target raw (KR-balanced) contact frequency directly, which also pulls "
+            "short-range/background pairs together just from their high absolute count."
+        ),
+    )
+    HIC_NOISE_INTENSITY: float = Field(
+        default=0.0,
+        description=(
+            "Std-dev of Gaussian noise (same [0, 1] scale as c_ij) added to every Hi-C "
+            "bond's contact strength, redrawn once per saved MD frame around its ORIGINAL "
+            "data-derived value (never drifting cumulatively). This lets different contacts "
+            "take turns pulling strongest from frame to frame, nudging the structure to "
+            "explore nearby configurations instead of settling into one exact attractor, "
+            "while every draw stays anchored to the real data. 0 (default) disables it; "
+            "try 0.05-0.2 for mild exploration. Only applied during MD (SIM_RUN_MD=True)."
+        ),
+    )
+    HIC_AUTO_SCALE: Boolean = Field(
+        default=True,
+        description=(
+            "If True (default, recommended), recalibrate the Hi-C force's distance-kernel "
+            "scale (r_comp and any unset HIC_GAUSSIAN_SIGMA/HIC_ERFC_SIGMA/"
+            "HIC_ROUSE_KUHN_LENGTH) from a percentile of the actual initial structure's "
+            "pairwise-distance distribution (hic_force.auto_contact_scale) instead of a "
+            "fixed default, which can leave the force with no gradient at realistic bead "
+            "separations and barely change the structure from its initial state."
+        ),
+    )
+    HIC_AUTO_SCALE_PERCENTILE: float = Field(
+        default=50.0,
+        description=(
+            "Percentile of the initial structure's pairwise distances used to calibrate "
+            "the Hi-C force's scale when HIC_AUTO_SCALE is True. Higher than validation's "
+            "equivalent percentile (which favors visual contrast) because the force needs "
+            "reach: most contacted pairs, not just the closest, should feel a gradient. "
+            "Default 50 (median); raise for a more diffuse initial structure, lower if "
+            "local contact resolution suffers."
         ),
     )
     HIC_MAX_GAP: int = Field(

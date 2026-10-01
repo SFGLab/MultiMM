@@ -193,7 +193,7 @@ When a raw Hi-C contact matrix is provided (`HIC_PATH`), it is used directly as 
 **Pipeline:**
 
 1. The matrix is loaded from `.hic`, `.cool`, or `.mcool`, auto-selecting resolution and resampling to exactly `N_beads x N_beads` via weighted average pooling (`read_hic.py`).
-2. Knight–Ruiz iterative balancing: `H <- D^{-1} H D^{-1}` until row marginals ≈ 1, giving the normalised contact matrix `c_ij ∈ [0, 1]`.
+2. Knight–Ruiz iterative balancing: `H <- D^{-1} H D^{-1}` until row marginals ≈ 1, giving the normalised contact matrix `c_ij ∈ [0, 1]`. If `HIC_FORCE_OE=True`, an additional Observed/Expected normalisation (divide each diagonal by its mean) is applied on top, so `c_ij` targets relative enrichment over the distance-decay background instead of absolute contact frequency (default `False`).
 3. A sparse set of bonds is built for every pair with `c_ij ≥ HIC_THRESHOLD` (a sparsity cutoff only — O(M) bonds, M ≪ N²).
 
 Instead of converting contacts into fixed target distances, the force models the contact *probability* directly as a distance kernel `P_ij(r)` and minimises the binary cross-entropy (negative log-likelihood) against the observed `c_ij`:
@@ -530,13 +530,14 @@ Visualization is powered by [PyVista](https://pyvista.org/).
 | `HIC_PATH` | str | None | Path to `.hic`, `.cool`, or `.mcool` file |
 | `HIC_NORMALIZATION` | str | `KR` | Matrix normalization: `KR`, `VC`, `VC_SQRT`, `NONE` |
 | `HIC_KERNEL` | str | `gaussian` | Distance→probability kernel: `gaussian`, `power_law`/`sigmoid`, `exponential`, `erfc`, `rouse` |
-| `HIC_K_SCALE` | float | 20.0 | Global energy scale (kJ mol⁻¹). Recommended: 5–20 kJ mol⁻¹. Values > 30 kJ mol⁻¹ risk freezing MD thermal sampling (runtime warning). |
+| `HIC_K_SCALE` | float | 5.0 | Global energy scale (kJ mol⁻¹). Recommended: 5–20 kJ mol⁻¹. Values > 30 kJ mol⁻¹ risk freezing MD thermal sampling (runtime warning). |
 | `HIC_WEIGHT_POWER` | float | 1.0 | Exponent β in per-pair weight `c_ij^β`; 1.0 = force proportional to observed contact strength (soft at low `c_ij`, firm at high `c_ij`) |
 | `HIC_POWERLAW_ALPHA` | float | 3.0 | Sigmoid steepness; only takes effect when `HIC_KERNEL=power_law`/`sigmoid` |
 | `HIC_GAUSSIAN_SIGMA` | float | None (→`r_comp`) | Width σ; only takes effect when `HIC_KERNEL=gaussian` |
 | `HIC_ERFC_SIGMA` | float | None (→`0.3·r_comp`) | Softening width; only takes effect when `HIC_KERNEL=erfc` |
 | `HIC_ROUSE_KUHN_LENGTH` | float | None (→`r_comp`) | Kuhn length `b`; only takes effect when `HIC_KERNEL=rouse` |
 | `HIC_THRESHOLD` | float | 0.01 | Minimum `c_ij` to build a bond at all (sparsity cutoff only; force strength still scales continuously with `c_ij` via `HIC_WEIGHT_POWER`) |
+| `HIC_FORCE_OE` | bool | `False` | If `True`, apply Observed/Expected normalisation to the Hi-C matrix before it is passed as the `c_ij` target, so the force optimises for relative contact enrichment over the distance-decay background rather than absolute contact frequency. In general leave this `False`. |
 | `HIC_MAX_GAP` | int | 10 | Maximum gap fraction (%) tolerated when interpolating missing bins |
 
 ### Compartment and Subcompartment Forces

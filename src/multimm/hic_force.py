@@ -1,68 +1,34 @@
 """
-hic_force.py  —  Hi-C contact-probability force for MultiMM / OpenMM
-=====================================================================
+hic_force.py — Hi-C contact-probability force for MultiMM / OpenMM
 
-Organised in three clearly-separated layers:
+Three layers: pre-processing (symmetrize_and_clean, diagonal_normalize,
+resize_matrix; pure numpy), the OpenMM force builder
+(build_crossentropy_force -> sparse CustomBondForce), and the public
+entry point (build_hic_force: cleans -> resizes -> normalises -> builds).
 
-  Layer 1 — Pre-processing   (pure numpy, no OpenMM)
-      symmetrize_and_clean()
-      diagonal_normalize()
-      resize_matrix()
-
-  Layer 2 — OpenMM force builder
-      build_crossentropy_force()  → sparse CustomBondForce
-
-  Layer 3 — Public entry point
-      build_hic_force()  — cleans → resizes → normalises → builds force
-
-All layers emit structured log messages through the module logger
-(see logger.py for setup).
-
-Method
-------
-Rather than converting contacts into fixed target distances, the force
-models the contact *probability* directly as a monotone-decreasing
-function of 3-D distance, P_ij(r), and minimises the binary
-cross-entropy (negative log-likelihood) between the model probability
-and the observed, row-normalised Hi-C contact frequency c_ij ∈ [0, 1]:
+Method: models contact *probability* as a monotone-decreasing function of
+3-D distance, P_ij(r), and minimises binary cross-entropy between P_ij and
+the observed contact frequency c_ij:
 
     L = -Σ_{i<j} [ c_ij · log P_ij(r_ij) + (1 - c_ij) · log(1 - P_ij(r_ij)) ]
 
-The force is F_i = -∇_i L.  Because the energy is built from P_ij
-directly, the residual (c_ij - P_ij) is self-regulating: it vanishes
-once the simulated structure reproduces the data, in either direction
-(push apart if too close, pull together if too far).
-
-P_ij(r) is pluggable (`kernel=` argument).  Five kernels are provided;
-`gaussian` is the default:
+F_i = -∇_i L, so the residual (c_ij - P_ij) is self-regulating and vanishes
+once the structure matches the data. P_ij(r) is pluggable (`kernel=`):
 
   * "gaussian"    P = exp(-r² / (2σ²))                         (default)
   * "power_law"   P = 1 / (1 + (r / r_c)^α)                    (sigmoid; also "sigmoid")
   * "exponential" P = exp(-r / r_c)
   * "erfc"        P = ½ erfc((r - r_c) / (√2 σ_s))             (soft step)
-  * "rouse"       P = erfc(r / √(2 s b²))                      (s = |i-j| in beads,
-                                                                  b = Kuhn length;
-                                                                  separation-aware)
+  * "rouse"       P = erfc(r / √(2 s b²))                      (s = separation in beads,
+                                                                  b = Kuhn length)
 
-Soft, proportional weighting
------------------------------
-A hard distance cutoff is not the only thing kept soft here: every
-pair's contribution to the loss (and hence its force) is additionally
-scaled by a weight w_ij = c_ij^β (β = `weight_power`, default 1 ⇒ force
-strictly proportional to the observed contact strength).  This means
-pairs with c_ij close to the inclusion `threshold` (i.e. almost no
-evidence of contact) exert a correspondingly tiny force — both the
-attractive and the repulsive branch of the loss are damped — instead of
-acting as a hard constraint the moment they clear the threshold.  Only
-pairs with strong contact evidence behave close to a hard restraint.
-`threshold` therefore mostly controls sparsity (how many bonds are
-built, for performance), not force "hardness" — that is governed
-continuously by c_ij itself.
+Each pair's loss contribution is also scaled by w_ij = c_ij^β
+(`weight_power`, default 1), so weak-evidence pairs exert proportionally
+small force instead of a hard constraint once past `threshold` (which
+mostly controls sparsity/performance, not force hardness).
 
-Usage in model.py
-------------------
+Usage (model.py):
     from hic_force import build_hic_force
-
     force = build_hic_force(args.hic_matrix, N_beads=self.N,
                              r_comp=self.r_comp, kernel="gaussian")
     self.system.addForce(force)
@@ -297,6 +263,142 @@ def _kernel_spec(
     return p_expr, globals_, needs_sep, p_func, ref_r
 
 
+def get_kernel_p_func(
+    kernel      : str,
+    r_comp      : float,
+    alpha       : float           = 3.0,
+    sigma       : Optional[float] = None,
+    sigma_s     : Optional[float] = None,
+    kuhn_length : Optional[float] = None,
+):
+    """
+    Public helper so other modules (notably `validation.py`) can compute
+    the exact same distance→contact-probability kernel P(r) used to build
+    the Hi-C force, instead of a generic/unrelated proxy such as 1/(d+ε).
+
+    Resolves the same None-fallback defaults as `build_crossentropy_force`
+    (sigma → r_comp, sigma_s → 0.3*r_comp, kuhn_length → r_comp), so a
+    caller only needs the same parameters that were used to build the
+    force itself.
+
+    Returns
+    -------
+    p_func    : callable(r, sep=None) -> P, vectorised over numpy arrays
+                (r and, for "rouse", sep may be full (N, N) matrices).
+    needs_sep : bool — True only for "rouse" (needs a genomic-separation
+                matrix sep[i, j] = |i - j| passed as the second argument).
+    """
+    kernel = kernel.lower()
+    if kernel not in VALID_KERNELS:
+        raise ValueError(f"Unknown Hi-C kernel '{kernel}'. Valid options: {VALID_KERNELS}")
+
+    sigma       = r_comp if sigma is None else sigma
+    sigma_s     = 0.3 * r_comp if sigma_s is None else sigma_s
+    kuhn_length = r_comp if kuhn_length is None else kuhn_length
+
+    _, _, needs_sep, p_func, _ = _kernel_spec(kernel, r_comp, alpha, sigma, sigma_s, kuhn_length)
+    return p_func, needs_sep
+
+
+def auto_contact_scale(
+    coords: np.ndarray,
+    percentile: float = 10.0,
+    n_samples: int = 20000,
+    seed: int = 0,
+) -> float:
+    """Estimate a contact length scale from a structure's own pairwise-distance
+    distribution, instead of reusing the Hi-C force's microscopic
+    ``r_comp``/``sigma`` (tuned for bead-overlap, so it underflows to ~0 for
+    any pair more than a few bead-spacings apart and gives an uninformative,
+    near-diagonal-only contact map).
+
+    Samples random bead pairs from the 3-D structure and returns the given
+    percentile (default 10th, i.e. a "frequently-contacting" scale) of their
+    pairwise distances, keeping the kernel informative across the whole
+    distance range rather than saturating to zero almost everywhere.
+
+    coords: (N, 3) structure coordinates (nm). percentile: lower biases
+    tighter/diagonal-focused, higher spreads contacts further out.
+    n_samples/seed: sampling size and RNG seed. Returns the calibrated
+    length scale in the same units as coords.
+    """
+    coords = np.asarray(coords)
+    N = coords.shape[0]
+    if N < 2:
+        return 1.0
+    rng = np.random.default_rng(seed)
+    # Oversample, then drop any accidental i == j pairs and trim to n_samples.
+    draw = max(n_samples * 2, 64)
+    i_idx = rng.integers(0, N, size=draw)
+    j_idx = rng.integers(0, N, size=draw)
+    keep = i_idx != j_idx
+    i_idx, j_idx = i_idx[keep], j_idx[keep]
+    n_use = min(n_samples, i_idx.size)
+    if n_use == 0:
+        return 1.0
+    i_idx, j_idx = i_idx[:n_use], j_idx[:n_use]
+    d = np.linalg.norm(coords[i_idx] - coords[j_idx], axis=1)
+    d = d[np.isfinite(d) & (d > 0)]
+    if d.size == 0:
+        return 1.0
+    return float(np.percentile(d, percentile))
+
+
+def _oe_normalize_matrix(H: np.ndarray) -> np.ndarray:
+    """Observed/Expected enrichment, floored at background: divide each
+    diagonal by its mean, then subtract 1 and clip at 0.
+
+    Used only when `HIC_FORCE_OE=True`, as the cross-entropy loss's c_ij
+    target. OE=1 means "exactly the expected distance-decay background" —
+    neither enriched nor depleted — so pairs at or below that baseline
+    (OE <= 1, matching "towards -1" on the displayed log2(O/E) scale) get
+    c_ij = 0 exactly, which makes their force weight w_ij = c_ij^weight_power
+    exactly 0 too: the cross-entropy term vanishes regardless of current
+    distance, i.e. genuinely no attraction *or* repulsion ("loose"), rather
+    than a weak two-sided pull toward some nonzero background intensity.
+    Only the EXCESS enrichment above background (OE > 1) becomes a positive
+    c_ij, so only genuinely enriched pairs are pulled together — up to
+    c_ij = 1 (the most-enriched pair after re-normalising by max in
+    `build_crossentropy_force`), whose target P -> 1 drives it toward the
+    smallest distance the kernel/excluded-volume force allow.
+    """
+    N = H.shape[0]
+    oe = np.zeros_like(H, dtype=np.float64)
+    for k in range(N):
+        diag = np.diag(H, k)
+        mean_k = diag.mean()
+        oe_diag = diag / mean_k if mean_k > 0 else diag
+        idx = np.arange(N - k)
+        oe[idx, idx + k] = oe_diag
+        oe[idx + k, idx] = oe_diag
+    return np.maximum(oe - 1.0, 0.0)
+
+
+def preprocess_hic_matrix(
+    H_raw: np.ndarray,
+    N_beads: int,
+    already_balanced: bool = False,
+    oe_normalize: bool = False,
+) -> np.ndarray:
+    """Run the same clean -> resize -> balance -> (optional) OE-floor
+    pipeline `build_hic_force` uses, without building the OpenMM force —
+    so diagnostics can see exactly the c_ij values the force actually
+    targets (see `_oe_normalize_matrix` for what `oe_normalize` does).
+    """
+    H = symmetrize_and_clean(H_raw)
+    if H.shape[0] != N_beads:
+        H = resize_matrix(H, N_beads)
+    if not already_balanced:
+        H = diagonal_normalize(H)
+    else:
+        log.info("diagonal_normalize: skipped (already_balanced=True)")
+    if oe_normalize:
+        H = _oe_normalize_matrix(H)
+        log.info("  OE normalisation applied — c_ij now targets enrichment "
+                 "above background, floored at 0")
+    return H
+
+
 def build_crossentropy_force(
     C            : np.ndarray,
     r_comp       : float,
@@ -309,7 +411,9 @@ def build_crossentropy_force(
     k_scale      : float           = 1.0,
     weight_power : float           = 1.0,
     force_group  : int             = 1,
-) -> mm.CustomBondForce:
+    return_controller: bool        = False,
+    noise_seed   : int             = 0,
+):
     """
     Construct a sparse CustomBondForce from the binary cross-entropy loss
     between observed contact frequencies and a model contact probability
@@ -326,20 +430,11 @@ def build_crossentropy_force(
     bonds, which OpenMM derives automatically from the symbolic
     expression.
 
-    Soft / proportional weighting
-    ------------------------------
-    w_ij = c_ij ** weight_power.  With the default weight_power=1, the
-    force on a pair is directly proportional to how strong its observed
-    contact is: pairs just above `threshold` (almost no contact
-    evidence) contribute a correspondingly tiny force, while only
-    well-supported contacts (c_ij close to 1) behave like a firm
-    restraint. This keeps the force "relaxed" everywhere the data don't
-    support a contact, rather than imposing a hard constraint on every
-    pair that merely clears the sparsity threshold.
-
-    Only pairs with  C[i, j] ≥ threshold  are built into bonds at all
-    (for performance — O(M) bonds, M ≪ N²); within that set, the actual
-    force strength still scales continuously with c_ij via w_ij.
+    Soft/proportional weighting: w_ij = c_ij ** weight_power (default 1), so
+    force scales continuously with observed contact strength rather than
+    acting as a hard constraint. Only pairs with C[i,j] >= threshold are
+    built into bonds at all (sparsity/performance), but within that set the
+    force strength still scales with c_ij via w_ij.
 
     Parameters
     ----------
@@ -361,10 +456,15 @@ def build_crossentropy_force(
     weight_power : exponent β in w_ij = c_ij^β (default 1.0 ⇒ force
                    strictly proportional to observed contact strength).
     force_group  : OpenMM force-group index.
+    return_controller : if True, also return a `HiCNoiseController` that
+                   can periodically redraw each bond's c_ij with fresh
+                   noise around its original value (see that class).
+    noise_seed   : RNG seed for the returned controller.
 
     Returns
     -------
-    force : mm.CustomBondForce
+    force : mm.CustomBondForce, or (force, HiCNoiseController) if
+            return_controller=True.
     """
     kernel = kernel.lower()
     if kernel not in VALID_KERNELS:
@@ -475,7 +575,61 @@ def build_crossentropy_force(
     force.setForceGroup(force_group)
     log.info("  Hi-C contact-probability force ready  (%d bonds, kernel=%s)",
              n_bonds, kernel)
-    return force
+
+    if not return_controller:
+        return force
+
+    controller = HiCNoiseController(
+        force, rows, cols, c_vals,
+        needs_sep=needs_sep, msd_vals=msd_vals if needs_sep else None,
+        seed=noise_seed,
+    )
+    return force, controller
+
+
+class HiCNoiseController:
+    """Periodically redraws each Hi-C bond's c_ij around its ORIGINAL,
+    data-derived value with fresh Gaussian noise, instead of letting it
+    drift — every perturbation is anchored back to the real contact
+    strength, not the previous (already-noisy) one, so the noise never
+    runs away; it only lets different contacts take turns pulling
+    strongest, nudging the structure to explore nearby configurations
+    instead of settling into exactly one attractor.
+
+    Call :meth:`resample` periodically (e.g. once per saved MD frame) with
+    the running `Context` and the desired noise intensity (std-dev of the
+    noise added to c_ij, same [0, 1] scale; 0 disables it).
+    """
+
+    def __init__(self, force, rows, cols, base_c_vals, needs_sep=False,
+                 msd_vals=None, seed=0):
+        self.force = force
+        self.rows = np.asarray(rows)
+        self.cols = np.asarray(cols)
+        self.base_c_vals = np.asarray(base_c_vals, dtype=np.float64)
+        self.needs_sep = needs_sep
+        self.msd_vals = msd_vals
+        self.rng = np.random.default_rng(seed)
+
+    def resample(self, context, intensity: float) -> None:
+        if intensity <= 0 or self.base_c_vals.size == 0:
+            return
+        noisy = np.clip(
+            self.base_c_vals + self.rng.normal(0.0, intensity, size=self.base_c_vals.shape),
+            0.0, 1.0,
+        )
+        if self.needs_sep:
+            for idx in range(noisy.shape[0]):
+                self.force.setBondParameters(
+                    idx, int(self.rows[idx]), int(self.cols[idx]),
+                    [float(noisy[idx]), float(self.msd_vals[idx])],
+                )
+        else:
+            for idx in range(noisy.shape[0]):
+                self.force.setBondParameters(
+                    idx, int(self.rows[idx]), int(self.cols[idx]), [float(noisy[idx])],
+                )
+        self.force.updateParametersInContext(context)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -496,7 +650,10 @@ def build_hic_force(
     weight_power     : float           = 1.0,
     force_group      : int             = 1,
     already_balanced : bool            = False,
-) -> mm.CustomBondForce:
+    oe_normalize     : bool            = False,
+    return_controller: bool            = False,
+    noise_seed       : int             = 0,
+):
     """
     Full pipeline: raw Hi-C array → sparse contact-probability force.
 
@@ -506,6 +663,7 @@ def build_hic_force(
       │  symmetrize_and_clean()
       │  resize_matrix()              ← to N_beads × N_beads
       │  diagonal_normalize()         ← skip if already_balanced=True
+      │  OE normalisation             ← only if oe_normalize=True
       └─ build_crossentropy_force()   → sparse CustomBondForce
 
     Parameters
@@ -533,10 +691,22 @@ def build_hic_force(
                        proportional to observed contact strength).
     force_group      : OpenMM force-group index.
     already_balanced : True → skip diagonal_normalize().
+    oe_normalize     : True → target enrichment-above-background (OE - 1,
+                       floored at 0 — see `_oe_normalize_matrix`) instead of
+                       raw contact frequency, so pairs at/below the expected
+                       distance-decay baseline exert exactly zero force
+                       ("loose"), and only genuinely enriched pairs attract,
+                       scaling up to the smallest allowed distance for the
+                       most-enriched pair. Default False.
+    return_controller : if True, also return a `HiCNoiseController` for
+                       periodically re-noising c_ij around its original
+                       value (see that class's docstring).
+    noise_seed       : RNG seed for the returned controller.
 
     Returns
     -------
-    force : mm.CustomBondForce
+    force : mm.CustomBondForce, or (force, HiCNoiseController) if
+            return_controller=True.
 
     Examples
     --------
@@ -554,6 +724,7 @@ def build_hic_force(
             ("k_scale",       f"{k_scale:.3f} kJ/mol"),
             ("weight_power",  weight_power),
             ("Force group",   force_group),
+            ("OE normalize",  oe_normalize),
             ("Input shape",   str(H_raw.shape)),
         ],
         title="Hi-C Force — build (contact-probability cross-entropy)",
@@ -561,15 +732,9 @@ def build_hic_force(
     )
 
     # ── Layer 1: pre-processing ──────────────────────────────────────────────
-    H = symmetrize_and_clean(H_raw)
-
-    if H.shape[0] != N_beads:
-        H = resize_matrix(H, N_beads)
-
-    if not already_balanced:
-        H = diagonal_normalize(H)
-    else:
-        log.info("diagonal_normalize: skipped (already_balanced=True)")
+    H = preprocess_hic_matrix(
+        H_raw, N_beads, already_balanced=already_balanced, oe_normalize=oe_normalize,
+    )
 
     # ── Layer 2: build force ─────────────────────────────────────────────────
     force = build_crossentropy_force(
@@ -583,6 +748,8 @@ def build_hic_force(
         k_scale=k_scale,
         weight_power=weight_power,
         force_group=force_group,
+        return_controller=return_controller,
+        noise_seed=noise_seed,
     )
 
     log.info("build_hic_force: done (kernel=%s, group %d)", kernel, force_group)
