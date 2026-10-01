@@ -1263,16 +1263,17 @@ def plot_compartment_validation(pc1_aligned, Cs, save_dir, name="compartment_val
 
 
 def plot_distance_vs_strength(strength, dist, low_mask, high_mask, results,
-                               save_dir, name="distance_vs_strength"):
+                               save_dir, name="distance_vs_strength", seed=0):
     """Two-panel diagnostic for validate_distance_vs_strength: does higher
     experimental Hi-C strength actually give a smaller 3-D distance?
 
     Left: classification — distance distributions for the low- vs
-    high-strength groups (violin + box), annotated with the AUC
-    (P[low-strength pair farther apart than high-strength pair]) and its
-    Mann-Whitney p-value. Right: regression — strength vs distance for all
-    sampled pairs (hexbin, since n_pairs is typically large) with a binned
-    median trend line, annotated with Pearson/Spearman correlations.
+    high-strength groups (violin + box), with each group's median distance
+    labelled directly and a bracket showing the fold-difference between
+    them, so the separation reads at a glance rather than only from the
+    AUC number. Right: regression — a plain (subsampled) scatter of
+    strength vs distance, with just the Pearson/Spearman correlations
+    annotated — no fitted/binned trend line.
     """
     os.makedirs(save_dir, exist_ok=True)
     sns.set_style("whitegrid")
@@ -1289,17 +1290,44 @@ def plot_distance_vs_strength(strength, dist, low_mask, high_mask, results,
 
     # ---- (1) classification: distance distribution, low- vs high-strength ----
     ax = axes[0]
+    low_dist, high_dist = dist[low_mask], dist[high_mask]
     df = pd.DataFrame({
-        "distance": np.concatenate([dist[low_mask], dist[high_mask]]),
+        "distance": np.concatenate([low_dist, high_dist]),
         "group": (["Low strength\n(background/depleted)"] * int(low_mask.sum())
                   + ["High strength\n(enriched)"] * int(high_mask.sum())),
     })
     if len(df):
         sns.violinplot(data=df, x="group", y="distance", ax=ax, cut=0, inner=None,
-                        palette=[color_low, color_high])
-        sns.boxplot(data=df, x="group", y="distance", ax=ax, width=0.12,
-                    showcaps=True, boxprops={"facecolor": "white", "alpha": 0.7},
+                        palette=[color_low, color_high], width=0.8)
+        sns.boxplot(data=df, x="group", y="distance", ax=ax, width=0.10,
+                    showcaps=True, boxprops={"facecolor": "white", "alpha": 0.85},
                     whiskerprops={"linewidth": 1.2}, showfliers=False)
+
+    if low_dist.size and high_dist.size:
+        med_low, med_high = float(np.median(low_dist)), float(np.median(high_dist))
+        top_low, top_high = float(np.nanmax(low_dist)), float(np.nanmax(high_dist))
+        y_top = max(top_low, top_high)
+        y_span = y_top - float(np.nanmin(df["distance"])) if len(df) else 1.0
+        label_y_low = top_low + 0.04 * max(y_span, 1e-6)
+        label_y_high = top_high + 0.04 * max(y_span, 1e-6)
+        bracket_y = y_top + 0.14 * max(y_span, 1e-6)
+        text_y = bracket_y + 0.05 * max(y_span, 1e-6)
+        box_kw = dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.85)
+        # per-group median label, placed just above that group's own violin top
+        ax.text(0, label_y_low, f"median={med_low:.2f}", ha="center", va="bottom",
+                fontsize=9, fontweight="bold", color=color_low, bbox=box_kw)
+        ax.text(1, label_y_high, f"median={med_high:.2f}", ha="center", va="bottom",
+                fontsize=9, fontweight="bold", color=color_high, bbox=box_kw)
+        # bracket + fold-difference between the two medians, above both labels
+        ax.plot([0, 0, 1, 1], [bracket_y, bracket_y + 0.01 * y_span,
+                                bracket_y + 0.01 * y_span, bracket_y],
+                color="#333333", linewidth=1.0)
+        if med_high > 1e-12:
+            fold = med_low / med_high
+            ax.text(0.5, text_y, f"{fold:.1f}× closer", ha="center", va="bottom",
+                    fontsize=10, fontweight="bold", color="#333333")
+        ax.set_ylim(top=text_y + 0.15 * max(y_span, 1e-6))
+
     ax.set_xlabel("")
     ax.set_ylabel("3D distance")
     auc = results.get("auc", float("nan"))
@@ -1309,25 +1337,17 @@ def plot_distance_vs_strength(strength, dist, low_mask, high_mask, results,
         title += f"\nAUC={auc:.2f}" + (f"  (p={p_mw:.1e})" if np.isfinite(p_mw) else "")
     ax.set_title(title, fontsize=11, fontweight="bold")
 
-    # ---- (2) regression: strength vs distance, all sampled pairs ----
+    # ---- (2) regression: strength vs distance, plain scatter ----
     ax = axes[1]
-    hb = ax.hexbin(strength, dist, gridsize=40, cmap="Blues", mincnt=1, bins="log")
-    fig.colorbar(hb, ax=ax, fraction=0.046, pad=0.04, label="log10(count)")
-
-    # binned median trend line
-    n_bins = 20
     finite = np.isfinite(strength) & np.isfinite(dist)
-    if finite.sum() > n_bins:
-        edges = np.linspace(strength[finite].min(), strength[finite].max(), n_bins + 1)
-        idx = np.digitize(strength[finite], edges)
-        xs, ys = [], []
-        for b in range(1, len(edges)):
-            m = idx == b
-            if m.sum() > 0:
-                xs.append(strength[finite][m].mean())
-                ys.append(np.median(dist[finite][m]))
-        ax.plot(xs, ys, color="#c0392b", linewidth=2.0, label="Binned median distance")
-        ax.legend(fontsize=9, frameon=False, loc="upper right")
+    s_plot, d_plot = strength[finite], dist[finite]
+    max_points = 4000
+    if s_plot.size > max_points:
+        rng = np.random.default_rng(seed)
+        sel = rng.choice(s_plot.size, size=max_points, replace=False)
+        s_plot, d_plot = s_plot[sel], d_plot[sel]
+    ax.scatter(s_plot, d_plot, s=10, alpha=0.35, color="#2a78d6",
+               edgecolors="none")
 
     ax.set_xlabel("Experimental strength (c_ij target)")
     ax.set_ylabel("3D distance")
@@ -1338,7 +1358,7 @@ def plot_distance_vs_strength(strength, dist, low_mask, high_mask, results,
         subtitle.append(f"Pearson r={r_p:.2f}")
     if np.isfinite(r_s):
         subtitle.append(f"Spearman ρ={r_s:.2f}")
-    ax.set_title("Strength vs Distance (regression)"
+    ax.set_title("Strength vs Distance"
                  + (f"\n{', '.join(subtitle)}" if subtitle else ""),
                  fontsize=11, fontweight="bold")
 
