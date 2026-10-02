@@ -8,7 +8,7 @@ from scipy.stats import pearsonr, spearmanr, mannwhitneyu
 
 from .utils import get_coordinates_cif
 from .read_hic import pool_to_n_beads as _pool_to_n_beads
-from .hic_force import get_kernel_p_func, auto_contact_scale, preprocess_hic_matrix
+from .hic_force import get_kernel_p_func, auto_contact_scale, preprocess_hic_matrix, denoise_contact_matrix
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +37,22 @@ def _pool_matrix(m: np.ndarray, N: int) -> np.ndarray:
 
 
 def _smooth_matrix(m: np.ndarray, sigma: float = 1.0) -> np.ndarray:
-    """Light, symmetric Gaussian smoothing of a contact matrix, applied
-    identically to simulated/experimental/RW maps before any metric is
-    computed. Suppresses the heavy-tailed, single-close-approach noise in
-    the 1/(d+ε)-style contact proxies without blurring out genuine
-    TAD/compartment-scale structure.
+    """Denoise a contact matrix, applied identically to simulated/
+    experimental/RW maps before any metric is computed — so every metric
+    below compares against the *denoised* heatmap, the same one the Hi-C
+    force actually optimizes against (see `hic_force.preprocess_hic_matrix`
+    / `hic_force.denoise_contact_matrix`), never the raw/noisy one.
+    Suppresses the heavy-tailed, single-close-approach noise in the
+    1/(d+ε)-style contact proxies (and per-pixel shot noise in the
+    experimental matrix) without blurring out genuine TAD/compartment-scale
+    structure; outlier pixels are capped before smoothing so a single noise
+    spike isn't blurred outward into its neighbours.
 
     m: (N, N) contact matrix. sigma: Gaussian std (beads); 0/None disables.
     """
     if not sigma:
         return m
-    sm = ndimage.gaussian_filter(m, sigma=sigma, mode="nearest")
-    return 0.5 * (sm + sm.T)
+    return denoise_contact_matrix(m, sigma=sigma)
 
 
 def diagonal_decay_profile(mat: np.ndarray, max_diag: int | None = None) -> np.ndarray:
@@ -530,7 +534,7 @@ def _hic_cv_metrics(
 def _resolve_validation_kernel(
     coords: np.ndarray,
     kernel: str,
-    r_comp: float,
+    rc: float,
     alpha: float,
     sigma: float | None,
     sigma_s: float | None,
@@ -538,11 +542,12 @@ def _resolve_validation_kernel(
     auto_scale: bool,
     auto_scale_percentile: float,
     log,
+    r_min: float | None = None,
 ):
     """Build the P(r) kernel used for validation, optionally auto-calibrating
     its length scale from the structure's own pairwise-distance distribution.
 
-    ``r_comp`` is the Hi-C force's own microscopic bead-contact scale;
+    ``rc`` is the Hi-C force's own microscopic bead-contact scale;
     reused directly here it underflows to ~0 beyond a few bead-spacings,
     giving a near-empty contact-proxy map. When ``auto_scale`` is True
     (default), the scale is instead calibrated from a percentile of the
@@ -550,23 +555,29 @@ def _resolve_validation_kernel(
     rescaling every length parameter by the same factor so only the
     absolute scale changes, not the kernel family/shape. Set
     ``auto_scale=False`` to use the literal force parameters instead.
+
+    ``r_min``, when given, is passed straight through to
+    :func:`hic_force.get_kernel_p_func` for its dynamic-range calibration
+    (see ``hic_force._calibrate_kernel_dynamics``) — an absolute physical
+    excluded-volume distance, so it is NOT rescaled by ``factor`` the way
+    ``rc``/``sigma``/``sigma_s``/``kuhn_length`` are.
     """
-    r_comp_eff, sigma_eff, sigma_s_eff, kuhn_length_eff = r_comp, sigma, sigma_s, kuhn_length
+    rc_eff, sigma_eff, sigma_s_eff, kuhn_length_eff = rc, sigma, sigma_s, kuhn_length
     if auto_scale:
         calibrated = auto_contact_scale(coords, percentile=auto_scale_percentile)
-        factor = (calibrated / r_comp) if r_comp > 1e-12 else 1.0
-        r_comp_eff = calibrated
+        factor = (calibrated / rc) if rc > 1e-12 else 1.0
+        rc_eff = calibrated
         sigma_eff = (sigma * factor) if sigma is not None else None
         sigma_s_eff = (sigma_s * factor) if sigma_s is not None else None
         kuhn_length_eff = (kuhn_length * factor) if kuhn_length is not None else None
         log.info(
             "  Auto-calibrated validation contact scale: %.4f nm "
-            "(was r_comp=%.4f nm; %.0fth percentile of sampled pairwise distances)",
-            calibrated, r_comp, auto_scale_percentile,
+            "(was rc=%.4f nm; %.0fth percentile of sampled pairwise distances)",
+            calibrated, rc, auto_scale_percentile,
         )
     return get_kernel_p_func(
-        kernel, r_comp_eff, alpha=alpha, sigma=sigma_eff,
-        sigma_s=sigma_s_eff, kuhn_length=kuhn_length_eff,
+        kernel, rc_eff, alpha=alpha, sigma=sigma_eff,
+        sigma_s=sigma_s_eff, kuhn_length=kuhn_length_eff, r_min=r_min,
     )
 
 
@@ -581,13 +592,14 @@ def validate_hic_model(
     confine_radius_nm: float | None = None,
     smooth_sigma: float = 1.0,
     kernel: str = "gaussian",
-    r_comp: float = 1.0,
+    rc: float = 1.0,
     alpha: float = 3.0,
     sigma: float | None = None,
     sigma_s: float | None = None,
     kuhn_length: float | None = None,
     auto_scale: bool = True,
     auto_scale_percentile: float = 10.0,
+    r_min: float | None = None,
     log=None,
 ) -> dict:
     """Validate a single simulated structure against experimental Hi-C.
@@ -604,12 +616,27 @@ def validate_hic_model(
     max_diag: diagonals to include in the decay profile (default N//2).
     smooth_sigma: Gaussian smoothing (beads) applied identically to all
     matrices before any metric is computed; 0 disables it.
-    kernel/r_comp/alpha/sigma/sigma_s/kuhn_length: same kernel family as the
+    kernel/rc/alpha/sigma/sigma_s/kuhn_length: same kernel family as the
     Hi-C force's own parameters. auto_scale (default True) recalibrates the
     absolute length scale from a percentile (auto_scale_percentile, default
     10.0) of the structure's own pairwise distances instead of reusing the
-    force's microscopic r_comp directly, which would underflow to ~0 for
+    force's microscopic rc directly, which would underflow to ~0 for
     most pairs — see :func:`hic_force.auto_contact_scale`.
+
+    Caveat on "diagonal decay r": this correlates each structure's raw
+    per-separation contact MEAN against experimental Hi-C's, which is
+    dominated by the aggregate, bulk distance-decay trend — a property an
+    untouched random walk already reproduces reasonably well purely from
+    generic (ideal/self-avoiding) chain statistics, since real chromatin's
+    own bulk decay law is close to that of an ideal polymer. None of the
+    Hi-C force's kernels are designed to target this bulk trend (they add
+    LOCAL deviations from it — compartments, TADs, loops), so a random-walk
+    baseline tying or even beating the simulated structure on this one
+    metric is not evidence the force isn't working. insulation_r, pc1_r and
+    pearson_r/spearman_r are computed on the O/E-normalised matrix, which
+    divides out that shared bulk trend first — these are the metrics that
+    actually isolate the force's contribution, and are where a working Hi-C
+    force should clearly separate from the random-walk baseline.
 
     Returns a dict with diag_decay_r/p, insulation_r/p, pc1_r/p,
     pearson_r/p, spearman_r/p, ssim, gmsd, nmi.
@@ -622,8 +649,8 @@ def validate_hic_model(
     N      = len(coords)
 
     p_func, needs_sep = _resolve_validation_kernel(
-        coords, kernel, r_comp, alpha, sigma, sigma_s, kuhn_length,
-        auto_scale, auto_scale_percentile, _log,
+        coords, kernel, rc, alpha, sigma, sigma_s, kuhn_length,
+        auto_scale, auto_scale_percentile, _log, r_min=r_min,
     )
 
     # Use the fast Gram-matrix accumulator (float32, in-place, no temp arrays)
@@ -746,6 +773,18 @@ def validate_hic_model(
         ]
 
     log_table(table_rows, title="Hi-C Validation — single structure", log_fn=_log.info)
+    if rw_ok and r_dd_rw >= r_dd and (r_ins > r_ins_rw or r_pc1 > r_pc1_rw or r_pearson > r_pear_rw):
+        _log.info(
+            "  Note: the random-walk baseline matched or beat the model on diagonal "
+            "decay r (%.3f vs %.3f) while the model still leads on insulation/PC1/OE "
+            "correlation above — this is expected, not a sign the Hi-C force isn't "
+            "working.  Diagonal decay r reflects the bulk/aggregate distance-decay "
+            "trend, which a random walk already reproduces well from generic polymer "
+            "statistics; the Hi-C force instead targets the LOCAL deviations from "
+            "that trend (compartments, TADs, loops) captured by the O/E-normalised "
+            "metrics.  See validate_hic_model's docstring for details.",
+            r_dd, r_dd_rw,
+        )
 
     if save_path is not None:
         from .plots import plot_hic_comparison, plot_hic_validation_curves
@@ -790,13 +829,14 @@ def validate_hic_ensemble(
     confine_radius_nm: float | None = None,
     smooth_sigma: float = 1.0,
     kernel: str = "gaussian",
-    r_comp: float = 1.0,
+    rc: float = 1.0,
     alpha: float = 3.0,
     sigma: float | None = None,
     sigma_s: float | None = None,
     kuhn_length: float | None = None,
     auto_scale: bool = True,
     auto_scale_percentile: float = 10.0,
+    r_min: float | None = None,
     log=None,
 ) -> dict:
     """Validate an ensemble of simulated structures against experimental Hi-C.
@@ -809,10 +849,21 @@ def validate_hic_ensemble(
     ``validate_hic_model`` (diagonal decay, insulation, PC1 correlations).
 
     cif_paths: per-frame CIF paths from the MD trajectory. insulation_window,
-    max_diag, smooth_sigma, kernel/r_comp/alpha/sigma/sigma_s/kuhn_length,
+    max_diag, smooth_sigma, kernel/rc/alpha/sigma/sigma_s/kuhn_length,
     auto_scale, auto_scale_percentile: same meaning as in
     ``validate_hic_model`` (auto-calibration here uses the ensemble's first
     frame as the representative structure).
+
+    Caveat on "diagonal decay r" — see ``validate_hic_model``'s docstring:
+    this metric is dominated by the bulk/aggregate distance-decay trend,
+    which an untouched random walk already reproduces well from generic
+    polymer statistics alone, and which none of the Hi-C force's kernels
+    specifically target (they add LOCAL deviations on top — compartments,
+    TADs, loops). A random-walk baseline tying or beating the simulated
+    ensemble here is not evidence the force isn't working; insulation_r,
+    pc1_r and pearson_r/spearman_r (computed on the O/E-normalised matrix,
+    which divides out that shared bulk trend) are what actually isolate the
+    force's contribution.
 
     Returns a dict with diag_decay_r/p, insulation_r/p, pc1_r/p,
     pearson_r/p, spearman_r/p, ssim, gmsd, nmi.
@@ -827,8 +878,8 @@ def validate_hic_ensemble(
     N             = len(_first_coords)
 
     p_func, needs_sep = _resolve_validation_kernel(
-        _first_coords, kernel, r_comp, alpha, sigma, sigma_s, kuhn_length,
-        auto_scale, auto_scale_percentile, _log,
+        _first_coords, kernel, rc, alpha, sigma, sigma_s, kuhn_length,
+        auto_scale, auto_scale_percentile, _log, r_min=r_min,
     )
 
     sep_matrix    = np.abs(np.subtract.outer(np.arange(N), np.arange(N))) if needs_sep else None
@@ -953,6 +1004,18 @@ def validate_hic_ensemble(
         ]
 
     log_table(table_rows, title="Hi-C Validation — ensemble", log_fn=_log.info)
+    if rw_ok and r_dd_rw >= r_dd and (r_ins > r_ins_rw or r_pc1 > r_pc1_rw or r_pearson > r_pear_rw):
+        _log.info(
+            "  Note: the random-walk baseline matched or beat the model on diagonal "
+            "decay r (%.3f vs %.3f) while the model still leads on insulation/PC1/OE "
+            "correlation above — this is expected, not a sign the Hi-C force isn't "
+            "working.  Diagonal decay r reflects the bulk/aggregate distance-decay "
+            "trend, which a random walk already reproduces well from generic polymer "
+            "statistics; the Hi-C force instead targets the LOCAL deviations from "
+            "that trend (compartments, TADs, loops) captured by the O/E-normalised "
+            "metrics.  See validate_hic_ensemble's docstring for details.",
+            r_dd, r_dd_rw,
+        )
 
     if save_path is not None:
         from .plots import plot_hic_comparison, plot_hic_validation_curves

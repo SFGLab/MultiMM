@@ -215,8 +215,10 @@ class MultiMM:
         log_section("Data Loading")
 
         self.hic_matrix = None
+        self.hic_chrom = None
         if not _is_empty(args.HIC_PATH):
             hic_chrom = chrom if not _is_empty(chrom) else None
+            self.hic_chrom = hic_chrom
             hic_start = args.LOC_START if args.LOC_START is not None else None
             hic_end   = args.LOC_END   if args.LOC_END   is not None else None
             logger.info(f"Loading Hi-C data from {args.HIC_PATH} …")
@@ -979,64 +981,108 @@ class MultiMM:
     def add_hic_force(self):
         """Add Hi-C contact-guided force using the pre-loaded hic_matrix.
 
-        r_comp (and HIC_GAUSSIAN_SIGMA/HIC_ERFC_SIGMA/HIC_ROUSE_KUHN_LENGTH,
-        which fall back to it) is the length scale over which the kernel has
-        any gradient — too small and it can only reinforce pairs already
-        coincidentally close, never pull distant loci together. self.r_comp
-        is nucleus-scale (set in set_radiuses()) for this reason, and this
-        method further auto-calibrates it (HIC_AUTO_SCALE, default True) from
-        a percentile of the real initial pairwise-distance distribution (see
-        hic_force.auto_contact_scale), using a high percentile
-        (HIC_AUTO_SCALE_PERCENTILE, default 50/median) so that most pairs —
-        not just the closest few — start within the kernel's reach. This
-        differs from validation's auto-scale, which uses a low percentile for
-        visual contrast rather than force reach. All affected length
-        parameters are rescaled by the same factor, so only the absolute
-        scale changes, not the kernel shape.
+        The Hi-C force's contact-radius scale is fully independent of
+        r_comp (the compartment/subcompartment block-copolymer force's
+        interaction range, set in set_radiuses() from nucleus geometry) —
+        the two forces model unrelated physics and previously shared one
+        attribute, which was a bug. HIC_RC (config field) controls it:
+
+          * HIC_RC is None (default): auto-calibrate from a percentile of
+            the real initial pairwise-distance distribution (HIC_AUTO_SCALE,
+            default True; see hic_force.auto_contact_scale), using a fixed
+            50th-percentile/median (no longer a separate config knob — this
+            is simply the right choice for "most pairs, not just the
+            closest few, should start within the kernel's reach", and isn't
+            meant to be tuned per-run). This differs from validation's own
+            auto-scale, which uses a low percentile for visual contrast
+            rather than force reach. If HIC_AUTO_SCALE is False, falls back
+            to a
+            nucleus-scale default computed independently of the
+            compartment force's r_comp. All affected length parameters
+            (HIC_GAUSSIAN_SIGMA/HIC_ERFC_SIGMA/HIC_ROUSE_KUHN_LENGTH, which
+            fall back to this scale) are rescaled by the same factor, so
+            only the absolute scale changes, not the kernel shape.
+          * HIC_RC is set explicitly: used exactly as given — auto-scaling
+            is skipped entirely, regardless of HIC_AUTO_SCALE.
+
+        The resolved value is cached on self.hic_rc (never self.r_comp,
+        which stays the compartment force's own value) for the downstream
+        consumers that need it — get_heatmap's diagnostic plots and the
+        validate_hic_model/validate_hic_ensemble calls in run().
         """
         if self.hic_matrix is None:
             logger.warning("add_hic_force() called but hic_matrix is None — skipping.")
             return
 
-        hic_r = self.r_comp
+        # Excluded-volume floor distance: the closest two beads can
+        # realistically get (same length scale add_evforce uses as its EV
+        # "sigma"). Cached on self.hic_r_min so the later
+        # validate_hic_model/validate_hic_ensemble calls can score against
+        # the exact same kernel dynamic-range calibration the force used —
+        # see hic_force._calibrate_kernel_dynamics.
+        _r0 = self.args.LE_HARMONIC_BOND_R0
+        self.hic_r_min = _r0.value_in_unit(nanometers) if isinstance(_r0, Quantity) else float(_r0)
+
         sigma, sigma_s, kuhn_length = (
             self.args.HIC_GAUSSIAN_SIGMA, self.args.HIC_ERFC_SIGMA, self.args.HIC_ROUSE_KUHN_LENGTH,
         )
+        explicit_rc = getattr(self.args, "HIC_RC", None)
         calibrated = None
-        if getattr(self.args, "HIC_AUTO_SCALE", True):
-            try:
-                init_coords = get_coordinates_mm(self.pdb.positions)
-                calibrated = auto_contact_scale(
-                    init_coords, percentile=self.args.HIC_AUTO_SCALE_PERCENTILE,
-                )
-                factor = (calibrated / hic_r) if hic_r > 1e-12 else 1.0
-                hic_r = calibrated
-                sigma = (sigma * factor) if sigma is not None else None
-                sigma_s = (sigma_s * factor) if sigma_s is not None else None
-                kuhn_length = (kuhn_length * factor) if kuhn_length is not None else None
-                logger.info(
-                    "Hi-C force auto-calibrated from initial structure: r_comp=%.4f nm "
-                    "(%.0fth percentile of initial pairwise distances; was %.4f nm)",
-                    calibrated, self.args.HIC_AUTO_SCALE_PERCENTILE, self.r_comp,
-                )
-            except Exception as _e:
-                logger.warning(
-                    "Hi-C force auto-calibration failed (%s) — falling back to r_comp=%.4f nm.",
-                    _e, hic_r,
-                )
+
+        if explicit_rc is not None:
+            rc = float(explicit_rc)
+            logger.info(
+                "Hi-C force contact radius pinned explicitly: HIC_RC=%.4f nm "
+                "(auto-calibration skipped).", rc,
+            )
+        else:
+            # Nucleus-scale fallback, computed independently of the
+            # compartment force's r_comp (same formula, own variable).
+            rc = self.radius2 / 3.0
+            if getattr(self.args, "HIC_AUTO_SCALE", True):
+                # Fixed median (50th-percentile) calibration — no longer a
+                # tunable config field (formerly HIC_AUTO_SCALE_PERCENTILE):
+                # the force needs reach, so most contacted pairs, not just
+                # the closest, should start within the kernel's range.
+                _AUTO_SCALE_PERCENTILE = 50.0
+                try:
+                    init_coords = get_coordinates_mm(self.pdb.positions)
+                    calibrated = auto_contact_scale(
+                        init_coords, percentile=_AUTO_SCALE_PERCENTILE,
+                    )
+                    factor = (calibrated / rc) if rc > 1e-12 else 1.0
+                    logger.info(
+                        "Hi-C force auto-calibrated from initial structure: rc=%.4f nm "
+                        "(%.0fth percentile of initial pairwise distances; was %.4f nm)",
+                        calibrated, _AUTO_SCALE_PERCENTILE, rc,
+                    )
+                    rc = calibrated
+                    sigma = (sigma * factor) if sigma is not None else None
+                    sigma_s = (sigma_s * factor) if sigma_s is not None else None
+                    kuhn_length = (kuhn_length * factor) if kuhn_length is not None else None
+                except Exception as _e:
+                    logger.warning(
+                        "Hi-C force auto-calibration failed (%s) — falling back to rc=%.4f nm.",
+                        _e, rc,
+                    )
+
+        self.hic_rc = rc
 
         log_table(
             [
                 ("Normalization", self.args.HIC_NORMALIZATION),
                 ("Kernel",        self.args.HIC_KERNEL),
                 ("k_scale",       f"{self.args.HIC_K_SCALE} kJ/mol"),
-                ("weight_power",  self.args.HIC_WEIGHT_POWER),
                 ("powerlaw_alpha", self.args.HIC_POWERLAW_ALPHA),
                 ("gaussian_sigma", sigma),
                 ("erfc_sigma",     sigma_s),
                 ("rouse_kuhn_length", kuhn_length),
-                ("threshold",     self.args.HIC_THRESHOLD),
-                ("r_comp",        f"{hic_r:.4f} nm" + ("  (auto-calibrated)" if calibrated is not None else "")),
+                ("r_min (EV floor)", f"{self.hic_r_min:.4f} nm"),
+                ("rc (hic_rc)",   f"{rc:.4f} nm" + (
+                    "  (explicit HIC_RC)" if explicit_rc is not None else
+                    "  (auto-calibrated)" if calibrated is not None else
+                    "  (nucleus-scale fallback)"
+                )),
                 ("OE normalize",  self.args.HIC_FORCE_OE),
                 ("Matrix shape",  str(self.hic_matrix.shape)),
             ],
@@ -1047,19 +1093,20 @@ class MultiMM:
         result = build_hic_force(
             H_raw=self.hic_matrix,
             N_beads=self.args.N_BEADS,
-            r_comp=hic_r,
+            rc=rc,
             kernel=self.args.HIC_KERNEL,
             k_scale=self.args.HIC_K_SCALE,
             alpha=self.args.HIC_POWERLAW_ALPHA,
             sigma=sigma,
             sigma_s=sigma_s,
             kuhn_length=kuhn_length,
-            weight_power=self.args.HIC_WEIGHT_POWER,
-            threshold=self.args.HIC_THRESHOLD,
             oe_normalize=self.args.HIC_FORCE_OE,
             already_balanced=True,      # read_hic_matrix already normalises
             return_controller=use_noise,
             noise_seed=self.args.SHUFFLING_SEED,
+            save_path=self.save_path,
+            chrom=self.hic_chrom,
+            r_min=self.hic_r_min,
         )
         force, self.hic_noise = result if use_noise else (result, None)
         self.system.addForce(force)
@@ -1497,7 +1544,7 @@ class MultiMM:
                     save_path=self.save_path + f"plots",
                     name=out_name,
                     kernel=self.args.HIC_KERNEL,
-                    r_comp=self.r_comp,
+                    rc=getattr(self, "hic_rc", self.radius2 / 3.0),
                     alpha=self.args.HIC_POWERLAW_ALPHA,
                     sigma=self.args.HIC_GAUSSIAN_SIGMA,
                     sigma_s=self.args.HIC_ERFC_SIGMA,
@@ -1681,11 +1728,12 @@ class MultiMM:
                         n_rw=_n_rw,
                         confine_radius_nm=self.radius2,
                         kernel=self.args.HIC_KERNEL,
-                        r_comp=self.r_comp,
+                        rc=self.hic_rc,
                         alpha=self.args.HIC_POWERLAW_ALPHA,
                         sigma=self.args.HIC_GAUSSIAN_SIGMA,
                         sigma_s=self.args.HIC_ERFC_SIGMA,
                         kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
+                        r_min=self.hic_r_min,
                     )
                 else:
                     logger.warning("No MD frame files found — falling back to minimized structure.")
@@ -1695,11 +1743,12 @@ class MultiMM:
                         n_rw=_n_rw,
                         confine_radius_nm=self.radius2,
                         kernel=self.args.HIC_KERNEL,
-                        r_comp=self.r_comp,
+                        rc=self.hic_rc,
                         alpha=self.args.HIC_POWERLAW_ALPHA,
                         sigma=self.args.HIC_GAUSSIAN_SIGMA,
                         sigma_s=self.args.HIC_ERFC_SIGMA,
                         kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
+                        r_min=self.hic_r_min,
                     )
             else:
                 metrics = validate_hic_model(
@@ -1708,11 +1757,12 @@ class MultiMM:
                     n_rw=_n_rw,
                     confine_radius_nm=self.radius2,
                     kernel=self.args.HIC_KERNEL,
-                    r_comp=self.r_comp,
+                    rc=self.hic_rc,
                     alpha=self.args.HIC_POWERLAW_ALPHA,
                     sigma=self.args.HIC_GAUSSIAN_SIGMA,
                     sigma_s=self.args.HIC_ERFC_SIGMA,
                     kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
+                    r_min=self.hic_r_min,
                 )
             np.save(self.save_path + "metadata/hic_validation.npy", metrics)
             logger.info("Hi-C validation metrics saved → %smetadata/hic_validation.npy", self.save_path)

@@ -194,8 +194,24 @@ class SimulationConfig(BaseModel):
         default=20.0,
         description=(
             "Global energy scale for the Hi-C force [kJ/mol]. Recommended range: 5–20. "
-            "Values above 30 can freeze MD; above 200 triggers a runtime warning. Weak "
-            "contacts are already softened independently via HIC_WEIGHT_POWER."
+            "Values above 30 can freeze MD; above 200 triggers a runtime warning. Each "
+            "pair's force is already weighted by its own observed contact strength "
+            "c_ij, so weak-evidence pairs stay proportionally soft without a separate knob."
+        ),
+    )
+    HIC_RC: Optional[float] = Field(
+        default=None,
+        description=(
+            "Explicit contact-radius scale [nm] for the Hi-C force's own kernel — "
+            "independent of r_comp (the compartment/subcompartment block-copolymer "
+            "force's interaction range, set in set_radiuses() from nucleus geometry). "
+            "The two forces are physically unrelated and are no longer tied to the "
+            "same value. Default None: the Hi-C force picks its own scale instead — "
+            "auto-calibrated from the initial structure's pairwise distances when "
+            "HIC_AUTO_SCALE is True (recommended, default), or a nucleus-scale "
+            "fallback otherwise. Set this explicitly to pin the Hi-C force's contact "
+            "radius to a fixed value and skip auto-calibration entirely, regardless "
+            "of HIC_AUTO_SCALE."
         ),
     )
     HIC_KERNEL: str = Field(
@@ -230,9 +246,9 @@ class SimulationConfig(BaseModel):
         default=None,
         description=(
             "['gaussian' kernel only] Width σ [nm], P(r)=exp(-r²/2σ²).  Has no effect unless "
-            "HIC_KERNEL='gaussian'.  Defaults to r_comp (a nucleus-scale reach, further "
-            "auto-calibrated from the initial structure when HIC_AUTO_SCALE is True) when "
-            "not set."
+            "HIC_KERNEL='gaussian'.  Defaults to rc (the Hi-C force's own contact-radius "
+            "scale — see HIC_RC; a nucleus-scale reach, further auto-calibrated from the "
+            "initial structure when HIC_AUTO_SCALE is True) when not set."
         ),
     )
     HIC_ERFC_SIGMA: Optional[float] = Field(
@@ -240,7 +256,7 @@ class SimulationConfig(BaseModel):
         description=(
             "['erfc' kernel only] Softening width σ_s [nm] of the step at r_c.  Has no effect "
             "unless HIC_KERNEL='erfc'.  Smaller values make the step sharper (σ_s→0 recovers a "
-            "binary Hi-C contact definition).  Defaults to 0.3 * r_comp when not set."
+            "binary Hi-C contact definition).  Defaults to 0.3 * rc when not set."
         ),
     )
     HIC_ROUSE_KUHN_LENGTH: Optional[float] = Field(
@@ -248,29 +264,13 @@ class SimulationConfig(BaseModel):
         description=(
             "['rouse' kernel only] Kuhn (statistical segment) length b [nm], where "
             "<r²(s)> = s*b² for genomic separation s (in beads).  Has no effect unless "
-            "HIC_KERNEL='rouse'.  Defaults to r_comp when not set."
-        ),
-    )
-    HIC_WEIGHT_POWER: float = Field(
-        default=1.0,
-        description=(
-            "Exponent β in the per-pair force weight w_ij = c_ij^β. With β=1 (default) "
-            "force is directly proportional to contact strength c_ij, so weak-evidence "
-            "pairs stay nearly inert. β<1 softens weak contacts less; β>1 suppresses them more."
-        ),
-    )
-    HIC_THRESHOLD: float = Field(
-        default=0.01,
-        description=(
-            "Minimum normalised contact value c_ij to include a bond at all — a sparsity "
-            "cutoff only (bonds still scale continuously with c_ij via HIC_WEIGHT_POWER). "
-            "Recommended range: 0.005–0.05."
+            "HIC_KERNEL='rouse'.  Defaults to rc when not set."
         ),
     )
     HIC_FORCE_OE: Boolean = Field(
-        default=True,
+        default=False,
         description=(
-            "If True (default), target enrichment-above-background (OE ratio minus 1, "
+            "If True, target enrichment-above-background (OE ratio minus 1, "
             "floored at 0) instead of raw contact frequency: pairs at or below the expected "
             "distance-decay baseline (not enriched — 'towards -1' on the displayed "
             "log2(O/E) scale) get exactly zero force weight, so they are neither pulled "
@@ -296,22 +296,14 @@ class SimulationConfig(BaseModel):
         default=True,
         description=(
             "If True (default, recommended), recalibrate the Hi-C force's distance-kernel "
-            "scale (r_comp and any unset HIC_GAUSSIAN_SIGMA/HIC_ERFC_SIGMA/"
-            "HIC_ROUSE_KUHN_LENGTH) from a percentile of the actual initial structure's "
-            "pairwise-distance distribution (hic_force.auto_contact_scale) instead of a "
-            "fixed default, which can leave the force with no gradient at realistic bead "
-            "separations and barely change the structure from its initial state."
-        ),
-    )
-    HIC_AUTO_SCALE_PERCENTILE: float = Field(
-        default=50.0,
-        description=(
-            "Percentile of the initial structure's pairwise distances used to calibrate "
-            "the Hi-C force's scale when HIC_AUTO_SCALE is True. Higher than validation's "
-            "equivalent percentile (which favors visual contrast) because the force needs "
-            "reach: most contacted pairs, not just the closest, should feel a gradient. "
-            "Default 50 (median); raise for a more diffuse initial structure, lower if "
-            "local contact resolution suffers."
+            "scale (rc and any unset HIC_GAUSSIAN_SIGMA/HIC_ERFC_SIGMA/"
+            "HIC_ROUSE_KUHN_LENGTH) from the median (50th percentile) of the actual initial "
+            "structure's pairwise-distance distribution (hic_force.auto_contact_scale) "
+            "instead of a fixed default, which can leave the force with no gradient at "
+            "realistic bead separations and barely change the structure from its initial "
+            "state. The 50th-percentile choice is fixed, not a separate tunable knob: it's "
+            "simply the right scale for most contacted pairs — not just the closest — to "
+            "start within the kernel's reach."
         ),
     )
     HIC_MAX_GAP: int = Field(

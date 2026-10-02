@@ -636,6 +636,12 @@ def read_hic_matrix(
     5. handle_missing_bins()  — NaN / Inf / empty-bin interpolation
     6. pool_to_n_beads()      — weighted average pooling to N_beads × N_beads
 
+    Note: automatic denoising (Gaussian smoothing of shot-noise pixels) is
+    applied downstream, in ``hic_force.preprocess_hic_matrix`` — *after* OE
+    normalisation, if enabled — since that's the matrix that actually
+    becomes the Hi-C force's c_ij target. This function returns the raw
+    (loaded/pooled, but not yet denoised) matrix.
+
     Parameters
     ----------
     path          : path to .hic, .cool, or .mcool file
@@ -670,7 +676,7 @@ def read_hic_matrix(
 
     # Pass directly to build_hic_force
     from hic_force import build_hic_force
-    force = build_hic_force(H, N_beads=300, r_comp=6.0, mode='svd')
+    force = build_hic_force(H, N_beads=300, rc=6.0)
     """
     log.info("═" * 60)
     log.info("read_hic_matrix: %s  chrom=%s  N_beads=%d", path, chrom, N_beads)
@@ -1022,7 +1028,7 @@ if __name__ == "__main__":
     print("\n── Ready for MultiMM ──────────────────────────────────────────")
     print("  from hic_force import build_hic_force")
     print(f"  # H.shape == {H.shape}  ← guaranteed N_beads × N_beads")
-    print(f"  force = build_hic_force(H, N_beads={N_BEADS}, r_comp=6.0,")
+    print(f"  force = build_hic_force(H, N_beads={N_BEADS}, rc=6.0,")
     print("                          mode='svd', K=10)")
     print("  system.addForce(force)")
 

@@ -20,8 +20,28 @@ logger = logging.getLogger(__name__)
 
 # Single colormap used for every Hi-C-style heatmap in this module, paired
 # with _hic_display_transform below, so all heatmaps share one normalised,
-# consistently-coloured display pipeline. "coolwarm" is a soft diverging map.
-_HIC_CMAP = "coolwarm"
+# consistently-coloured display pipeline.
+#
+# Custom blue <-> red diverging map with a visibly-inked warm-gray midpoint,
+# replacing matplotlib's built-in "coolwarm". coolwarm fades to near-white
+# across a broad band around its center — fine for a scalar field where most
+# values sit near an extreme, but wrong here: in a Hi-C O/E matrix MOST pairs
+# sit near "expected" (log2 ratio ~ 0), i.e. exactly in that broad pale band,
+# so the whole heatmap read as washed out/whitish. This map keeps the
+# near-zero region a visible muted gray instead of letting it fade into the
+# plot background, while still ramping to fully saturated blue/red at the
+# ±1 (clipped log2 O/E) extremes.
+_HIC_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "multimm_hic_div",
+    [
+        (0.00, "#0d366b"),   # darkest blue  — strongly depleted
+        (0.22, "#2a78d6"),   # blue
+        (0.50, "#d7d4cc"),   # muted warm gray — visible "nothing", not white
+        (0.78, "#e34948"),   # red
+        (1.00, "#7a1414"),   # darkest red   — strongly enriched
+    ],
+    N=256,
+)
 
 
 pv.set_jupyter_backend("server")
@@ -580,6 +600,56 @@ def _oe_normalize(mat: np.ndarray) -> np.ndarray:
     return oe
 
 
+def _hic_log2_oe(oe_matrix: np.ndarray):
+    """log2(O/E) of an OE-normalised matrix, floored so zero/background
+    entries don't produce -inf, plus a mask of which entries were
+    genuinely OBSERVED (oe_matrix > 0) rather than floored background.
+
+    The floor itself is necessarily somewhat arbitrary (the 0.1th
+    percentile of positive entries), so every floored/zero pixel ends up
+    at exactly the same large-magnitude log2 value. That's fine as a
+    floor, but it must never be allowed into a *percentile* computation
+    used to pick a display clip (see ``_hic_display_transform`` /
+    ``_joint_hic_clip``) — enough floored background pixels at that one
+    extreme value would drag the percentile there too, producing a clip
+    that reflects the floor, not the data's real dynamic range, and
+    washing out every genuinely-observed, moderate feature.
+    """
+    finite_pos = oe_matrix[np.isfinite(oe_matrix) & (oe_matrix > 0)]
+    floor = float(np.percentile(finite_pos, 0.1)) if finite_pos.size else 1e-6
+    floor = max(floor, 1e-10)
+    log2_m = np.log2(np.clip(oe_matrix, floor, None))
+    observed = np.isfinite(oe_matrix) & (oe_matrix > 0)
+    return log2_m, observed
+
+
+def _joint_hic_clip(oe_matrices: "list[np.ndarray]", pct: float = 99.0) -> float:
+    """Shared colour-scale clip for ``_hic_display_transform``, computed
+    from the POOLED, genuinely-observed log2(O/E) values (see
+    ``_hic_log2_oe``) across every panel being compared — not just one of
+    them.
+
+    A clip sized to only one panel (e.g. only the experimental matrix)
+    breaks as soon as another panel's real dynamic range differs: too
+    narrow a clip for a panel with stronger contrast collapses it into
+    flat, oversaturated colour blocks, while that same narrow clip makes a
+    panel with real-but-moderate structure (often the experimental one,
+    once denoised) look almost uniformly gray. Pooling means every panel's
+    actual signal is represented in the one shared scale, so all of them
+    stay legible at once.
+    """
+    pooled = []
+    for oe in oe_matrices:
+        log2_m, observed = _hic_log2_oe(oe)
+        vals = log2_m[observed & np.isfinite(log2_m)]
+        if vals.size:
+            pooled.append(vals)
+    if not pooled:
+        return 1.0
+    clip = float(np.percentile(np.abs(np.concatenate(pooled)), pct))
+    return clip if clip > 1e-10 else 1.0
+
+
 def _hic_display_transform(oe_matrix: np.ndarray, clip: "float | None" = None, pct: float = 99.0, gamma: float = 0.6):
     """Shared display normalisation for every Hi-C-style heatmap: log2
     fold-enrichment, clipped to [-1, 1] via a shared ``clip`` (so panels
@@ -589,16 +659,24 @@ def _hic_display_transform(oe_matrix: np.ndarray, clip: "float | None" = None, p
     every matrix to a uniform distribution and erases how much contrast is
     actually there — making noise and real signal look equally "detailed").
 
+    If ``clip`` is not given, it is picked from THIS matrix's own
+    genuinely-observed entries only (see ``_hic_log2_oe``) — floored
+    background pixels are excluded so they can't drag the clip to an
+    arbitrary, non-representative value. For a multi-panel comparison,
+    prefer ``_joint_hic_clip`` over several matrices and pass its result in
+    here as ``clip`` for each one, so they share one colour scale sized to
+    all of them, not just the first.
+
     Returns (display, clip); pass the returned ``clip`` back in for other
     matrices in the same comparison so they share one colour scale.
     """
-    finite_pos = oe_matrix[np.isfinite(oe_matrix) & (oe_matrix > 0)]
-    floor = float(np.percentile(finite_pos, 0.1)) if finite_pos.size else 1e-6
-    log2_m = np.log2(np.clip(oe_matrix, max(floor, 1e-10), None))
+    log2_m, observed = _hic_log2_oe(oe_matrix)
 
     if clip is None:
-        finite_log = log2_m[np.isfinite(log2_m)]
-        clip = float(np.percentile(np.abs(finite_log), pct)) if finite_log.size else 1.0
+        src = log2_m[observed & np.isfinite(log2_m)]
+        if not src.size:
+            src = log2_m[np.isfinite(log2_m)]
+        clip = float(np.percentile(np.abs(src), pct)) if src.size else 1.0
         clip = clip if clip > 1e-10 else 1.0
 
     normalized = np.clip(log2_m / clip, -1.0, 1.0)
@@ -618,7 +696,7 @@ def get_heatmap(
     reorder_by_diagonal=False,
     name="structure",
     kernel="gaussian",
-    r_comp=None,
+    rc=None,
     alpha=3.0,
     sigma=None,
     sigma_s=None,
@@ -633,8 +711,8 @@ def get_heatmap(
     ensemble-averaged proxy in :func:`plot_hic_comparison` are computed by
     identical methodology and directly comparable.
 
-    kernel/r_comp/alpha/sigma/sigma_s/kuhn_length mirror the Hi-C force's
-    own parameters. ``r_comp=None`` is fine when ``auto_scale=True``
+    kernel/rc/alpha/sigma/sigma_s/kuhn_length mirror the Hi-C force's
+    own parameters. ``rc=None`` is fine when ``auto_scale=True``
     (default): the length scale is instead recalibrated from a percentile
     of this structure's own pairwise-distance distribution
     (:func:`hic_force.auto_contact_scale`, ``auto_scale_percentile``,
@@ -670,12 +748,12 @@ def get_heatmap(
     # ------------------------------------------------------------
     D = distance.cdist(V, V, metric="euclidean")
 
-    r_comp_eff = r_comp if r_comp is not None else 1.0
+    rc_eff = rc if rc is not None else 1.0
     sigma_eff, sigma_s_eff, kuhn_length_eff = sigma, sigma_s, kuhn_length
     if auto_scale:
         calibrated = auto_contact_scale(V, percentile=auto_scale_percentile)
-        factor = (calibrated / r_comp_eff) if r_comp_eff > 1e-12 else 1.0
-        r_comp_eff = calibrated
+        factor = (calibrated / rc_eff) if rc_eff > 1e-12 else 1.0
+        rc_eff = calibrated
         sigma_eff = (sigma * factor) if sigma is not None else None
         sigma_s_eff = (sigma_s * factor) if sigma_s is not None else None
         kuhn_length_eff = (kuhn_length * factor) if kuhn_length is not None else None
@@ -685,7 +763,7 @@ def get_heatmap(
         )
 
     p_func, needs_sep = get_kernel_p_func(
-        kernel, r_comp_eff, alpha=alpha, sigma=sigma_eff,
+        kernel, rc_eff, alpha=alpha, sigma=sigma_eff,
         sigma_s=sigma_s_eff, kuhn_length=kuhn_length_eff,
     )
     if needs_sep:
@@ -859,11 +937,13 @@ def plot_hic_comparison(
     Hi-C (plus an optional random-walk null-model panel if *rw_matrix* is given).
 
     Each matrix is OE-normalised then run through ``_hic_display_transform``
-    (signed log2(O/E), gamma-stretched) using one *shared* clip taken from
-    the experimental matrix's ``high_percentile`` — so a panel with
-    genuinely less structure (e.g. a weak signal or the RW null) correctly
-    looks less contrasted, rather than being stretched to fill the full
-    colour range regardless of how much real signal it has.
+    (signed log2(O/E), gamma-stretched) using one *shared* clip pooled from
+    every displayed panel's ``high_percentile`` (see ``_joint_hic_clip``) —
+    so a panel with genuinely less structure (e.g. a weak signal or the RW
+    null) correctly looks less contrasted, rather than being stretched to
+    fill the full colour range regardless of how much real signal it has,
+    while a panel with *more* structure than the others doesn't oversaturate
+    into flat colour blocks under a scale sized to someone else.
 
     sim_matrix/exp_matrix: (N, N) contact matrices at matching resolution.
     low_percentile/high_percentile: colour-clipping percentiles.
@@ -886,24 +966,35 @@ def plot_hic_comparison(
     # the raw (linear) matrices; log2(O/E) below is the display transform.
     sim_oe = _oe_normalize(sim_matrix)
     exp_oe = _oe_normalize(exp_matrix)
+    rw_oe  = _oe_normalize(rw_matrix) if rw_matrix is not None else None
 
-    # Shared clip comes from the experimental matrix only, then reused
-    # (not recomputed) for sim/RW, so weaker real structure is shown as
-    # less contrasted rather than equalised away.
-    exp_disp, shared_clip = _hic_display_transform(exp_oe, clip=None, pct=high_percentile)
-    sim_disp, _           = _hic_display_transform(sim_oe, clip=shared_clip)
+    # Shared clip is pooled from every panel being shown (not just the
+    # experimental one) — see _joint_hic_clip. A clip sized to only one
+    # panel breaks as soon as another's real dynamic range differs: the
+    # experimental matrix (often the most heavily denoised/smoothed one)
+    # can have a genuinely narrower spread than the simulated contact
+    # proxy, so clipping everything to its scale alone both washes the
+    # experimental panel out (clip dominated by its own near-zero/floored
+    # entries — see _hic_log2_oe) and oversaturates the simulated one into
+    # flat colour blocks. Pooling keeps every panel legible on one scale.
+    panels_for_clip = [exp_oe, sim_oe] + ([rw_oe] if rw_oe is not None else [])
+    shared_clip = _joint_hic_clip(panels_for_clip, pct=high_percentile)
+
+    exp_disp, _ = _hic_display_transform(exp_oe, clip=shared_clip)
+    sim_disp, _ = _hic_display_transform(sim_oe, clip=shared_clip)
 
     disp_matrices = [exp_disp, sim_disp]
     titles        = ["Experimental Hi-C", "Simulated (ensemble-averaged contact proxy)"]
 
-    if rw_matrix is not None:
-        rw_oe = _oe_normalize(rw_matrix)
+    if rw_oe is not None:
         rw_disp, _ = _hic_display_transform(rw_oe, clip=shared_clip)
         disp_matrices.append(rw_disp)
         titles.append("Random Walk (null model)")
-        logger.info("Applied OE normalisation to sim, exp, and RW matrices for comparison")
+        logger.info("Applied OE normalisation to sim, exp, and RW matrices for comparison "
+                     "(shared colour scale pooled across all three)")
     else:
-        logger.info("Applied OE normalisation to the simulated matrix for comparison")
+        logger.info("Applied OE normalisation to sim and exp matrices for comparison "
+                     "(shared colour scale pooled across both)")
 
     n_panels  = len(disp_matrices)
     fig_width = 6 * n_panels   # 12 for 2 panels, 18 for 3
@@ -931,6 +1022,93 @@ def plot_hic_comparison(
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     logger.info(f"Saved Hi-C comparison heatmap → {out_path}")
+
+
+# ── Hi-C denoising preview (before / after Gaussian smoothing) ──────────────
+
+def plot_hic_preprocessing(
+    H_before: "np.ndarray",
+    H_after: "np.ndarray",
+    save_dir: str,
+    chrom: "str | None" = None,
+    sigma: float = 1.0,
+    oe_normalized: bool = False,
+    name: str = "hic_preprocessing",
+) -> None:
+    """Save a side-by-side heatmap comparing the Hi-C matrix just before vs.
+    just after the automatic denoising step applied in
+    ``hic_force.preprocess_hic_matrix`` — i.e. the actual c_ij target the
+    Hi-C force (and validation) optimizes against, before vs. after
+    denoising.
+
+    When ``oe_normalized=True``, denoising runs *after* OE normalisation, so
+    *both* panels already show OE-normalized enrichment (above background,
+    floored at 0) rather than raw contact counts — "before" means
+    "OE-normalized, not yet denoised", not "raw". This keeps the two panels
+    on the same, meaningful scale: comparing a raw-count panel against an
+    OE panel would conflate the denoising effect with the OE transform.
+
+    Both panels show the same (sequential, single-hue) magnitude quantity,
+    so they share one colour scale. That scale is deliberately taken from
+    the *denoised* (after) matrix's own 99th percentile, not the noisy
+    (before) one: the raw/OE matrix's extreme tail is exactly the noise
+    being removed, so scaling to it would wash out every real, moderate
+    feature in both panels down to near-white. Scaling instead to the
+    clean matrix's own range means genuine compartment/TAD-scale structure
+    shows up clearly in both panels, while the removed noise pixels simply
+    clip to the top colour in the *before* panel — a visible flag for
+    "this was an outlier, and it's gone after denoising".
+
+    H_before/H_after: (N, N) matrices, same shape, same scale — whatever
+        ``preprocess_hic_matrix`` was about to denoise / just denoised.
+    chrom: optional chromosome label for the panel titles.
+    sigma: the Gaussian std (in beads) used for the smoothing, shown in the title.
+    oe_normalized: whether both panels are OE-normalized enrichment (above
+        background, floored at 0) rather than raw contact counts/frequencies.
+    """
+    import os
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    if np.any(H_after > 0):
+        vmax = float(np.percentile(H_after[H_after > 0], 99.0))
+    elif np.any(H_before > 0):
+        # Denoising left nothing (degenerate/empty case) — fall back to the
+        # raw matrix's own scale rather than leaving vmax at 0.
+        vmax = float(np.percentile(H_before[H_before > 0], 99.0))
+    else:
+        vmax = 1.0
+    vmax = max(vmax, 1e-12)
+
+    chrom_label = f" ({chrom})" if chrom else ""
+    quantity = "OE-normalized Hi-C" if oe_normalized else "Raw Hi-C"
+    cbar_label = "OE enrichment (above background)" if oe_normalized else "contact strength"
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), dpi=150, constrained_layout=True)
+
+    for ax, mat, title in zip(
+        axes,
+        [H_before, H_after],
+        [f"{quantity}{chrom_label}, before denoising",
+         f"{quantity}{chrom_label}, denoised  (median+Gaussian σ={sigma:g})"],
+    ):
+        im = ax.imshow(mat, cmap="Reds", vmin=0.0, vmax=vmax, origin="upper", aspect="equal",
+                        interpolation="nearest")
+        ax.set_title(title, fontsize=12, fontweight="bold")
+        ax.set_xlabel("Genomic bin", fontsize=10)
+        ax.set_ylabel("Genomic bin", fontsize=10)
+        ax.tick_params(labelsize=8)
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, extend="max")
+        cbar.set_label(cbar_label, fontsize=9)
+
+    out_path = os.path.join(save_dir, f"{name}.png")
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    logger.info(f"Saved Hi-C before/after denoising preview → {out_path}")
 
 
 # ── Hi-C validation curves (decay / insulation / PC1) ────────────────────────
@@ -1271,9 +1449,19 @@ def plot_distance_vs_strength(strength, dist, low_mask, high_mask, results,
     high-strength groups (violin + box), with each group's median distance
     labelled directly and a bracket showing the fold-difference between
     them, so the separation reads at a glance rather than only from the
-    AUC number. Right: regression — a plain (subsampled) scatter of
-    strength vs distance, with just the Pearson/Spearman correlations
-    annotated — no fitted/binned trend line.
+    AUC number. Right: regression — a (subsampled) scatter of strength vs
+    distance, plus a quantile-binned median trend line (with an IQR band)
+    so the strength→distance relationship is visible through the scatter's
+    skewed density, on a symlog x-axis.
+
+    Strength here is OE-enrichment above background, floored at 0: most
+    sampled pairs sit at or very near exactly 0, with a long thin tail of
+    genuinely enriched pairs. On a linear axis that piles almost every
+    point into a hairline band at x=0 ("everything collapses in a line").
+    A symlog scale (linear near 0, logarithmic beyond a small threshold)
+    keeps the floored mass readable while spreading the enriched tail out,
+    and the binned trend line makes the regression legible despite the
+    uneven point density.
     """
     os.makedirs(save_dir, exist_ok=True)
     sns.set_style("whitegrid")
@@ -1346,11 +1534,46 @@ def plot_distance_vs_strength(strength, dist, low_mask, high_mask, results,
         rng = np.random.default_rng(seed)
         sel = rng.choice(s_plot.size, size=max_points, replace=False)
         s_plot, d_plot = s_plot[sel], d_plot[sel]
-    ax.scatter(s_plot, d_plot, s=10, alpha=0.35, color="#2a78d6",
-               edgecolors="none")
+    ax.scatter(s_plot, d_plot, s=10, alpha=0.25, color="#2a78d6",
+               edgecolors="none", zorder=2, label="pairs (subsampled)")
 
-    ax.set_xlabel("Experimental strength (c_ij target)")
+    # symlog x-axis: linear in [-linthresh, linthresh] (so the floored-at-0
+    # mass isn't discarded or infinitely compressed), logarithmic beyond it
+    # (so the enriched tail actually spreads out instead of hugging x=0).
+    pos = s_plot[s_plot > 0]
+    if pos.size >= 5:
+        linthresh = max(float(np.percentile(pos, 5)), 1e-6)
+    else:
+        spread = float(np.nanmax(s_plot) - np.nanmin(s_plot)) if s_plot.size else 1.0
+        linthresh = max(spread * 1e-3, 1e-6)
+    ax.set_xscale("symlog", linthresh=linthresh, linscale=1.5)
+
+    # Quantile-binned median trend (equal-count bins, so the degenerate
+    # pile-up near 0 doesn't just become one giant uninformative bin): makes
+    # the strength→distance relationship legible despite the skewed density.
+    n_bins = int(np.clip(s_plot.size // 150, 6, 14))
+    if s_plot.size >= 3 * n_bins:
+        order = np.argsort(s_plot)
+        s_sorted, d_sorted = s_plot[order], d_plot[order]
+        edges = np.linspace(0, s_sorted.size, n_bins + 1).astype(int)
+        bin_x, bin_med, bin_lo, bin_hi = [], [], [], []
+        for i in range(n_bins):
+            sl = slice(edges[i], edges[i + 1])
+            if sl.stop - sl.start < 2:
+                continue
+            bin_x.append(float(np.median(s_sorted[sl])))
+            bin_med.append(float(np.median(d_sorted[sl])))
+            bin_lo.append(float(np.percentile(d_sorted[sl], 25)))
+            bin_hi.append(float(np.percentile(d_sorted[sl], 75)))
+        if bin_x:
+            ax.fill_between(bin_x, bin_lo, bin_hi, color="#d35400", alpha=0.18,
+                             zorder=3, linewidth=0, label="binned IQR")
+            ax.plot(bin_x, bin_med, color="#d35400", linewidth=2.2, marker="o",
+                    markersize=4.5, zorder=4, label="binned median")
+
+    ax.set_xlabel("Experimental strength (c_ij target, symlog scale)")
     ax.set_ylabel("3D distance")
+    ax.legend(loc="best", fontsize=8, framealpha=0.85)
     r_p = results.get("pearson_r", float("nan"))
     r_s = results.get("spearman_r", float("nan"))
     subtitle = []
