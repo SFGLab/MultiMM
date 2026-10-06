@@ -929,6 +929,59 @@ def compute_compartments(matrix):
 
 
 # =============================================================================
+# Eigenvector (PC1) sign alignment + compartment discretization
+# Generic preprocessing only — no scoring/RW-baseline logic here, that's
+# validation.py's job. Shared by HIC_BLOCK_COPOLYMER (model.py) and by
+# validation's PC1 correlation, so both use the same absolute A/B convention.
+# =============================================================================
+
+def bead_contact_density(mat: np.ndarray, exclude_diag: int = 2) -> np.ndarray:
+    """Per-bead contact density: mean contact value to all other beads,
+    excluding the `exclude_diag` nearest diagonals (short-range polymer
+    proximity, not genome-wide contact propensity). Dense ~ compact/
+    heterochromatic (B compartment); sparse ~ open (A compartment).
+    """
+    m = np.array(mat, dtype=float)
+    N = m.shape[0]
+    idx = np.arange(N)
+    for k in range(-exclude_diag, exclude_diag + 1):
+        valid = (idx + k >= 0) & (idx + k < N)
+        m[idx[valid], idx[valid] + k] = np.nan
+    return np.nanmean(m, axis=1)
+
+
+def align_pc1_sign(pc1: np.ndarray, density: np.ndarray) -> np.ndarray:
+    """Flip PC1 sign (if needed) to the real Hi-C convention: positive = A
+    (sparse/open), negative = B (dense/compact). Aligned against this
+    matrix's OWN density, so independent PC1 vectors (sim, exp, random-
+    walk, ...) all land on the same absolute sign instead of an arbitrary
+    one relative to each other.
+    """
+    pc1 = np.asarray(pc1, dtype=float)
+    mask = np.isfinite(pc1) & np.isfinite(density)
+    if mask.sum() < 3:
+        return pc1.copy()
+    r = np.corrcoef(pc1[mask], density[mask])[0, 1]
+    return -pc1 if (np.isfinite(r) and r > 0) else pc1.copy()
+
+
+def discretize_compartments(pc1_aligned: np.ndarray, threshold: float = 0.0) -> np.ndarray:
+    """Sign-threshold a density-aligned PC1 into import_bed()'s own label
+    convention: +1 = A, -1 = B, 0 = unassigned (|pc1| <= threshold).
+
+    Centers on the median first: a raw correlation-matrix eigenvector isn't
+    guaranteed zero-mean like a PCA projection is, so a literal 0.0 cutoff
+    can otherwise land entirely on one side for a lopsided signal.
+    """
+    pc1_aligned = np.asarray(pc1_aligned, dtype=float)
+    centered = pc1_aligned - np.median(pc1_aligned)
+    labels = np.zeros(len(centered), dtype=int)
+    labels[centered > threshold]  = 1
+    labels[centered < -threshold] = -1
+    return labels
+
+
+# =============================================================================
 # Hi-C model validation — distance heatmap and eigenvector correlations
 # =============================================================================
 
@@ -976,19 +1029,24 @@ def _pool_matrix(matrix: np.ndarray, target: int) -> np.ndarray:
     return pool_to_n_beads(matrix.astype(float), target)
 
 
-def _oe_normalize(hic: np.ndarray) -> np.ndarray:
-    """Observed/Expected normalisation by per-diagonal mean."""
-    N = hic.shape[0]
-    oe = np.zeros_like(hic, dtype=float)
+def oe_matrix(mat: np.ndarray) -> np.ndarray:
+    """Observed/Expected: divide each diagonal by its own mean.
+
+    Canonical OE step, shared by validation.py, plots.py, and
+    read_hic.oe_enrichment_matrix (floors it at 0 on top). NaN/Inf are
+    excluded from each diagonal's mean and zeroed in the output.
+    """
+    N = mat.shape[0]
+    oe = np.zeros_like(mat, dtype=np.float64)
     for d in range(N):
-        diag = np.diag(hic, d)
-        mean = diag.mean()
-        if mean > 0:
-            normed = diag / mean
-            idx = np.arange(N - d)
-            oe[idx, idx + d] = normed
-            if d:
-                oe[idx + d, idx] = normed
+        diag = np.diagonal(mat, offset=d).copy()
+        finite_mask = np.isfinite(diag)
+        mean_d = diag[finite_mask].mean() if finite_mask.any() else 0.0
+        norm_diag = np.where(finite_mask, diag / mean_d, 0.0) if mean_d > 0 else np.zeros_like(diag)
+        idx = np.arange(N - d)
+        oe[idx, idx + d] = norm_diag
+        if d > 0:
+            oe[idx + d, idx] = norm_diag
     return oe
 
 
@@ -1012,7 +1070,7 @@ def hic_pc1(hic: np.ndarray, already_oe: bool = False, k: int = 1):
     (pc1, pc2, ...) : tuple of ndarray  when k > 1
     """
     from scipy.sparse.linalg import eigsh
-    H = hic if already_oe else _oe_normalize(hic)
+    H = hic if already_oe else oe_matrix(hic)
     H = np.nan_to_num(H)
     np.fill_diagonal(H, 0)
     corr = np.nan_to_num(np.corrcoef(H, rowvar=False))

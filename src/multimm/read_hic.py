@@ -44,7 +44,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from scipy.ndimage import zoom
+from scipy.ndimage import gaussian_filter, median_filter
 
 try:
     from logger import setup_logger
@@ -57,6 +57,8 @@ except ImportError:
     )
 
 log = logging.getLogger(__name__)
+
+from .utils import oe_matrix  # noqa: E402 — canonical OE-normalisation step
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -611,6 +613,136 @@ def pool_to_n_beads(H: np.ndarray, N_beads: int) -> np.ndarray:
     return H_out
 
 
+def symmetrize_and_clean(H: np.ndarray) -> np.ndarray:
+    """Symmetrise H, zero NaN/Inf/negatives and the diagonal."""
+    H = np.array(H, dtype=np.float64)
+    if H.ndim != 2 or H.shape[0] != H.shape[1]:
+        raise ValueError(f"Hi-C matrix must be square 2-D, got shape {H.shape}")
+
+    H = 0.5 * (H + H.T)
+    n_bad = int(np.count_nonzero(~np.isfinite(H)))
+    if n_bad:
+        log.warning("symmetrize_and_clean: %d non-finite entries -> 0", n_bad)
+    np.nan_to_num(H, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+    np.maximum(H, 0.0, out=H)
+    np.fill_diagonal(H, 0.0)
+    return H
+
+
+def diagonal_normalize(H: np.ndarray, n_iter: int = 50, tol: float = 1e-6) -> np.ndarray:
+    """Knight-Ruiz iterative row/column balancing: H <- D^-1 H D^-1 until
+    marginals are ~1, or `tol` is reached (early stop), up to `n_iter`.
+    """
+    H = H.copy()
+    it = 0
+    for it in range(n_iter):
+        row_sums = H.sum(axis=1)
+        scale    = np.where(row_sums > 0, 1.0 / np.sqrt(row_sums), 0.0)
+        H        = scale[:, None] * H * scale[None, :]
+        np.nan_to_num(H, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+        if np.abs(H.sum(axis=1) - 1.0).max() <= tol:
+            break
+
+    H = np.maximum(H, 0.0)
+    np.fill_diagonal(H, 0.0)
+    log.debug("diagonal_normalize: %d/%d iterations used", it + 1, n_iter)
+    return H
+
+
+def oe_enrichment_matrix(H: np.ndarray) -> np.ndarray:
+    """OE enrichment above background: oe_matrix(H) - 1, floored at 0. Used
+    as the Hi-C force's c_ij target when HIC_FORCE_OE=True — pairs at/below
+    the distance-decay baseline get c_ij=0 ("loose"); only enriched pairs
+    (OE > 1) attract.
+    """
+    return np.maximum(oe_matrix(H) - 1.0, 0.0)
+
+
+_DENOISE_MEDIAN_SIZE     = 3     # median-filter window, beads
+_DENOISE_SIGMA           = 1.5   # Gaussian smoothing std, beads
+_DENOISE_CLIP_PERCENTILE = 99.0  # outlier safety-net cap
+
+
+def denoise_contact_matrix(
+    H: np.ndarray,
+    sigma: float = _DENOISE_SIGMA,
+    clip_percentile: float = _DENOISE_CLIP_PERCENTILE,
+    median_size: int = _DENOISE_MEDIAN_SIZE,
+) -> np.ndarray:
+    """Denoise a contact matrix: median filter (drops isolated, unsupported
+    pixels while real TAD/compartment patches survive) -> percentile cap ->
+    light Gaussian smoothing -> re-symmetrize. Used both as the Hi-C force's
+    final c_ij matrix and by validation.py for consistent comparisons.
+    """
+    H = median_filter(H, size=median_size, mode="nearest")
+    nz = H[H > 0]
+    if nz.size:
+        cap = float(np.percentile(nz, clip_percentile))
+        if cap > 0:
+            H = np.minimum(H, cap)
+    H_smoothed = gaussian_filter(H, sigma=sigma, mode="nearest")
+    H_out = 0.5 * (H_smoothed + H_smoothed.T)
+    np.fill_diagonal(H_out, 0.0)
+    np.clip(H_out, 0.0, None, out=H_out)
+    return H_out
+
+
+def preprocess_hic_matrix(
+    H_raw: np.ndarray,
+    N_beads: int,
+    already_balanced: bool = False,
+    oe_normalize: bool = False,
+    save_path: Optional[str] = None,
+    chrom: Optional[str] = None,
+) -> np.ndarray:
+    """Full Hi-C matrix prep pipeline: clean -> resize -> balance ->
+    (optional) OE-floor -> denoise. This is what `hic_force.build_hic_force`
+    runs before building the force, exposed here so diagnostics can see the
+    exact c_ij values the force targets.
+
+    save_path/chrom: if given, saves a before/after denoising plot to
+    ``<save_path>/plots/hic_preprocessing.png``.
+    """
+    H = symmetrize_and_clean(H_raw)
+    if H.shape[0] != N_beads:
+        H = pool_to_n_beads(H, N_beads)
+    if not already_balanced:
+        H = diagonal_normalize(H)
+    if oe_normalize:
+        H = oe_enrichment_matrix(H)
+        log.info("preprocess_hic_matrix: OE normalisation applied")
+
+    # denoise AFTER OE (if enabled) — that's the matrix the force actually
+    # targets, and OE division can amplify shot noise
+    H_before_denoise = H.copy() if save_path is not None else None
+    H = denoise_contact_matrix(H)
+    n_suppressed = (
+        int(np.count_nonzero((H_before_denoise > 0) & (H <= 0)))
+        if H_before_denoise is not None else None
+    )
+    log.info(
+        "preprocess_hic_matrix: denoised (%s OE) — median %dx%d, cap %.0fpct, "
+        "gaussian sigma=%.1f%s",
+        "after" if oe_normalize else "without",
+        _DENOISE_MEDIAN_SIZE, _DENOISE_MEDIAN_SIZE,
+        _DENOISE_CLIP_PERCENTILE, _DENOISE_SIGMA,
+        f", suppressed {n_suppressed} px" if n_suppressed is not None else "",
+    )
+
+    if save_path is not None:
+        try:
+            from .plots import plot_hic_preprocessing
+            plots_dir = os.path.join(save_path, "plots")
+            plot_hic_preprocessing(
+                H_before_denoise, H, plots_dir, chrom=chrom,
+                sigma=_DENOISE_SIGMA, oe_normalized=oe_normalize,
+            )
+        except Exception as exc:  # pragma: no cover
+            log.warning("Could not save Hi-C preprocessing plot: %s", exc)
+
+    return H
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # Layer 5 — Public entry point
 # ═════════════════════════════════════════════════════════════════════════════
@@ -636,11 +768,8 @@ def read_hic_matrix(
     5. handle_missing_bins()  — NaN / Inf / empty-bin interpolation
     6. pool_to_n_beads()      — weighted average pooling to N_beads × N_beads
 
-    Note: automatic denoising (Gaussian smoothing of shot-noise pixels) is
-    applied downstream, in ``hic_force.preprocess_hic_matrix`` — *after* OE
-    normalisation, if enabled — since that's the matrix that actually
-    becomes the Hi-C force's c_ij target. This function returns the raw
-    (loaded/pooled, but not yet denoised) matrix.
+    Note: denoising runs later, in ``preprocess_hic_matrix`` — this returns
+    the raw (loaded/pooled, not yet denoised) matrix.
 
     Parameters
     ----------

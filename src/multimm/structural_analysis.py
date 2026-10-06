@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.spatial import ConvexHull, distance
 from scipy.stats import gaussian_kde, gamma as _gamma_dist
+from sklearn.decomposition import PCA
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +304,9 @@ def analyze_structure(V, save_path, name="structure"):
     fig.savefig(base + f"/plots/{name}_overview.png", dpi=250)
     plt.close(fig)
 
+    # detailed 2D density contour, as its own dedicated figure (NEW)
+    _plot_density_contour(V, save_path, name=name)
+
     # ------------------------------------------------------------
     return {
         "Rg": Rg,
@@ -312,6 +316,90 @@ def analyze_structure(V, save_path, name="structure"):
         "asphericity": asphericity,
         "acylindricity": acylindricity,
     }
+
+
+def _plot_density_contour(V, save_path, name="structure"):
+    """Detailed 2D contour plot of structural density.
+
+    Beads are projected onto their own principal plane (PC1-PC2 — the
+    2D plane capturing the most structural spread), then a fine-grained
+    2D KDE is drawn as a filled, labeled contour with a colorbar and
+    marginal 1D density panels on top/right (a joint-plot layout). This
+    is deliberately more detailed/standalone than the compact PCA-space
+    density panel in plots.plot_projection, which is one of six panels
+    sharing a single overview figure.
+    """
+    V = np.asarray(V, dtype=np.float64)
+    V = V[np.isfinite(V).all(axis=1)]
+
+    if len(V) < 10:
+        logger.warning(f"_plot_density_contour: not enough points for '{name}', skipping.")
+        return
+
+    Vc = V - V.mean(axis=0)
+    pca = PCA(n_components=2)
+    xy = pca.fit_transform(Vc)
+    x, y = xy[:, 0], xy[:, 1]
+    explained = pca.explained_variance_ratio_
+
+    try:
+        kde = gaussian_kde(np.vstack([x, y]))
+    except Exception:
+        logger.warning(f"_plot_density_contour: KDE estimation failed for '{name}', skipping.")
+        return
+
+    pad_x = 0.08 * (x.max() - x.min() + 1e-9)
+    pad_y = 0.08 * (y.max() - y.min() + 1e-9)
+    xg, yg = np.mgrid[x.min() - pad_x:x.max() + pad_x:200j, y.min() - pad_y:y.max() + pad_y:200j]
+    pos = np.vstack([xg.ravel(), yg.ravel()])
+    zg = kde(pos).reshape(xg.shape)
+
+    sns.set_style("whitegrid")
+    accent = "#2a78d6"
+    fig = plt.figure(figsize=(9.8, 9))
+    # dedicated gridspec column for the colorbar (col 4) so it never
+    # overlaps/competes for space with the right marginal panel (col 3)
+    gs = fig.add_gridspec(4, 5, width_ratios=[1, 1, 1, 0.85, 0.3], hspace=0.05, wspace=0.15)
+
+    ax_main = fig.add_subplot(gs[1:4, 0:3])
+    ax_top = fig.add_subplot(gs[0, 0:3], sharex=ax_main)
+    ax_right = fig.add_subplot(gs[1:4, 3], sharey=ax_main)
+    ax_cbar = fig.add_subplot(gs[1:4, 4])
+
+    cf = ax_main.contourf(xg, yg, zg, levels=25, cmap="mako")
+    cs = ax_main.contour(xg, yg, zg, levels=8, colors="white", linewidths=0.6, alpha=0.6)
+    ax_main.clabel(cs, inline=True, fontsize=7, fmt="%.1e")
+    ax_main.scatter(x, y, s=4, color="white", edgecolor="#2b2b28", linewidths=0.2, alpha=0.5)
+    ax_main.set_xlabel(f"PC1 ({explained[0]*100:.0f}% var)")
+    ax_main.set_ylabel(f"PC2 ({explained[1]*100:.0f}% var)")
+    fig.colorbar(cf, cax=ax_cbar, label="Density")
+
+    # marginal density panels (top: PC1, right: PC2)
+    ax_top.hist(x, bins=_smart_bin_count(x), density=True, color=accent, alpha=0.5, edgecolor="white")
+    try:
+        kx = gaussian_kde(x)
+        xs = np.linspace(x.min(), x.max(), 200)
+        ax_top.plot(xs, kx(xs), color=accent, linewidth=1.8)
+    except Exception:
+        pass
+    ax_top.axis("off")
+
+    ax_right.hist(y, bins=_smart_bin_count(y), density=True, color=accent, alpha=0.5,
+                  edgecolor="white", orientation="horizontal")
+    try:
+        ky = gaussian_kde(y)
+        ys = np.linspace(y.min(), y.max(), 200)
+        ax_right.plot(ky(ys), ys, color=accent, linewidth=1.8)
+    except Exception:
+        pass
+    ax_right.axis("off")
+
+    fig.suptitle(f"Structural Density Contour (PCA plane) — {name}", fontsize=14, fontweight="bold")
+
+    base = os.path.join(save_path, "analysis", "plots")
+    os.makedirs(base, exist_ok=True)
+    fig.savefig(os.path.join(base, f"{name}_density_contour.png"), dpi=250, bbox_inches="tight")
+    plt.close(fig)
 
 
 def _hist_with_fit(ax, data, pdf_fn, color, xlabel, title, fit_label=None,

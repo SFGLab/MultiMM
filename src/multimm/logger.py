@@ -129,6 +129,26 @@ class CozyFormatter(logging.Formatter):
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+# Third-party libraries that log routine/advisory INFO-DEBUG chatter which
+# isn't ours — e.g. matplotlib.category's "Using categorical units..." notice
+# whenever a plot call gets numeric-looking string data. Since setup_logger
+# attaches its formatter to the ROOT logger, every library that propagates up
+# to root would otherwise get printed as if it were a MultiMM log line. Capped
+# at WARNING so a real problem from these libraries still surfaces.
+_NOISY_THIRD_PARTY_LOGGERS = (
+    "matplotlib",
+    "PIL",
+    "numba",
+    "h5py",
+    "fontTools",
+)
+
+
+def _quiet_third_party_loggers() -> None:
+    for name in _NOISY_THIRD_PARTY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
 def setup_logger(
     level: int = logging.INFO,
     debug: bool = False,
@@ -158,6 +178,10 @@ def setup_logger(
 
     root = logging.getLogger()
     effective_level = logging.DEBUG if debug else level
+
+    # keep third-party library chatter (matplotlib, etc.) out of our output —
+    # see _NOISY_THIRD_PARTY_LOGGERS
+    _quiet_third_party_loggers()
 
     # ── Console handler (CozyFormatter) ──────────────────────────────────────
     has_cozy = any(

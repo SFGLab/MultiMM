@@ -3,6 +3,7 @@
 #########################################################################
 import argparse
 import configparser
+import difflib
 import logging
 import os
 import sys
@@ -383,6 +384,39 @@ def my_config_parser(config_parser: configparser.ConfigParser):
     return args_cp
 
 
+def _check_known_config_fields(args_cp, config_path: str):
+    """Raise a clear, actionable ValueError if `args_cp` (the flattened
+    name/value pairs read from a config.ini file) contains any key that
+    SimulationConfig doesn't define — instead of silently dropping it, which
+    is exactly how a typo'd or outdated/removed field name used to go
+    unnoticed. For each unrecognised key, suggests the closest actual field
+    name (difflib) when one is a plausible typo match, so "HIC_BOLTZMAN_ALPHA"
+    points straight at "HIC_BOLTZMANN_ALPHA" instead of a generic example.
+    """
+    valid_fields = sorted(SimulationConfig.model_fields)
+    valid_fields_upper = set(valid_fields)
+    unknown = sorted({name.upper() for name, _ in args_cp if name.upper() not in valid_fields_upper})
+    if not unknown:
+        return
+
+    lines = []
+    for key in unknown:
+        matches = difflib.get_close_matches(key, valid_fields, n=2, cutoff=0.6)
+        if matches:
+            lines.append(f"  - {key}  (did you mean: {' / '.join(matches)}?)")
+        else:
+            lines.append(f"  - {key}  (no close match found — this field does not exist)")
+
+    raise ValueError(
+        f"Unrecognized argument(s) in config file {config_path!r} — these keys do "
+        f"not exist in SimulationConfig (src/multimm/config.py):\n"
+        + "\n".join(lines)
+        + "\nFix the typo, remove the key, or check the README for the current "
+        "field name (e.g. the old HIC_ALPHA/HIC_THRESHOLD were renamed to "
+        "HIC_BOLTZMANN_ALPHA / removed)."
+    )
+
+
 def get_config():
     """Prepare list of arguments.
 
@@ -404,9 +438,47 @@ def get_config():
     raw_config = {}
 
     if args_ap.config_file:
-        config_parser = configparser.ConfigParser()
-        config_parser.read(args_ap.config_file)
+        # A mistyped/missing path must not pass silently: ConfigParser.read()
+        # does NOT raise for a file that doesn't exist — it just returns an
+        # empty list — so without this check the run would silently fall
+        # back to nothing but class defaults, with no indication the
+        # requested config file was never actually loaded.
+        if not os.path.isfile(args_ap.config_file):
+            resolved = os.path.abspath(args_ap.config_file)
+            if os.path.isdir(args_ap.config_file):
+                reason = "it's a directory, not a file"
+            elif os.path.exists(args_ap.config_file):
+                reason = "it exists but isn't a regular file"
+            else:
+                reason = "no such file"
+            raise FileNotFoundError(
+                f"Config file not found: {args_ap.config_file!r} "
+                f"(resolved to {resolved!r}) — {reason}. "
+                f"Check the path passed to -c/--config_file."
+            )
+
+        # inline_comment_prefixes: without it, ConfigParser treats a trailing
+        # "; comment" on the SAME line as a value as part of that value
+        # (only full-line comments are stripped by default) — silently
+        # corrupting any "KEY = value  ; note" style line.
+        config_parser = configparser.ConfigParser(inline_comment_prefixes=(";", "#"))
+        read_ok = config_parser.read(args_ap.config_file)
+        if not read_ok:
+            # Exists but couldn't be read as INI (permissions, encoding, …) —
+            # genuine parse errors (bad syntax) already raise their own
+            # configparser.Error with file/line info; this covers the rest.
+            raise ValueError(
+                f"Config file {args_ap.config_file!r} exists but could not be "
+                f"parsed as an INI file (check permissions/encoding)."
+            )
         args_cp = my_config_parser(config_parser)
+
+        # Fail fast on any config.ini key that SimulationConfig doesn't define
+        # (typo, removed/renamed field, etc.) instead of silently dropping it —
+        # see SimulationConfig's `extra="forbid"` for the matching check on
+        # kwargs passed directly in Python. Raises with a did-you-mean
+        # suggestion per unrecognised key (see _check_known_config_fields).
+        _check_known_config_fields(args_cp, args_ap.config_file)
 
         for cp_arg in args_cp:
             name, value = cp_arg

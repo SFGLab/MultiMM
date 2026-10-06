@@ -97,6 +97,10 @@ class SimulationConfig(BaseModel):
         "populate_by_name": True,
         "validate_assignment": True,
         "validate_default": True,
+        # Reject unrecognized keyword arguments outright (defense-in-depth —
+        # run.py's get_config() already checks config.ini keys specifically,
+        # with a clearer error naming the offending file).
+        "extra": "forbid",
     }
 
     @model_validator(mode="after")
@@ -107,9 +111,34 @@ class SimulationConfig(BaseModel):
             logger.warning(
                 "HIC_K_SCALE=%.1f is above the recommended maximum of 200 kJ/mol. "
                 "Very high values can over-constrain the polymer, reduce conformational "
-                "diversity, and cause MD instability. Consider reducing to 10–200.",
+                "diversity, and cause MD instability. Consider reducing to 20–160.",
                 k,
             )
+        return self
+
+    @model_validator(mode="after")
+    def warn_hic_force_misuse(self) -> "SimulationConfig":
+        """Warn when a Hi-C-specific field is set away from its default while
+        HIC_USE_FORCE=False — the whole Hi-C force is disabled, so nothing
+        under HIC_* takes effect at all. Never a hard error, since it doesn't
+        make the simulation incorrect — only some configured value ends up
+        unused.
+        """
+        hic_fields_nondefault = (
+            self.HIC_BOLTZMANN_ALPHA != 4.0 or self.HIC_BOLTZMANN_KERNEL != "exponential"
+            or self.HIC_BOLTZMANN_TOL_FRAC != 0.0
+        )
+
+        if not self.HIC_USE_FORCE and hic_fields_nondefault:
+            logger.warning(
+                "HIC_USE_FORCE=False, but HIC_BOLTZMANN_ALPHA=%s / "
+                "HIC_BOLTZMANN_KERNEL=%s / HIC_BOLTZMANN_TOL_FRAC=%s (set away from "
+                "default) will have no effect — the Hi-C force isn't being built at "
+                "all. Set HIC_USE_FORCE=True to actually apply it, or leave these at "
+                "their defaults if you don't intend to use the Hi-C force.",
+                self.HIC_BOLTZMANN_ALPHA, self.HIC_BOLTZMANN_KERNEL, self.HIC_BOLTZMANN_TOL_FRAC,
+            )
+
         return self
 
     @model_validator(mode="before")
@@ -191,19 +220,22 @@ class SimulationConfig(BaseModel):
         description="Hi-C matrix normalisation method. Options: KR (default), VC, VC_SQRT, NONE.",
     )
     HIC_K_SCALE: float = Field(
-        default=20.0,
+        default=40.0,
         description=(
-            "Global energy scale for the Hi-C force [kJ/mol]. Recommended range: 5–20. "
-            "Values above 30 can freeze MD; above 200 triggers a runtime warning. Each "
-            "pair's force is already weighted by its own observed contact strength "
-            "c_ij, so weak-evidence pairs stay proportionally soft without a separate knob."
+            "Global energy scale for the Hi-C force [kJ/mol]. Recommended range: 20–80 "
+            "(default 40); higher values (up to ~160) consistently improved insulation-"
+            "score validation in testing with no diagonal-decay cost, for N_BEADS >= 300 "
+            "-- below that, gains are less consistent, so lower values may suit small "
+            "systems better. Above 200 triggers a runtime warning. Each pair's force is "
+            "already weighted by its own observed contact strength c_ij, so weak-evidence "
+            "pairs stay proportionally soft without a separate knob."
         ),
     )
     HIC_RC: Optional[float] = Field(
         default=None,
         description=(
-            "Explicit contact-radius scale [nm] for the Hi-C force's own kernel — "
-            "independent of r_comp (the compartment/subcompartment block-copolymer "
+            "Explicit contact-radius scale [nm] for the Hi-C force's own target-distance "
+            "mapping — independent of r_comp (the compartment/subcompartment block-copolymer "
             "force's interaction range, set in set_radiuses() from nucleus geometry). "
             "The two forces are physically unrelated and are no longer tied to the "
             "same value. Default None: the Hi-C force picks its own scale instead — "
@@ -214,70 +246,55 @@ class SimulationConfig(BaseModel):
             "of HIC_AUTO_SCALE."
         ),
     )
-    HIC_KERNEL: str = Field(
-        default="gaussian",
+    HIC_BOLTZMANN_ALPHA: float = Field(
+        default=4.0,
         description=(
-            "Distance → contact-probability kernel P(r) used by the Hi-C force.  Each kernel "
-            "has its own extra parameter(s), named HIC_<KERNEL>_* below, that only take effect "
-            "when that kernel is selected.  Options: "
-            "'gaussian' (default, P=exp(-r²/2σ²), width HIC_GAUSSIAN_SIGMA), "
-            "'power_law' / 'sigmoid' (P=1/(1+(r/r_c)^alpha), steepness HIC_POWERLAW_ALPHA), "
-            "'exponential' (P=exp(-r/r_c), persistent long-range pull), "
-            "'erfc' (soft step at r_c with width HIC_ERFC_SIGMA — closest to a binary Hi-C "
-            "contact definition), "
-            "'rouse' (separation-aware Gaussian-chain model, P=erfc(r/sqrt(2*s*b²)) with "
-            "s=|i-j| in beads and Kuhn length HIC_ROUSE_KUHN_LENGTH — automatically reproduces "
-            "the expected diagonal decay per genomic separation)."
+            "Hi-C scaling-law exponent converting contact strength to a target 3-D "
+            "distance via classic Boltzmann-inversion: r_target = r_min * c_ij^(-1/alpha), "
+            "clipped to [r_min, rc] (see hic_force.build_boltzmann_force), then restrained "
+            "there with a harmonic well weighted by c_ij — a genuine two-sided restraint "
+            "(pulls if farther than its target, pushes if closer). Typical literature "
+            "range: 3-4; higher values make the strength→distance mapping steeper (weak "
+            "contacts hit the rc cap sooner), for every HIC_BOLTZMANN_KERNEL."
         ),
     )
-    HIC_POWERLAW_ALPHA: float = Field(
-        default=3.0,
+    HIC_BOLTZMANN_KERNEL: str = Field(
+        default="exponential",
         description=(
-            "['power_law'/'sigmoid' kernel only] Steepness of the contact-probability sigmoid: "
-            "P(r) = 1 / (1 + (r/r_c)^alpha).  Has no effect unless HIC_KERNEL is 'power_law' or "
-            "'sigmoid'.  "
-            "Controls how sharply the force transitions between attraction and repulsion "
-            "at the contact radius r_c.  "
-            "Lower values (2) give a broad, gradual transition; higher values (4–6) "
-            "give a sharper, TAD-like step.  Recommended range: 2–4."
+            "P(r) shape assumed for the Hi-C Boltzmann-PMF's equilibrium pair-distance "
+            "distribution, i.e. the c_ij -> r_target inversion (see "
+            "hic_force.get_boltzmann_p_func / _boltzmann_r_target). Options: "
+            "exponential (default — classic Boltzmann distribution, c ~ exp(-r/lambda), "
+            "lambda = rc/alpha), power_law (Hi-C scaling law, c ~ r^-alpha), "
+            "sigmoid (bounded logistic contact probability, steepness set by alpha/rc). "
+            "All three are exact functional inverses of their own P(r), reuse "
+            "HIC_BOLTZMANN_ALPHA as their steepness knob, and are restrained with the "
+            "same harmonic well — only the strength<->distance mapping's shape changes."
         ),
     )
-    HIC_GAUSSIAN_SIGMA: Optional[float] = Field(
-        default=None,
+    HIC_BOLTZMANN_TOL_FRAC: float = Field(
+        default=0.0,
         description=(
-            "['gaussian' kernel only] Width σ [nm], P(r)=exp(-r²/2σ²).  Has no effect unless "
-            "HIC_KERNEL='gaussian'.  Defaults to rc (the Hi-C force's own contact-radius "
-            "scale — see HIC_RC; a nucleus-scale reach, further auto-calibrated from the "
-            "initial structure when HIC_AUTO_SCALE is True) when not set."
-        ),
-    )
-    HIC_ERFC_SIGMA: Optional[float] = Field(
-        default=None,
-        description=(
-            "['erfc' kernel only] Softening width σ_s [nm] of the step at r_c.  Has no effect "
-            "unless HIC_KERNEL='erfc'.  Smaller values make the step sharper (σ_s→0 recovers a "
-            "binary Hi-C contact definition).  Defaults to 0.3 * rc when not set."
-        ),
-    )
-    HIC_ROUSE_KUHN_LENGTH: Optional[float] = Field(
-        default=None,
-        description=(
-            "['rouse' kernel only] Kuhn (statistical segment) length b [nm], where "
-            "<r²(s)> = s*b² for genomic separation s (in beads).  Has no effect unless "
-            "HIC_KERNEL='rouse'.  Defaults to rc when not set."
+            "Flat-bottom tolerance for the Hi-C restraint well, as a fraction of each "
+            "pair's own r_target (e.g. 0.2 -> +-20%% zero-force zone around the target, "
+            "harmonic beyond it). 0 (default) is the original exact two-sided harmonic "
+            "well. Weak/background pairs end up with very similar (often rc-capped) "
+            "r_target values; with no tolerance, restraining a large share of all pairs "
+            "to one exact shared distance tends to spread beads onto a spherical shell "
+            "(same mechanism as the Thomson problem) rather than a graded globule. A "
+            "nonzero tol_frac (try 0.15-0.3) removes that false precision without "
+            "discarding any contacts. See hic_force.build_boltzmann_force."
         ),
     )
     HIC_FORCE_OE: Boolean = Field(
         default=False,
         description=(
-            "If True, target enrichment-above-background (OE ratio minus 1, "
-            "floored at 0) instead of raw contact frequency: pairs at or below the expected "
-            "distance-decay baseline (not enriched — 'towards -1' on the displayed "
-            "log2(O/E) scale) get exactly zero force weight, so they are neither pulled "
-            "together nor pushed apart ('loose'); only genuinely enriched pairs attract, "
-            "most strongly for the most-enriched ('towards +1'). Set False to instead "
-            "target raw (KR-balanced) contact frequency directly, which also pulls "
-            "short-range/background pairs together just from their high absolute count."
+            "If False (default), target raw (KR-balanced) contact frequency directly. "
+            "If True, target enrichment-above-background (OE ratio minus 1, floored at "
+            "0) instead: pairs at/below the expected distance-decay baseline get zero "
+            "force weight ('loose'); only enriched pairs attract. OE scores higher on "
+            "PC1/OE-Pearson metrics in testing, but raw frequency gave better overall "
+            "results in practice (diagonal decay + insulation), hence the default."
         ),
     )
     HIC_NOISE_INTENSITY: float = Field(
@@ -295,20 +312,60 @@ class SimulationConfig(BaseModel):
     HIC_AUTO_SCALE: Boolean = Field(
         default=True,
         description=(
-            "If True (default, recommended), recalibrate the Hi-C force's distance-kernel "
-            "scale (rc and any unset HIC_GAUSSIAN_SIGMA/HIC_ERFC_SIGMA/"
-            "HIC_ROUSE_KUHN_LENGTH) from the median (50th percentile) of the actual initial "
+            "If True (default, recommended), recalibrate the Hi-C force's contact-radius "
+            "scale (rc) from the median (50th percentile) of the actual initial "
             "structure's pairwise-distance distribution (hic_force.auto_contact_scale) "
             "instead of a fixed default, which can leave the force with no gradient at "
             "realistic bead separations and barely change the structure from its initial "
             "state. The 50th-percentile choice is fixed, not a separate tunable knob: it's "
             "simply the right scale for most contacted pairs — not just the closest — to "
-            "start within the kernel's reach."
+            "start within the force's reach."
         ),
     )
     HIC_MAX_GAP: int = Field(
         default=10,
         description="Maximum gap fraction (in %) tolerated when interpolating missing Hi-C bins.",
+    )
+    HIC_INSULATION_WINDOW: int = Field(
+        default=10,
+        description=(
+            "Half-width (beads) of the sliding square used by Hi-C validation's "
+            "insulation-score metric (validation.insulation_score) — the full window is "
+            "2x this value. Should roughly match the bead-scale size of a real TAD/domain "
+            "for your resolution and N_BEADS; too small or too large relative to the "
+            "actual domain size weakens the insulation_r correlation reported in "
+            "hic_validation.npy even when the force itself is working well, since the "
+            "metric is then measuring boundaries at the wrong genomic scale."
+        ),
+    )
+    HIC_BLOCK_COPOLYMER: Boolean = Field(
+        default=False,
+        description=(
+            "Opt-in: derive A/B compartments straight from the Hi-C matrix's own PC1 "
+            "(sign-aligned to local contact density: dense -> B, sparse -> A) and feed "
+            "them into the same block-copolymer force normally built from a .bed file — "
+            "the Boltzmann force alone reproduces diagonal decay/insulation well but "
+            "tends to miss PC1 correlation, so this adds it back with no .bed file "
+            "needed. Suggested use: enable it when you have HIC_USE_FORCE=True, no "
+            "compartment .bed file, and a region large enough to actually contain "
+            "compartments (see HIC_BLOCK_COPOLYMER_MIN_BP) — e.g. a whole chromosome or "
+            "genome-wide run; leave it off for TAD/region-scale runs, where it has no "
+            "effect anyway. Only takes effect when HIC_USE_FORCE=True and no "
+            "COMPARTMENT_PATH is given; auto-disables (with a warning) when the "
+            "modelled region is below HIC_BLOCK_COPOLYMER_MIN_BP. Raises an error if a "
+            ".bed-based compartment force (COB_USE_COMPARTMENT_BLOCKS / "
+            "SCB_USE_SUBCOMPARTMENT_BLOCKS) is also enabled — pick one source of "
+            "compartments, not both."
+        ),
+    )
+    HIC_BLOCK_COPOLYMER_MIN_BP: float = Field(
+        default=5_000_000,
+        description=(
+            "Minimum modelled region size (bp) for HIC_BLOCK_COPOLYMER to stay enabled. "
+            "A/B compartments need several alternating domains to even be visible; below "
+            "this a region is TAD-scale, not compartment-scale, so deriving compartments "
+            "from it doesn't make sense."
+        ),
     )
     GENE_TSV: str = Field(
         default=default_gene_path,

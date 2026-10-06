@@ -16,7 +16,7 @@ from .read_hic import read_hic_matrix
 from .hic_force import build_hic_force, auto_contact_scale
 from .validation import (
     validate_hic_model, validate_hic_ensemble, validate_loops, validate_compartments,
-    validate_distance_vs_strength,
+    validate_compartment_aggregation, validate_distance_vs_strength,
 )
 from .logger import log_table, log_section, log_success
 from .quality_tests import run_quality_tests
@@ -41,10 +41,18 @@ class MultiMM:
             "total": [],
             "temperature": [],
             "rmsd": [],          # per-sampling-step RMSD vs minimised structure (nm)
+            "energy_components": {},   # per-term energy, filled in once forces are built
         }
 
         # Positions saved right after energy minimisation (used for MD mobility check)
         self.minimized_positions = None
+
+        # name -> OpenMM force-group id, one per active force term — lets
+        # run_md() query each term's energy separately (getState(groups={id}))
+        # for the per-component energy-vs-time plot. Populated by
+        # _register_force() as each add_*force() method runs.
+        self.force_groups = {}
+        self._next_group = 0
 
         # Import args
         self.args = args
@@ -193,20 +201,46 @@ class MultiMM:
                 "Hi-C force, loop extrusion, and compartment blocks are all enabled. "
                 "This combination may over-constrain the simulation — consider whether you need all three."
             )
+        # A .bed track is no longer the only way to get compartments: with Hi-C
+        # data on hand, HIC_BLOCK_COPOLYMER derives A/B directly from the
+        # matrix's own PC1 (see below) — so "no COMPARTMENT_PATH" alone no
+        # longer means "no compartment data", and the warning should say so.
+        hic_block_copolymer_requested = (
+            args.HIC_BLOCK_COPOLYMER and args.HIC_USE_FORCE and not _is_empty(args.HIC_PATH)
+        )
         if not _is_empty(args.CHROM) and _is_empty(args.COMPARTMENT_PATH):
+            if hic_block_copolymer_requested:
+                logger.info(
+                    "Running chromosome-level simulation with no compartment .bed file, but "
+                    "HIC_BLOCK_COPOLYMER=True will derive A/B compartments directly from the "
+                    "Hi-C matrix's own PC1 instead (subject to the HIC_BLOCK_COPOLYMER_MIN_BP "
+                    "size gate — see the warning below if the region turns out too small)."
+                )
+            else:
+                logger.warning(
+                    "Running chromosome-level simulation without compartment data. Consider "
+                    "supplying COMPARTMENT_PATH, or — if you have a Hi-C matrix "
+                    "(HIC_USE_FORCE=True + HIC_PATH) — enabling HIC_BLOCK_COPOLYMER to derive "
+                    "compartments directly from it instead, with no .bed file needed."
+                )
+        # Any of loops, Hi-C force, or a compartment-block force (.bed-based or,
+        # at large enough scale, Hi-C-derived) supplies a long-range restraint —
+        # only warn when the region truly has none of them.
+        has_long_range_restraint = (
+            not _is_empty(args.LOOPS_PATH)
+            or args.HIC_USE_FORCE
+            or args.COB_USE_COMPARTMENT_BLOCKS
+            or args.SCB_USE_SUBCOMPARTMENT_BLOCKS
+        )
+        if not _is_empty(args.LOC_START) and not has_long_range_restraint:
             logger.warning(
-                "Running chromosome-level simulation without compartment data. "
-                "Consider supplying COMPARTMENT_PATH for better structural accuracy."
+                "Running a TAD/region simulation without loops, Hi-C force, or compartment "
+                "blocks. The polymer will lack long-range structural constraints."
             )
-        if (
-            not _is_empty(args.LOC_START)
-            and _is_empty(args.LOOPS_PATH)
-            and not args.HIC_USE_FORCE
-        ):
-            logger.warning(
-                "Running a TAD/region simulation without loops or Hi-C data. "
-                "The polymer will lack long-range structural constraints."
-            )
+
+        # HIC_BLOCK_COPOLYMER: Hi-C-derived compartments (region-size gate, the
+        # HIC_FORCE_OE warning, and the bed-vs-Hi-C conflict error all happen here).
+        self._hic_block_copolymer_active = self._resolve_hic_block_copolymer(coords)
 
         # ── Hyperparameter summary ────────────────────────────────────────────
         self._log_hyperparameters()
@@ -245,6 +279,10 @@ class MultiMM:
                     title="Hi-C matrix loaded",
                     log_fn=logger.info,
                 )
+                # HIC_BLOCK_COPOLYMER: only when no .bed compartments were
+                # given (self.Cs is still None) — see _resolve_hic_block_copolymer.
+                if self.Cs is None and self._hic_block_copolymer_active:
+                    self._derive_hic_compartments()
             except Exception as exc:
                 logger.error(f"Failed to load Hi-C data: {exc}")
                 if args.HIC_USE_FORCE:
@@ -279,6 +317,71 @@ class MultiMM:
                 self.chrom_strength[self.chr_ends[i] : self.chr_ends[i + 1]] = chrom_strength[i]
 
         log_success("Data Loading", logger)
+
+    def _resolve_hic_block_copolymer(self, coords) -> bool:
+        """Decide whether HIC_BLOCK_COPOLYMER is actually active this run.
+
+        Combines the user's flag with the region-size gate and the two
+        documented guardrails (see config.py / README's HIC_BLOCK_COPOLYMER).
+        Called early (before Hi-C data loads) since the bed-vs-Hi-C conflict
+        and region-size checks don't need the matrix itself.
+        """
+        args = self.args
+        if not args.HIC_BLOCK_COPOLYMER:
+            return False
+        if not args.HIC_USE_FORCE or _is_empty(args.HIC_PATH):
+            return False  # nothing to derive PC1 from
+
+        if args.COB_USE_COMPARTMENT_BLOCKS or args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
+            raise ValueError(
+                "HIC_BLOCK_COPOLYMER=True (the default) and a .bed-based compartment "
+                "force (COB_USE_COMPARTMENT_BLOCKS / SCB_USE_SUBCOMPARTMENT_BLOCKS) are "
+                "both enabled. Choose one source of compartments: set "
+                "HIC_BLOCK_COPOLYMER=False to keep your .bed compartments, or disable "
+                "COB_USE_COMPARTMENT_BLOCKS/SCB_USE_SUBCOMPARTMENT_BLOCKS to use the "
+                "Hi-C-derived ones instead."
+            )
+
+        span_bp = (coords[1] - coords[0]) if coords is not None else None
+        if span_bp is not None and span_bp < args.HIC_BLOCK_COPOLYMER_MIN_BP:
+            logger.warning(
+                "HIC_BLOCK_COPOLYMER=True but the modelled region (%.2f Mb) is below "
+                "HIC_BLOCK_COPOLYMER_MIN_BP (%.2f Mb) — that's TAD-scale, not "
+                "compartment-scale, so A/B compartments wouldn't be meaningful here. "
+                "Disabling it for this run.",
+                span_bp / 1e6, args.HIC_BLOCK_COPOLYMER_MIN_BP / 1e6,
+            )
+            return False
+
+        if args.HIC_FORCE_OE:
+            logger.warning(
+                "HIC_FORCE_OE=True together with HIC_BLOCK_COPOLYMER=True: the "
+                "Boltzmann force already strongly optimises O/E (compartment-level) "
+                "enrichment on its own, so adding the block-copolymer force on top can "
+                "over-weight compartments. Consider HIC_FORCE_OE=False when using "
+                "HIC_BLOCK_COPOLYMER."
+            )
+
+        return True
+
+    def _derive_hic_compartments(self) -> None:
+        """Build self.Cs from the Hi-C matrix's own PC1 (HIC_BLOCK_COPOLYMER)
+        instead of a .bed file: PC1 of the O/E matrix, sign-aligned to local
+        contact density (dense -> B, sparse -> A), discretized to the same
+        +1/-1/0 labels import_bed() uses — then add_compartment_blocks() (the
+        existing block-copolymer force) consumes it exactly as it would bed
+        data.
+        """
+        pc1 = hic_pc1(self.hic_matrix, already_oe=False, k=1)
+        density = bead_contact_density(self.hic_matrix)
+        pc1 = align_pc1_sign(pc1, density)
+        self.Cs = discretize_compartments(pc1)
+        np.save(self.save_path + "metadata/compartments_from_hic.npy", self.Cs)
+        logger.info(
+            "Compartments derived from Hi-C PC1 (HIC_BLOCK_COPOLYMER): "
+            "%d A beads, %d B beads, %d unassigned.",
+            int((self.Cs > 0).sum()), int((self.Cs < 0).sum()), int((self.Cs == 0).sum()),
+        )
 
     def _log_hyperparameters(self) -> None:
         """Print a compact summary table of key simulation hyperparameters."""
@@ -319,9 +422,15 @@ class MultiMM:
             "Active forces",
             ("Loop extrusion",    f"✓  k={_fmt(a.LE_HARMONIC_BOND_K)}  fixed={a.LE_FIXED_DISTANCES}"
                                    if a.LE_USE_HARMONIC_BOND else "—"),
-            ("Hi-C force",        f"✓  kernel={a.HIC_KERNEL}  k_scale={a.HIC_K_SCALE}"
+            ("Hi-C force",        (f"✓  kernel={a.HIC_BOLTZMANN_KERNEL}  "
+                                    f"boltzmann_alpha={a.HIC_BOLTZMANN_ALPHA}  "
+                                    f"k_scale={a.HIC_K_SCALE}"
+                                    + (f"  tol_frac={a.HIC_BOLTZMANN_TOL_FRAC}"
+                                       if a.HIC_BOLTZMANN_TOL_FRAC else ""))
                                    if a.HIC_USE_FORCE else "—"),
-            ("Compartment A/B",   f"✓  Ea={a.COB_EA}  Eb={a.COB_EB}" if a.COB_USE_COMPARTMENT_BLOCKS else "—"),
+            ("Compartment A/B",   (f"✓  Ea={a.COB_EA}  Eb={a.COB_EB}"
+                                    + ("  (.bed)" if a.COB_USE_COMPARTMENT_BLOCKS else "  (Hi-C PC1)"))
+                                   if (a.COB_USE_COMPARTMENT_BLOCKS or self._hic_block_copolymer_active) else "—"),
             ("Subcompartments",   "✓" if a.SCB_USE_SUBCOMPARTMENT_BLOCKS else "—"),
             ("Chr territories",   "✓" if a.CHB_USE_CHROMOSOMAL_BLOCKS  else "—"),
             ("Container",         f"✓  scale={a.SC_SCALE}" if a.SC_USE_SPHERICAL_CONTAINER else "—"),
@@ -344,6 +453,25 @@ class MultiMM:
 
         log_table(rows, title="Simulation — hyperparameters", log_fn=logger.info)
 
+    def _next_force_group_id(self) -> int:
+        """Allocate the next unique OpenMM force-group id (0-31)."""
+        gid = self._next_group
+        if gid > 31:
+            raise RuntimeError("Too many distinct force terms — OpenMM force groups are limited to 0-31.")
+        self._next_group += 1
+        return gid
+
+    def _register_force(self, force, name: str) -> int:
+        """Give *force* its own OpenMM force group and record it under *name*
+        in self.force_groups, so run_md can later query this term's energy on
+        its own (getState(groups={id})) and plot each enabled force's energy
+        contribution separately over time — see plots.plot_energy_components.
+        """
+        gid = self._next_force_group_id()
+        force.setForceGroup(gid)
+        self.force_groups[name] = gid
+        return gid
+
     def add_evforce(self):
         """Excluded volume force with optional soft-core formulations.
 
@@ -362,7 +490,7 @@ class MultiMM:
             sigma_val = float(sigma)
 
         self.ev_force = mm.CustomNonbondedForce("0")
-        self.ev_force.setForceGroup(1)
+        self._register_force(self.ev_force, "Excluded volume")
 
         self.ev_force.addGlobalParameter("epsilon", self.args.EV_EPSILON)
         self.ev_force.addGlobalParameter("r_small", self.args.EV_R_SMALL)
@@ -404,7 +532,7 @@ class MultiMM:
         mode = getattr(self.args, "COB_FORCE_TYPE", "gaussian")
 
         self.comp_force = mm.CustomNonbondedForce("0")
-        self.comp_force.setForceGroup(1)
+        self._register_force(self.comp_force, "Compartment blocks")
 
         # Shared parameters
         self.comp_force.addGlobalParameter("rc", self.r_comp)
@@ -480,7 +608,7 @@ class MultiMM:
         mode = getattr(self.args, "SCB_FORCE_TYPE", "gaussian")
 
         self.scomp_force = mm.CustomNonbondedForce("0")
-        self.scomp_force.setForceGroup(1)
+        self._register_force(self.scomp_force, "Subcompartment blocks")
 
         # Shared parameters
         self.scomp_force.addGlobalParameter("rsc", self.r_comp)
@@ -570,7 +698,7 @@ class MultiMM:
         mode = getattr(self.args, "CHB_FORCE_TYPE", "polynomial")
 
         self.chrom_block_force = mm.CustomNonbondedForce("0")
-        self.chrom_block_force.setForceGroup(2)
+        self._register_force(self.chrom_block_force, "Chromosomal blocks")
 
         # ----------------------------------------
         # shared parameters
@@ -629,7 +757,7 @@ class MultiMM:
         self.container_force = mm.CustomExternalForce(
             "C*(max(0, r-R2)^2+max(0, R1-r)^2); r=sqrt((x-x0)^2+(y-y0)^2+(z-z0)^2)"
         )
-        self.container_force.setForceGroup(2)
+        self._register_force(self.container_force, "Spherical container")
         self.container_force.addGlobalParameter("C", defaultValue=self.args.SC_SCALE)
         self.container_force.addGlobalParameter("R1", defaultValue=self.radius1)
         self.container_force.addGlobalParameter("R2", defaultValue=self.radius2)
@@ -654,7 +782,7 @@ class MultiMM:
         mode = getattr(self.args, "BLAMINA_FORCE_TYPE", "sin")
 
         self.Blamina_force = mm.CustomExternalForce("0")
-        self.Blamina_force.setForceGroup(2)
+        self._register_force(self.Blamina_force, "B-lamina interaction")
 
         # Common parameters
         self.Blamina_force.addGlobalParameter("B", self.args.IBL_SCALE)
@@ -732,7 +860,7 @@ class MultiMM:
         mode = getattr(self.args, "CENTRAL_FORCE_TYPE", "harmonic")
 
         self.central_force = mm.CustomExternalForce("0")
-        self.central_force.setForceGroup(2)
+        self._register_force(self.central_force, "Central force")
 
         # --------------------------------------------
         # global parameters
@@ -799,7 +927,7 @@ class MultiMM:
 
     def add_harmonic_bonds(self):
         self.bond_force = mm.HarmonicBondForce()
-        self.bond_force.setForceGroup(1)
+        self._register_force(self.bond_force, "Harmonic bonds")
         for i in range(self.system.getNumParticles() - 1):
             if i not in self.chr_ends:
                 self.bond_force.addBond(
@@ -826,7 +954,6 @@ class MultiMM:
         if mode == "harmonic":
 
             self.loop_force = mm.HarmonicBondForce()
-            self.loop_force.setForceGroup(1)
 
             for i, (m, n) in enumerate(zip(self.ms, self.ns)):
                 r0 = self.args.LE_HARMONIC_BOND_R0 if self.args.LE_FIXED_DISTANCES else self.ds[i]
@@ -843,7 +970,6 @@ class MultiMM:
             self.loop_force.addPerBondParameter("r0")
             self.loop_force.addPerBondParameter("k")
             self.loop_force.addPerBondParameter("alpha")
-            self.loop_force.setForceGroup(1)
 
             for i, (m, n) in enumerate(zip(self.ms, self.ns)):
 
@@ -864,7 +990,6 @@ class MultiMM:
             self.loop_force.addPerBondParameter("r0")
             self.loop_force.addPerBondParameter("k")
             self.loop_force.addPerBondParameter("sigma")
-            self.loop_force.setForceGroup(1)
 
             for i, (m, n) in enumerate(zip(self.ms, self.ns)):
 
@@ -878,11 +1003,13 @@ class MultiMM:
         else:
             raise ValueError(f"Unknown loop force type: {mode}")
 
+        # one shared group for all 3 branches above
+        self._register_force(self.loop_force, "Loop extrusion")
         self.system.addForce(self.loop_force)
 
     def add_stiffness(self):
         self.angle_force = mm.HarmonicAngleForce()
-        self.angle_force.setForceGroup(1)
+        self._register_force(self.angle_force, "Harmonic angles")
         for i in range(self.system.getNumParticles() - 2):
             if (i not in self.chr_ends) and (i not in self.chr_ends - 1):
                 self.angle_force.addAngle(
@@ -992,16 +1119,12 @@ class MultiMM:
             default True; see hic_force.auto_contact_scale), using a fixed
             50th-percentile/median (no longer a separate config knob — this
             is simply the right choice for "most pairs, not just the
-            closest few, should start within the kernel's reach", and isn't
+            closest few, should start within the force's reach", and isn't
             meant to be tuned per-run). This differs from validation's own
             auto-scale, which uses a low percentile for visual contrast
             rather than force reach. If HIC_AUTO_SCALE is False, falls back
-            to a
-            nucleus-scale default computed independently of the
-            compartment force's r_comp. All affected length parameters
-            (HIC_GAUSSIAN_SIGMA/HIC_ERFC_SIGMA/HIC_ROUSE_KUHN_LENGTH, which
-            fall back to this scale) are rescaled by the same factor, so
-            only the absolute scale changes, not the kernel shape.
+            to a nucleus-scale default computed independently of the
+            compartment force's r_comp.
           * HIC_RC is set explicitly: used exactly as given — auto-scaling
             is skipped entirely, regardless of HIC_AUTO_SCALE.
 
@@ -1018,14 +1141,10 @@ class MultiMM:
         # realistically get (same length scale add_evforce uses as its EV
         # "sigma"). Cached on self.hic_r_min so the later
         # validate_hic_model/validate_hic_ensemble calls can score against
-        # the exact same kernel dynamic-range calibration the force used —
-        # see hic_force._calibrate_kernel_dynamics.
+        # the exact same target-distance calibration the force used.
         _r0 = self.args.LE_HARMONIC_BOND_R0
         self.hic_r_min = _r0.value_in_unit(nanometers) if isinstance(_r0, Quantity) else float(_r0)
 
-        sigma, sigma_s, kuhn_length = (
-            self.args.HIC_GAUSSIAN_SIGMA, self.args.HIC_ERFC_SIGMA, self.args.HIC_ROUSE_KUHN_LENGTH,
-        )
         explicit_rc = getattr(self.args, "HIC_RC", None)
         calibrated = None
 
@@ -1043,23 +1162,19 @@ class MultiMM:
                 # Fixed median (50th-percentile) calibration — no longer a
                 # tunable config field (formerly HIC_AUTO_SCALE_PERCENTILE):
                 # the force needs reach, so most contacted pairs, not just
-                # the closest, should start within the kernel's range.
+                # the closest, should start within range.
                 _AUTO_SCALE_PERCENTILE = 50.0
                 try:
                     init_coords = get_coordinates_mm(self.pdb.positions)
                     calibrated = auto_contact_scale(
                         init_coords, percentile=_AUTO_SCALE_PERCENTILE,
                     )
-                    factor = (calibrated / rc) if rc > 1e-12 else 1.0
                     logger.info(
                         "Hi-C force auto-calibrated from initial structure: rc=%.4f nm "
                         "(%.0fth percentile of initial pairwise distances; was %.4f nm)",
                         calibrated, _AUTO_SCALE_PERCENTILE, rc,
                     )
                     rc = calibrated
-                    sigma = (sigma * factor) if sigma is not None else None
-                    sigma_s = (sigma_s * factor) if sigma_s is not None else None
-                    kuhn_length = (kuhn_length * factor) if kuhn_length is not None else None
                 except Exception as _e:
                     logger.warning(
                         "Hi-C force auto-calibration failed (%s) — falling back to rc=%.4f nm.",
@@ -1068,15 +1183,16 @@ class MultiMM:
 
         self.hic_rc = rc
 
+        boltzmann_alpha  = getattr(self.args, "HIC_BOLTZMANN_ALPHA", 4.0)
+        boltzmann_kernel = getattr(self.args, "HIC_BOLTZMANN_KERNEL", "exponential")
+
         log_table(
             [
                 ("Normalization", self.args.HIC_NORMALIZATION),
-                ("Kernel",        self.args.HIC_KERNEL),
                 ("k_scale",       f"{self.args.HIC_K_SCALE} kJ/mol"),
-                ("powerlaw_alpha", self.args.HIC_POWERLAW_ALPHA),
-                ("gaussian_sigma", sigma),
-                ("erfc_sigma",     sigma_s),
-                ("rouse_kuhn_length", kuhn_length),
+                ("kernel",        boltzmann_kernel),
+                ("boltzmann_alpha", boltzmann_alpha),
+                ("tol_frac (flat-bottom)", getattr(self.args, "HIC_BOLTZMANN_TOL_FRAC", 0.0)),
                 ("r_min (EV floor)", f"{self.hic_r_min:.4f} nm"),
                 ("rc (hic_rc)",   f"{rc:.4f} nm" + (
                     "  (explicit HIC_RC)" if explicit_rc is not None else
@@ -1090,16 +1206,13 @@ class MultiMM:
             log_fn=logger.info,
         )
         use_noise = getattr(self.args, "HIC_NOISE_INTENSITY", 0.0) > 0
+        hic_group_id = self._next_force_group_id()
         result = build_hic_force(
             H_raw=self.hic_matrix,
             N_beads=self.args.N_BEADS,
             rc=rc,
-            kernel=self.args.HIC_KERNEL,
+            alpha=boltzmann_alpha,
             k_scale=self.args.HIC_K_SCALE,
-            alpha=self.args.HIC_POWERLAW_ALPHA,
-            sigma=sigma,
-            sigma_s=sigma_s,
-            kuhn_length=kuhn_length,
             oe_normalize=self.args.HIC_FORCE_OE,
             already_balanced=True,      # read_hic_matrix already normalises
             return_controller=use_noise,
@@ -1107,10 +1220,14 @@ class MultiMM:
             save_path=self.save_path,
             chrom=self.hic_chrom,
             r_min=self.hic_r_min,
+            kernel=boltzmann_kernel,
+            tol_frac=getattr(self.args, "HIC_BOLTZMANN_TOL_FRAC", 0.0),
+            force_group=hic_group_id,
         )
         force, self.hic_noise = result if use_noise else (result, None)
+        self.force_groups["Hi-C guided force"] = hic_group_id
         self.system.addForce(force)
-        logger.info("Hi-C force added (kernel=%s).", self.args.HIC_KERNEL)
+        logger.info("Hi-C force added (Boltzmann-PMF, kernel=%s, alpha=%.2f).", boltzmann_kernel, boltzmann_alpha)
         if use_noise:
             logger.info(
                 "Hi-C contact-strength noise enabled: intensity=%.3f, redrawn once per "
@@ -1126,7 +1243,7 @@ class MultiMM:
         if self.args.EV_USE_EXCLUDED_VOLUME:
             self.add_evforce()
 
-        if self.args.COB_USE_COMPARTMENT_BLOCKS:
+        if self.args.COB_USE_COMPARTMENT_BLOCKS or self._hic_block_copolymer_active:
             self.add_compartment_blocks()
 
         if self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
@@ -1161,7 +1278,7 @@ class MultiMM:
             ("Harmonic bonds",        "✓" if self.args.POL_USE_HARMONIC_BOND else "–"),
             ("Harmonic angles",       "✓" if self.args.POL_USE_HARMONIC_ANGLE else "–"),
             ("Loop extrusion",        "✓" if (self.args.LE_USE_HARMONIC_BOND and self.ms is not None) else "–"),
-            ("Compartment blocks",    "✓" if self.args.COB_USE_COMPARTMENT_BLOCKS else "–"),
+            ("Compartment blocks",    "✓" if (self.args.COB_USE_COMPARTMENT_BLOCKS or self._hic_block_copolymer_active) else "–"),
             ("Subcompartment blocks", "✓" if self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS else "–"),
             ("Chromosomal blocks",    "✓" if self.args.CHB_USE_CHROMOSOMAL_BLOCKS else "–"),
             ("Spherical container",   "✓" if self.args.SC_USE_SPHERICAL_CONTAINER else "–"),
@@ -1300,6 +1417,27 @@ class MultiMM:
 
         hic_noise = getattr(self, "hic_noise", None)
 
+        # Degrees of freedom for T = 2*KE / (dof * kB), computed once —
+        # matches OpenMM's own StateDataReporter convention: 3 per massive
+        # particle, minus constraints, minus 3 more if COM motion is removed.
+        _kB = 0.008314462618  # kJ/(mol·K)
+        _num_massive = sum(
+            1 for p in range(self.system.getNumParticles())
+            if self.system.getParticleMass(p).value_in_unit(dalton) > 0
+        )
+        _dof = 3 * _num_massive - self.system.getNumConstraints()
+        _has_cmm_remover = any(
+            isinstance(self.system.getForce(f), mm.CMMotionRemover)
+            for f in range(self.system.getNumForces())
+        )
+        if _has_cmm_remover:
+            _dof -= 3
+        _dof = max(1, _dof)
+
+        # per-term energy history, one list per registered force (see
+        # _register_force / plots.plot_energy_components)
+        self.md_history["energy_components"] = {name: [] for name in self.force_groups}
+
         for i in range(_n_frames):
 
             self.simulation.step(_sampling_step)
@@ -1338,20 +1476,19 @@ class MultiMM:
             self.md_history["kinetic"].append(kin_val)
             self.md_history["total"].append(pot_val + kin_val)
 
-            # TEMPERATURE (correct OpenMM way)
-            try:
-                # best case: integrator exposes temperature
-                temp = self.integrator.getTemperature()
-                if hasattr(temp, "value_in_unit"):
-                    temp = temp.value_in_unit(kelvin)
-            except Exception:
-                # fallback: compute from kinetic energy
-                # T = 2K / (3 N k_B)
-                kB = 0.008314462618  # kJ/(mol·K)
-                dof = max(1, self.system.getNumParticles() * 3)
-                temp = (2.0 * kin_val) / (dof * kB)
-
+            # TEMPERATURE — always inferred from kinetic energy via the
+            # equipartition theorem (T = 2*KE / (dof*kB)), never read from
+            # the integrator's thermostat set-point: that's the target the
+            # sim is held near, not a measurement of it.
+            temp = (2.0 * kin_val) / (_dof * _kB)
             self.md_history["temperature"].append(temp)
+
+            # ENERGY COMPONENTS — one potential-energy readout per active
+            # force term (isolated via its own force group).
+            for _name, _gid in self.force_groups.items():
+                _comp_state = self.simulation.context.getState(getEnergy=True, groups={_gid})
+                _comp_val = _comp_state.getPotentialEnergy().value_in_unit(pot.unit)
+                self.md_history["energy_components"][_name].append(_comp_val)
 
             # RMSD vs minimised structure (COM-removed, in nm)
             if self.minimized_positions is not None:
@@ -1444,6 +1581,10 @@ class MultiMM:
             self.save_path,
             target_temperature=target_temp,
         )
+        plot_energy_components(
+            self.md_history,
+            self.save_path,
+        )
         logger.info(f"MD finished in {elapsed:.1f}s — structure saved to {self.save_path}model/MultiMM_afterMD.cif")
 
     def nuc_interpolation(self):
@@ -1532,7 +1673,7 @@ class MultiMM:
                 save_path=self.save_path + f"plots/{out_name}.png",
             )
 
-            # heatmap (always) — same kernel family/parameters as the Hi-C
+            # heatmap (always) — same Boltzmann-PMF parameters as the Hi-C
             # force itself (see add_hic_force / validate_hic_model call
             # sites below), so the structure-derived contact map uses
             # identical methodology to the force it is diagnosing.
@@ -1543,12 +1684,9 @@ class MultiMM:
                     save=True,
                     save_path=self.save_path + f"plots",
                     name=out_name,
-                    kernel=self.args.HIC_KERNEL,
                     rc=getattr(self, "hic_rc", self.radius2 / 3.0),
-                    alpha=self.args.HIC_POWERLAW_ALPHA,
-                    sigma=self.args.HIC_GAUSSIAN_SIGMA,
-                    sigma_s=self.args.HIC_ERFC_SIGMA,
-                    kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
+                    alpha=self.args.HIC_BOLTZMANN_ALPHA,
+                    kernel=self.args.HIC_BOLTZMANN_KERNEL,
                 )
             else:
                 logger.warning("Heatmap skipped — system is too large for visualization (N_BEADS ≥ 50 000).")
@@ -1648,6 +1786,7 @@ class MultiMM:
                     r=0.2,
                     cmap="coolwarm",
                     save_path=self.save_path + f"plots/{name}_compartment_coloring.png",
+                    legend_labels=("B (dense)", "A (sparse)"),
                 )
 
         if self.args.SIM_RUN_MD:
@@ -1663,6 +1802,7 @@ class MultiMM:
                     r=0.2,
                     cmap="coolwarm",
                     save_path=self.save_path + "plots/structure_afterMD_compartment_coloring.png",
+                    legend_labels=("B (dense)", "A (sparse)"),
                 )
 
     def run(self):
@@ -1691,82 +1831,90 @@ class MultiMM:
             self.run_md()
             log_success("Molecular Dynamics Relaxation", logger)
 
-        # ── Visualization ─────────────────────────────────────────────────────
-        if self.args.SAVE_PLOTS:
-            log_section("Visualization")
-            logger.info("Creating and saving diagnostic plots …")
-            self.make_plots()
-            log_success("Visualization", logger)
-
-        # Run nucleosome interpolation
-        if self.args.NUC_DO_INTERPOLATION and self.args.ATACSEQ_PATH is not None:
-            self.nuc_interpolation()
-
         # ── Validation ────────────────────────────────────────────────────────
-        if self.args.HIC_USE_FORCE and self.hic_matrix is not None:
+        # Deliberately runs BEFORE Visualization/nucleosome interpolation
+        # below: validation only reads the .cif files already written to
+        # disk plus the Hi-C/loop/compartment data already in memory, so it
+        # has no dependency on plotting succeeding. Ordering it first
+        # guarantees the validation tables and metadata/*.npy files are
+        # always produced — even if plotting later fails outright, including
+        # a hard native crash from the offscreen PyVista/VTK renderer (an
+        # environment-specific rendering-stack issue), which a Python
+        # try/except cannot catch and would otherwise take the rest of the
+        # run down with it.
+        # Every gate below now explains itself when it skips — a validation
+        # silently not running (e.g. HIC_USE_FORCE=True but the Hi-C matrix
+        # never loaded) used to be indistinguishable from "nothing to do".
+        hic_validation_ready = self.args.HIC_USE_FORCE and self.hic_matrix is not None
+        if self.args.HIC_USE_FORCE and self.hic_matrix is None:
+            logger.warning(
+                "Hi-C validation skipped: HIC_USE_FORCE=True but no Hi-C matrix is loaded. "
+                "Check HIC_PATH and the 'Data Loading' section above for a load error."
+            )
+        elif not self.args.HIC_USE_FORCE:
+            logger.info("Hi-C validation skipped: HIC_USE_FORCE=False.")
+
+        if hic_validation_ready:
             log_section("Validation")
             logger.info("Running Hi-C validation …")
-            # Match n_rw to the actual frame count: if TRJ_FRAMES was set use
-            # that; otherwise derive from SIM_N_STEPS / SIM_SAMPLING_STEP.
-            _n_rw = (
-                self.args.TRJ_FRAMES
-                if self.args.TRJ_FRAMES is not None
-                else self.args.SIM_N_STEPS // self.args.SIM_SAMPLING_STEP
-            )
-            if self.args.SIM_RUN_MD:
-                # Ensemble validation: collect all saved MD frame CIFs.
-                import glob as _glob
-                frame_dir = self.save_path + "md_frames/"
-                frame_paths = sorted(
-                    _glob.glob(frame_dir + "frame_*.cif"),
-                    key=lambda p: int(p.rsplit("_", 1)[-1].split(".")[0]),
+            try:
+                # Match n_rw to the actual frame count: if TRJ_FRAMES was set
+                # use that; otherwise derive from SIM_N_STEPS / SIM_SAMPLING_STEP.
+                _n_rw = (
+                    self.args.TRJ_FRAMES
+                    if self.args.TRJ_FRAMES is not None
+                    else self.args.SIM_N_STEPS // self.args.SIM_SAMPLING_STEP
                 )
-                if frame_paths:
-                    metrics = validate_hic_ensemble(
-                        frame_paths, self.hic_matrix,
-                        save_path=self.save_path, log=logger,
-                        n_rw=_n_rw,
-                        confine_radius_nm=self.radius2,
-                        kernel=self.args.HIC_KERNEL,
-                        rc=self.hic_rc,
-                        alpha=self.args.HIC_POWERLAW_ALPHA,
-                        sigma=self.args.HIC_GAUSSIAN_SIGMA,
-                        sigma_s=self.args.HIC_ERFC_SIGMA,
-                        kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
-                        r_min=self.hic_r_min,
+                if self.args.SIM_RUN_MD:
+                    # Ensemble validation: collect all saved MD frame CIFs.
+                    import glob as _glob
+                    frame_dir = self.save_path + "md_frames/"
+                    frame_paths = sorted(
+                        _glob.glob(frame_dir + "frame_*.cif"),
+                        key=lambda p: int(p.rsplit("_", 1)[-1].split(".")[0]),
                     )
+                    if frame_paths:
+                        metrics = validate_hic_ensemble(
+                            frame_paths, self.hic_matrix,
+                            save_path=self.save_path, log=logger,
+                            n_rw=_n_rw,
+                            confine_radius_nm=self.radius2,
+                            rc=self.hic_rc,
+                            alpha=self.args.HIC_BOLTZMANN_ALPHA,
+                            r_min=self.hic_r_min,
+                            kernel=self.args.HIC_BOLTZMANN_KERNEL,
+                            insulation_window=self.args.HIC_INSULATION_WINDOW,
+                        )
+                    else:
+                        logger.warning("No MD frame files found — falling back to minimized structure.")
+                        metrics = validate_hic_model(
+                            self.save_path + "model/MultiMM_minimized.cif",
+                            self.hic_matrix, save_path=self.save_path, log=logger,
+                            n_rw=_n_rw,
+                            confine_radius_nm=self.radius2,
+                            rc=self.hic_rc,
+                            alpha=self.args.HIC_BOLTZMANN_ALPHA,
+                            r_min=self.hic_r_min,
+                            kernel=self.args.HIC_BOLTZMANN_KERNEL,
+                            insulation_window=self.args.HIC_INSULATION_WINDOW,
+                        )
                 else:
-                    logger.warning("No MD frame files found — falling back to minimized structure.")
                     metrics = validate_hic_model(
                         self.save_path + "model/MultiMM_minimized.cif",
                         self.hic_matrix, save_path=self.save_path, log=logger,
                         n_rw=_n_rw,
                         confine_radius_nm=self.radius2,
-                        kernel=self.args.HIC_KERNEL,
                         rc=self.hic_rc,
-                        alpha=self.args.HIC_POWERLAW_ALPHA,
-                        sigma=self.args.HIC_GAUSSIAN_SIGMA,
-                        sigma_s=self.args.HIC_ERFC_SIGMA,
-                        kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
+                        alpha=self.args.HIC_BOLTZMANN_ALPHA,
                         r_min=self.hic_r_min,
+                        kernel=self.args.HIC_BOLTZMANN_KERNEL,
+                        insulation_window=self.args.HIC_INSULATION_WINDOW,
                     )
-            else:
-                metrics = validate_hic_model(
-                    self.save_path + "model/MultiMM_minimized.cif",
-                    self.hic_matrix, save_path=self.save_path, log=logger,
-                    n_rw=_n_rw,
-                    confine_radius_nm=self.radius2,
-                    kernel=self.args.HIC_KERNEL,
-                    rc=self.hic_rc,
-                    alpha=self.args.HIC_POWERLAW_ALPHA,
-                    sigma=self.args.HIC_GAUSSIAN_SIGMA,
-                    sigma_s=self.args.HIC_ERFC_SIGMA,
-                    kuhn_length=self.args.HIC_ROUSE_KUHN_LENGTH,
-                    r_min=self.hic_r_min,
-                )
-            np.save(self.save_path + "metadata/hic_validation.npy", metrics)
-            logger.info("Hi-C validation metrics saved → %smetadata/hic_validation.npy", self.save_path)
-            log_success("Validation", logger)
+                np.save(self.save_path + "metadata/hic_validation.npy", metrics)
+                logger.info("Hi-C validation metrics saved → %smetadata/hic_validation.npy", self.save_path)
+                log_success("Validation", logger)
+            except Exception as exc:
+                logger.error(f"Hi-C validation failed: {exc}", exc_info=True)
 
         # ── Input-vs-output diagnostics (loops / compartments) ────────────────
         final_cif = self.save_path + (
@@ -1776,7 +1924,7 @@ class MultiMM:
         # ── Distance vs. experimental strength: does the force actually pull
         # high-strength (enriched) pairs closer and leave low-strength
         # (background/depleted) pairs alone? ──────────────────────────────────
-        if self.args.HIC_USE_FORCE and self.hic_matrix is not None:
+        if hic_validation_ready:
             log_section("Distance vs. Strength Validation")
             try:
                 dvs_metrics = validate_distance_vs_strength(
@@ -1788,6 +1936,7 @@ class MultiMM:
                 log_success("Distance vs. Strength Validation", logger)
             except Exception as exc:
                 logger.warning(f"Distance-vs-strength validation failed: {exc}")
+
         if self.ms is not None and self.ns is not None and len(self.ms) > 0:
             log_section("Loop Validation")
             logger.info("Checking input loop anchors (.bedpe) against the output structure …")
@@ -1800,6 +1949,8 @@ class MultiMM:
                 log_success("Loop Validation", logger)
             except Exception as exc:
                 logger.warning(f"Loop validation failed: {exc}")
+        else:
+            logger.info("Loop validation skipped: no loop data (LOOPS_PATH not provided, or no valid anchors).")
 
         if self.Cs is not None and len(self.Cs) > 0:
             log_section("Compartment Validation")
@@ -1813,6 +1964,27 @@ class MultiMM:
                 log_success("Compartment Validation", logger)
             except Exception as exc:
                 logger.warning(f"Compartment validation failed: {exc}")
+
+            # 3D spatial check (distinct from the 1D PC1-vs-track check above):
+            # do same-compartment beads actually cluster together in space?
+            # Runs for ANY source of self.Cs — a .bed track or Hi-C-derived
+            # PC1 (HIC_BLOCK_COPOLYMER) alike.
+            log_section("Compartment Aggregation Validation")
+            try:
+                agg_metrics = validate_compartment_aggregation(
+                    final_cif, self.Cs, save_path=self.save_path, log=logger,
+                )
+                if agg_metrics:
+                    np.save(self.save_path + "metadata/compartment_aggregation.npy", agg_metrics)
+                log_success("Compartment Aggregation Validation", logger)
+            except Exception as exc:
+                logger.warning(f"Compartment aggregation validation failed: {exc}")
+        else:
+            logger.info(
+                "Compartment validation skipped: no compartment data (COMPARTMENT_PATH not "
+                "provided, and HIC_BLOCK_COPOLYMER did not derive any — see the warnings "
+                "near the top of the log if you expected it to)."
+            )
 
         save_args_to_txt(self.args, self.args.OUT_PATH + "/metadata/parameters.txt")
 
@@ -1835,5 +2007,29 @@ class MultiMM:
         except Exception as _qt_exc:
             logger.warning("Quality tests raised an exception and were skipped: %s", _qt_exc)
         log_success("Quality Control", logger)
+
+        # ── Nucleosome interpolation ──────────────────────────────────────────
+        # Writes a separate MultiMM_minimized_with_nucs.cif; does not touch
+        # the files Validation above already read, so its ordering here (and
+        # guarding) is independent of that concern — guarded anyway so a
+        # failure here can't take out the final log_success below.
+        if self.args.NUC_DO_INTERPOLATION and self.args.ATACSEQ_PATH is not None:
+            try:
+                self.nuc_interpolation()
+            except Exception as exc:
+                logger.warning(f"Nucleosome interpolation failed: {exc}")
+
+        # ── Visualization ─────────────────────────────────────────────────────
+        # Runs LAST and guarded: see the note above Validation — a plotting
+        # failure must never prevent Validation/Quality Control from running,
+        # and by this point they already have.
+        if self.args.SAVE_PLOTS:
+            log_section("Visualization")
+            logger.info("Creating and saving diagnostic plots …")
+            try:
+                self.make_plots()
+                log_success("Visualization", logger)
+            except Exception as exc:
+                logger.error(f"Visualization failed, continuing without it: {exc}", exc_info=True)
 
         log_success("MultiMM", logger)

@@ -13,8 +13,8 @@ from scipy.stats import gaussian_kde, rankdata
 from matplotlib.lines import Line2D
 import matplotlib.colors as mcolors
 from mpl_toolkits.mplot3d import Axes3D
-from .utils import get_coordinates_cif
-from .hic_force import get_kernel_p_func, auto_contact_scale
+from .utils import get_coordinates_cif, oe_matrix
+from .hic_force import get_boltzmann_p_func, auto_contact_scale
 
 logger = logging.getLogger(__name__)
 
@@ -329,6 +329,65 @@ def plot_projection(struct_3D, Cs, save_path, name="structure"):
     fig.savefig(os.path.join(base, f"{name}_projection.png"), dpi=250)
     plt.close(fig)
 
+
+def plot_compartment_aggregation(same_d, diff_d, purity, chance_purity, save_dir,
+                                  name="compartment_aggregation", p_value=None, effect=None, k_eff=10):
+    """One consolidated figure checking whether beads sharing a compartment
+    sign (A-A / B-B — from EITHER an input .bed track or Hi-C-derived PC1)
+    actually end up closer together in 3D than different-compartment (A-B)
+    beads. This is distinct from plot_compartment_validation (which checks
+    1D PC1-vs-input-track agreement) — here we measure real 3D spatial
+    segregation. Pure plotting function: the pairwise-distance/purity
+    arrays and statistics are computed by validation.validate_compartment_
+    aggregation, matching the plot_loop_validation / plot_compartment_
+    validation convention (stats in validation.py, drawing here).
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    sns.set_style("whitegrid")
+
+    same_color, diff_color = "#2a78d6", "#c0392b"
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5.5))
+
+    ax1 = axes[0]
+    parts = ax1.violinplot([same_d, diff_d], showmedians=True, widths=0.8)
+    for pc, color in zip(parts["bodies"], [same_color, diff_color]):
+        pc.set_facecolor(color)
+        pc.set_alpha(0.55)
+        pc.set_edgecolor(color)
+    for key in ("cbars", "cmins", "cmaxes", "cmedians"):
+        parts[key].set_color("#4a4a45")
+    ax1.set_xticks([1, 2])
+    ax1.set_xticklabels(["Same compartment\n(A-A / B-B)", "Different compartment\n(A-B)"])
+    ax1.set_ylabel("Pairwise 3D distance")
+    ax1.set_title("Spatial Separation by Compartment", fontsize=11, fontweight="bold")
+    has_p = p_value is not None and np.isfinite(p_value)
+    sig_label = "n.s." if not has_p else ("p < 0.001" if p_value < 1e-3 else f"p = {p_value:.3g}")
+    eff_label = f"\nEffect size r = {effect:.3f}" if (effect is not None and np.isfinite(effect)) else ""
+    ax1.text(0.5, 0.98, f"Mann-Whitney U (same < diff): {sig_label}{eff_label}",
+             transform=ax1.transAxes, ha="center", va="top", fontsize=9,
+             bbox=dict(boxstyle="round,pad=0.35", fc="white", ec="#c3c2b7", alpha=0.9))
+
+    ax2 = axes[1]
+    sns.histplot(purity, bins=np.linspace(0, 1, 21), color=same_color, alpha=0.75, ax=ax2, stat="density")
+    ax2.axvline(chance_purity, color=diff_color, linestyle="--", linewidth=1.6,
+                label=f"Chance level ({chance_purity:.2f})")
+    ax2.axvline(float(np.mean(purity)), color=same_color, linestyle="-", linewidth=1.8,
+                label=f"Observed mean ({np.mean(purity):.2f})")
+    ax2.set_xlim(0, 1)
+    ax2.set_xlabel(f"Fraction of {k_eff} nearest 3D neighbors\nsharing the bead's compartment sign")
+    ax2.set_ylabel("Density")
+    ax2.set_title("Local Compartment Purity", fontsize=11, fontweight="bold")
+    ax2.legend(frameon=False, fontsize=9)
+
+    fig.suptitle("Compartment Aggregation Validation (3D spatial segregation)", fontsize=14, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
+
+    out_path = os.path.join(save_dir, f"{name}.png")
+    fig.savefig(out_path, dpi=250, bbox_inches="tight")
+    plt.close(fig)
+    logger.info(f"Saved compartment aggregation plot → {out_path}")
+
+
 def _save_plotter(plotter, save_path):
     """
     Save PyVista scene in multiple formats.
@@ -353,7 +412,7 @@ def polyline_from_points(points):
     return poly
 
 
-def viz_structure(V, colors=None, r=0.1, cmap="coolwarm", save_path=None, zoom=1.0):
+def viz_structure(V, colors=None, r=0.1, cmap="coolwarm", save_path=None, zoom=1.0, legend_labels=None):
     """
     Visualize structure V and optionally save it to a file.
 
@@ -363,6 +422,12 @@ def viz_structure(V, colors=None, r=0.1, cmap="coolwarm", save_path=None, zoom=1
     panel where the chain should visibly fill the frame rather than sit as
     a small shape surrounded by empty space. 1.0 (default) keeps the
     original auto-fit framing unchanged.
+
+    `legend_labels`: optional (neg_label, pos_label) pair (e.g. ("B",
+    "A")) — when given together with `save_path`, a small frameless
+    legend is composited onto the saved screenshot so signed/compartment
+    colouring is actually readable (viz_structure otherwise never shows a
+    scalar bar/key).
     """
 
     logger.info(
@@ -390,15 +455,25 @@ def viz_structure(V, colors=None, r=0.1, cmap="coolwarm", save_path=None, zoom=1
         pos = colors > 0
         zero = colors == 0
 
-        # normalize negatives -> [0, 1]
+        # normalize negatives -> [0, 1]. Guard against a degenerate span
+        # (all negatives share one magnitude, e.g. binary +-1 Hi-C-derived
+        # compartments): dividing by ~0 would silently give 0 for every
+        # element, which is indistinguishable from the "no compartment"
+        # (zero) case below — default to 0.0 instead (already the correct,
+        # fully-saturated "B" end).
         if np.any(neg):
             nmin, nmax = colors[neg].min(), colors[neg].max()
-            color_values[neg] = (colors[neg] - nmin) / (nmax - nmin + 1e-12)
+            nspan = nmax - nmin
+            color_values[neg] = (colors[neg] - nmin) / nspan if nspan > 1e-12 else 0.0
 
-        # normalize positives -> [0, 1]
+        # normalize positives -> [0, 1]. Same degenerate-span guard, but
+        # defaulting to 1.0 (fully-saturated "A" end) — 0.0 here would
+        # collide with the zero/unassigned scalar of 0.5 after the 0.5+0.5*
+        # mapping below just as badly as on the negative side.
         if np.any(pos):
             pmin, pmax = colors[pos].min(), colors[pos].max()
-            color_values[pos] = (colors[pos] - pmin) / (pmax - pmin + 1e-12)
+            pspan = pmax - pmin
+            color_values[pos] = (colors[pos] - pmin) / pspan if pspan > 1e-12 else 1.0
 
         # store sign mask separately (IMPORTANT for colormap)
         polyline["colors_raw"] = colors
@@ -449,6 +524,8 @@ def viz_structure(V, colors=None, r=0.1, cmap="coolwarm", save_path=None, zoom=1
     if save_path:
         logger.info(f"Saving visualization to: {save_path}")
         plotter.show(screenshot=save_path)
+        if colors is not None and legend_labels is not None:
+            _composite_signed_legend(save_path, cmap, legend_labels)
     else:
         logger.info("Displaying visualization interactively")
         plotter.show()
@@ -456,6 +533,34 @@ def viz_structure(V, colors=None, r=0.1, cmap="coolwarm", save_path=None, zoom=1
     plotter.close()
 
     logger.info("Visualization finished")
+
+
+def _composite_signed_legend(save_path, cmap_name, legend_labels):
+    """Overlay a small frameless legend (colored dot proxies at the
+    colormap's negative/positive extremes) onto an already-saved
+    screenshot. `viz_structure` renders via an off-screen PyVista plotter
+    with show_scalar_bar=False, so this is the only way a signed/
+    compartment-colored render gets a legible key."""
+    neg_label, pos_label = legend_labels[0], legend_labels[1]
+    try:
+        cmap = plt.get_cmap(cmap_name)
+        img = plt.imread(save_path)
+        h, w = img.shape[0], img.shape[1]
+        fig = plt.figure(figsize=(w / 150, h / 150), dpi=150)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.imshow(img)
+        ax.axis("off")
+        handles = [
+            Line2D([0], [0], marker="o", linestyle="none", markerfacecolor=cmap(1.0),
+                   markeredgecolor="none", markersize=12, label=pos_label),
+            Line2D([0], [0], marker="o", linestyle="none", markerfacecolor=cmap(0.0),
+                   markeredgecolor="none", markersize=12, label=neg_label),
+        ]
+        ax.legend(handles=handles, loc="upper right", frameon=False, fontsize=13, labelcolor="#2b2b28")
+        fig.savefig(save_path, dpi=150)
+        plt.close(fig)
+    except Exception as exc:
+        logger.warning(f"Could not composite legend onto {save_path}: {exc}")
 
 def save_chimera_cmd(start, end, total_residues, cmd_filename="coloring.cmd"):
     """
@@ -567,37 +672,14 @@ def viz_chroms(sim_path, r=0.1, comps=True):
             cmap="coolwarm",
             r=r,
             save_path=sim_path + "plots/minimized_structure_compartments.png",
+            legend_labels=("B (dense)", "A (sparse)"),
         )
         logger.info("Compartment-colored structure saved")
 
     logger.info("Chromosome visualization finished successfully")
 
-def _oe_normalize(mat: np.ndarray) -> np.ndarray:
-    """Apply Observed/Expected normalisation along genomic diagonals.
-
-    For each offset `d` (genomic separation), divide all entries `mat[i, i+d]`
-    by the mean of that diagonal.  This removes the distance-decay baseline
-    that dominates raw contact / distance-proxy matrices and makes the
-    simulated map directly comparable to OE-normalised experimental Hi-C.
-
-    Entries where the diagonal mean is zero or the value is non-finite are set
-    to 0 after normalisation.  The matrix is made symmetric after processing.
-    """
-    N = mat.shape[0]
-    oe = np.zeros_like(mat, dtype=np.float64)
-    for d in range(N):
-        diag = np.diagonal(mat, offset=d).copy()
-        finite_mask = np.isfinite(diag)
-        mean_d = diag[finite_mask].mean() if finite_mask.any() else 0.0
-        if mean_d > 0:
-            norm_diag = np.where(finite_mask, diag / mean_d, 0.0)
-        else:
-            norm_diag = np.zeros_like(diag)
-        idx = np.arange(N - d)
-        oe[idx, idx + d] = norm_diag
-        if d > 0:
-            oe[idx + d, idx] = norm_diag  # symmetric
-    return oe
+# oe_matrix() now lives in utils.py (the single canonical OE-normalisation
+# implementation, shared with validation.py and hic_force.py) — imported above.
 
 
 def _hic_log2_oe(oe_matrix: np.ndarray):
@@ -695,29 +777,27 @@ def get_heatmap(
     oe_normalize=True,
     reorder_by_diagonal=False,
     name="structure",
-    kernel="gaussian",
     rc=None,
-    alpha=3.0,
-    sigma=None,
-    sigma_s=None,
-    kuhn_length=None,
+    alpha=4.0,
     auto_scale=True,
     auto_scale_percentile=10.0,
+    kernel="power_law",
 ):
     """Compute and visualize a contact/interaction heatmap from a 3D structure.
 
-    Uses the same distance->contact-probability kernel family as the Hi-C
-    force (:func:`hic_force.get_kernel_p_func`), so this map and the
-    ensemble-averaged proxy in :func:`plot_hic_comparison` are computed by
-    identical methodology and directly comparable.
+    Uses the same distance->contact-probability inversion as the Hi-C
+    Boltzmann-PMF force (:func:`hic_force.get_boltzmann_p_func`), so this
+    map and the ensemble-averaged proxy in :func:`plot_hic_comparison` are
+    computed by identical methodology and directly comparable.
 
-    kernel/rc/alpha/sigma/sigma_s/kuhn_length mirror the Hi-C force's
-    own parameters. ``rc=None`` is fine when ``auto_scale=True``
-    (default): the length scale is instead recalibrated from a percentile
-    of this structure's own pairwise-distance distribution
-    (:func:`hic_force.auto_contact_scale`, ``auto_scale_percentile``,
-    default 10.0) rather than the force's deliberately microscopic default,
-    which would underflow to ~0 contact probability for most pairs here.
+    rc/alpha/kernel mirror the Hi-C force's own parameters (``kernel`` should
+    match HIC_BOLTZMANN_KERNEL for a like-for-like comparison). ``rc=None`` is fine
+    when ``auto_scale=True`` (default): the length scale is instead
+    recalibrated from a percentile of this structure's own pairwise-distance
+    distribution (:func:`hic_force.auto_contact_scale`,
+    ``auto_scale_percentile``, default 10.0) rather than the force's
+    deliberately microscopic default, which would underflow to ~0 contact
+    probability for most pairs here.
 
     ``oe_normalize`` applies Observed/Expected normalisation (recommended
     for comparison with experimental Hi-C). ``log_scale``, ``vmin``,
@@ -742,36 +822,24 @@ def get_heatmap(
     logger.info(f"Loaded structure: shape={V.shape}, file={cif_file}")
 
     # ------------------------------------------------------------
-    # Distance → contact proxy, via the SAME P(r) kernel used to build the
-    # Hi-C cross-entropy force, with its length scale auto-calibrated from
-    # this structure's own pairwise-distance distribution (see docstring).
+    # Distance → contact proxy, via the SAME distance->contact inversion used
+    # to build the Hi-C Boltzmann-PMF force, with its length scale
+    # auto-calibrated from this structure's own pairwise-distance
+    # distribution (see docstring).
     # ------------------------------------------------------------
     D = distance.cdist(V, V, metric="euclidean")
 
     rc_eff = rc if rc is not None else 1.0
-    sigma_eff, sigma_s_eff, kuhn_length_eff = sigma, sigma_s, kuhn_length
     if auto_scale:
         calibrated = auto_contact_scale(V, percentile=auto_scale_percentile)
-        factor = (calibrated / rc_eff) if rc_eff > 1e-12 else 1.0
         rc_eff = calibrated
-        sigma_eff = (sigma * factor) if sigma is not None else None
-        sigma_s_eff = (sigma_s * factor) if sigma_s is not None else None
-        kuhn_length_eff = (kuhn_length * factor) if kuhn_length is not None else None
         logger.info(
             f"Auto-calibrated contact scale: {calibrated:.4f} nm "
             f"({auto_scale_percentile:.0f}th percentile of pairwise distances)"
         )
 
-    p_func, needs_sep = get_kernel_p_func(
-        kernel, rc_eff, alpha=alpha, sigma=sigma_eff,
-        sigma_s=sigma_s_eff, kuhn_length=kuhn_length_eff,
-    )
-    if needs_sep:
-        N = len(V)
-        sep = np.abs(np.subtract.outer(np.arange(N), np.arange(N)))
-        mat = p_func(D, sep)
-    else:
-        mat = p_func(D)
+    p_func = get_boltzmann_p_func(rc_eff, alpha=alpha, kernel=kernel)
+    mat = p_func(D)
 
     logger.info(
         f"Raw contact matrix: min={mat.min():.3e}, max={mat.max():.3e}, "
@@ -787,7 +855,7 @@ def get_heatmap(
     # simulated map is directly comparable to experimental Hi-C
     # ------------------------------------------------------------
     if oe_normalize:
-        mat = _oe_normalize(mat)
+        mat = oe_matrix(mat)
         logger.info("Applied OE (Observed/Expected) diagonal normalisation")
 
     # ------------------------------------------------------------
@@ -849,8 +917,10 @@ def plot_md_thermo(history, save_path, target_temperature=None):
 
     sns.set_style("whitegrid")
 
-    steps = history["step"]
-    rmsd = history.get("rmsd", [])
+    # explicit numeric cast — plotting raw (possibly mixed-type) history
+    # values directly can make matplotlib mistake them for categorical data
+    steps = np.asarray(history["step"], dtype=float)
+    rmsd = np.asarray(history.get("rmsd", []), dtype=float)
     has_rmsd = len(rmsd) == len(steps) and len(rmsd) > 0
 
     palette = sns.color_palette("deep")
@@ -865,17 +935,22 @@ def plot_md_thermo(history, save_path, target_temperature=None):
         ax3 = None
 
     # ---- top panel: energies (left axis) + temperature (right axis) ----
-    l1, = ax1.plot(steps, history["potential"], color=palette[0], linewidth=1.6,
+    potential = np.asarray(history["potential"], dtype=float)
+    kinetic = np.asarray(history["kinetic"], dtype=float)
+    total = np.asarray(history["total"], dtype=float)
+    temperature = np.asarray(history["temperature"], dtype=float)
+
+    l1, = ax1.plot(steps, potential, color=palette[0], linewidth=1.6,
                     label="Potential energy")
-    l2, = ax1.plot(steps, history["kinetic"], color=palette[1], linewidth=1.6,
+    l2, = ax1.plot(steps, kinetic, color=palette[1], linewidth=1.6,
                     label="Kinetic energy")
-    l3, = ax1.plot(steps, history["total"], color=palette[2], linewidth=2.0,
+    l3, = ax1.plot(steps, total, color=palette[2], linewidth=2.0,
                     label="Total energy")
 
     ax1.set_ylabel("Energy (kJ/mol)")
 
     ax2 = ax1.twinx()
-    l4, = ax2.plot(steps, history["temperature"], color=palette[3], linestyle="--",
+    l4, = ax2.plot(steps, temperature, color=palette[3], linestyle="--",
                    linewidth=1.6, label="Temperature")
     ax2.set_ylabel("Temperature (K)")
     ax2.grid(False)
@@ -920,6 +995,82 @@ def plot_md_thermo(history, save_path, target_temperature=None):
 
     logger.info(f"MD thermodynamics plot saved to: {out}")
 
+
+# Canonical term order (matches the "Forcefield — active terms" table in
+# model.py's add_forcefield) — fixes each term's color regardless of which
+# subset is actually enabled in a given run, so a term's color never changes
+# run-to-run just because other terms were toggled off.
+_ENERGY_TERM_ORDER = [
+    "Excluded volume",
+    "Harmonic bonds",
+    "Harmonic angles",
+    "Loop extrusion",
+    "Compartment blocks",
+    "Subcompartment blocks",
+    "Chromosomal blocks",
+    "Spherical container",
+    "B-lamina interaction",
+    "Central force",
+    "Hi-C guided force",
+]
+
+
+def plot_energy_components(history, save_path):
+    """Plot each active force term's potential energy vs. time, one line per
+    term (EV, bonds, angles, loop extrusion, ... — whatever was enabled for
+    this run; see model.py's _register_force/run_md).
+
+    Single axis (all terms share the same kJ/mol units), one fixed color per
+    term name (see _ENERGY_TERM_ORDER) so colors stay stable across runs with
+    different enabled forces, and a legend since there are always >= 2 terms
+    in practice.
+    """
+    comps = history.get("energy_components", {})
+    comps = {name: vals for name, vals in comps.items() if len(vals) == len(history["step"])}
+    if not comps:
+        logger.info("No energy-component history to plot — skipping.")
+        return
+
+    logger.info("Creating energy-components plot...")
+
+    sns.set_style("whitegrid")
+    # explicit numeric cast — see plot_md_thermo for why
+    steps = np.asarray(history["step"], dtype=float)
+    comps = {name: np.asarray(vals, dtype=float) for name, vals in comps.items()}
+
+    # fixed color per canonical term name; any unexpected/extra name still
+    # gets a stable color by falling back to its position in the palette.
+    # husl (not tab20) so adjacent terms are hue-separated even when only
+    # two neighbouring terms end up active in a given run — tab20 pairs
+    # adjacent indices as dark/light of the SAME hue, which can look nearly
+    # identical at a glance.
+    full_palette = sns.color_palette("husl", len(_ENERGY_TERM_ORDER))
+    color_of = dict(zip(_ENERGY_TERM_ORDER, full_palette))
+
+    # plot in canonical order first, then any leftover names, so the legend
+    # order is always the same regardless of dict insertion order
+    ordered_names = [n for n in _ENERGY_TERM_ORDER if n in comps]
+    ordered_names += [n for n in comps if n not in _ENERGY_TERM_ORDER]
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    for name in ordered_names:
+        color = color_of.get(name, (0.5, 0.5, 0.5))
+        ax.plot(steps, comps[name], linewidth=1.6, label=name, color=color)
+
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Potential energy (kJ/mol)")
+    ax.grid(True, alpha=0.4)
+    ax.set_title("MultiMM — Energy Components", fontsize=14, fontweight="bold")
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.12),
+              ncol=min(len(ordered_names), 4), frameon=True, fontsize=9)
+
+    out = os.path.join(save_path, "plots/energy_components.png")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    fig.savefig(out, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+    logger.info(f"Energy-components plot saved to: {out}")
+
 from .structural_analysis import analyze_structure, analyze_dynamics, _hist_with_kde  # noqa: F401  (re-exported for backward compatibility)
 
 # ── Hi-C comparison heatmap ───────────────────────────────────────────────────
@@ -932,18 +1083,25 @@ def plot_hic_comparison(
     low_percentile: float = 1.0,
     high_percentile: float = 99.0,
     rw_matrix: "np.ndarray | None" = None,
+    shared_scale: bool = False,
 ) -> None:
     """Save a side-by-side heatmap figure comparing simulated vs. experimental
     Hi-C (plus an optional random-walk null-model panel if *rw_matrix* is given).
 
     Each matrix is OE-normalised then run through ``_hic_display_transform``
-    (signed log2(O/E), gamma-stretched) using one *shared* clip pooled from
-    every displayed panel's ``high_percentile`` (see ``_joint_hic_clip``) —
-    so a panel with genuinely less structure (e.g. a weak signal or the RW
-    null) correctly looks less contrasted, rather than being stretched to
-    fill the full colour range regardless of how much real signal it has,
-    while a panel with *more* structure than the others doesn't oversaturate
-    into flat colour blocks under a scale sized to someone else.
+    (signed log2(O/E), gamma-stretched). By default (``shared_scale=False``)
+    every panel is clipped to its OWN percentile, so each one uses its full
+    colour range and stays legible regardless of how its absolute dynamic
+    range compares to the others — the simulated contact-proxy map and the
+    random-walk null are both far sparser than a denoised experimental Hi-C
+    matrix, so a clip sized to (or pooled with) the experimental panel can
+    crush them to a near-uniform, washed-out white rather than showing their
+    real, smaller-but-genuine structure.
+
+    Set ``shared_scale=True`` to instead use one clip pooled across every
+    displayed panel's ``high_percentile`` (see ``_joint_hic_clip``), which
+    keeps relative-magnitude comparisons literal at the cost of exactly this
+    washing-out risk for whichever panel has the narrower dynamic range.
 
     sim_matrix/exp_matrix: (N, N) contact matrices at matching resolution.
     low_percentile/high_percentile: colour-clipping percentiles.
@@ -960,41 +1118,43 @@ def plot_hic_comparison(
 
     # sim_matrix is the ensemble-averaged contact proxy: each frame is first
     # converted to its own contact-probability heatmap via the Hi-C force's
-    # P(r) kernel, then averaged across frames ("average of heatmaps", not
-    # "heatmap of the average structure") — see _accumulate_ensemble /
+    # distance->contact inversion, then averaged across frames ("average of
+    # heatmaps", not "heatmap of the average structure") — see _accumulate_ensemble /
     # _rw_baseline_contact in validation.py. OE normalisation is applied to
     # the raw (linear) matrices; log2(O/E) below is the display transform.
-    sim_oe = _oe_normalize(sim_matrix)
-    exp_oe = _oe_normalize(exp_matrix)
-    rw_oe  = _oe_normalize(rw_matrix) if rw_matrix is not None else None
+    sim_oe = oe_matrix(sim_matrix)
+    exp_oe = oe_matrix(exp_matrix)
+    rw_oe  = oe_matrix(rw_matrix) if rw_matrix is not None else None
 
-    # Shared clip is pooled from every panel being shown (not just the
-    # experimental one) — see _joint_hic_clip. A clip sized to only one
-    # panel breaks as soon as another's real dynamic range differs: the
-    # experimental matrix (often the most heavily denoised/smoothed one)
-    # can have a genuinely narrower spread than the simulated contact
-    # proxy, so clipping everything to its scale alone both washes the
-    # experimental panel out (clip dominated by its own near-zero/floored
-    # entries — see _hic_log2_oe) and oversaturates the simulated one into
-    # flat colour blocks. Pooling keeps every panel legible on one scale.
-    panels_for_clip = [exp_oe, sim_oe] + ([rw_oe] if rw_oe is not None else [])
-    shared_clip = _joint_hic_clip(panels_for_clip, pct=high_percentile)
-
-    exp_disp, _ = _hic_display_transform(exp_oe, clip=shared_clip)
-    sim_disp, _ = _hic_display_transform(sim_oe, clip=shared_clip)
+    if shared_scale:
+        # Pooled clip across every panel (see _joint_hic_clip) — literal
+        # magnitude comparison, but a panel with a narrower natural dynamic
+        # range gets crushed toward white (see docstring above).
+        panels_for_clip = [exp_oe, sim_oe] + ([rw_oe] if rw_oe is not None else [])
+        clip = _joint_hic_clip(panels_for_clip, pct=high_percentile)
+        exp_disp, _ = _hic_display_transform(exp_oe, clip=clip)
+        sim_disp, _ = _hic_display_transform(sim_oe, clip=clip)
+        rw_disp, _  = (_hic_display_transform(rw_oe, clip=clip) if rw_oe is not None else (None, None))
+        scale_msg = "shared colour scale pooled across"
+    else:
+        # Independent clip per panel (default) — every panel uses its own
+        # genuinely-observed dynamic range, so each stays visible on its own.
+        exp_disp, _ = _hic_display_transform(exp_oe, pct=high_percentile)
+        sim_disp, _ = _hic_display_transform(sim_oe, pct=high_percentile)
+        rw_disp, _  = (_hic_display_transform(rw_oe, pct=high_percentile) if rw_oe is not None else (None, None))
+        scale_msg = "independent colour scale per panel across"
 
     disp_matrices = [exp_disp, sim_disp]
     titles        = ["Experimental Hi-C", "Simulated (ensemble-averaged contact proxy)"]
 
     if rw_oe is not None:
-        rw_disp, _ = _hic_display_transform(rw_oe, clip=shared_clip)
         disp_matrices.append(rw_disp)
         titles.append("Random Walk (null model)")
         logger.info("Applied OE normalisation to sim, exp, and RW matrices for comparison "
-                     "(shared colour scale pooled across all three)")
+                     "(%s all three)", scale_msg)
     else:
         logger.info("Applied OE normalisation to sim and exp matrices for comparison "
-                     "(shared colour scale pooled across both)")
+                     "(%s both)", scale_msg)
 
     n_panels  = len(disp_matrices)
     fig_width = 6 * n_panels   # 12 for 2 panels, 18 for 3
@@ -1016,7 +1176,8 @@ def plot_hic_comparison(
         ax.set_ylabel("Genomic bin", fontsize=11)
         ax.tick_params(labelsize=9)
         cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label("log2(O/E), shared scale, gamma-stretched (enriched ↑ / depleted ↓)", fontsize=9)
+        scale_label = "shared scale" if shared_scale else "own scale"
+        cbar.set_label(f"log2(O/E), {scale_label}, gamma-stretched (enriched ↑ / depleted ↓)", fontsize=9)
 
     out_path = os.path.join(save_dir, f"{name}.png")
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
@@ -1035,36 +1196,19 @@ def plot_hic_preprocessing(
     oe_normalized: bool = False,
     name: str = "hic_preprocessing",
 ) -> None:
-    """Save a side-by-side heatmap comparing the Hi-C matrix just before vs.
-    just after the automatic denoising step applied in
-    ``hic_force.preprocess_hic_matrix`` — i.e. the actual c_ij target the
-    Hi-C force (and validation) optimizes against, before vs. after
-    denoising.
+    """Side-by-side heatmap of the Hi-C matrix before vs. after the
+    denoising step in ``read_hic.preprocess_hic_matrix`` — the actual c_ij
+    target the force (and validation) optimizes against.
 
-    When ``oe_normalized=True``, denoising runs *after* OE normalisation, so
-    *both* panels already show OE-normalized enrichment (above background,
-    floored at 0) rather than raw contact counts — "before" means
-    "OE-normalized, not yet denoised", not "raw". This keeps the two panels
-    on the same, meaningful scale: comparing a raw-count panel against an
-    OE panel would conflate the denoising effect with the OE transform.
+    If ``oe_normalized=True``, both panels are already OE-normalized (so
+    "before" means "OE-normalized, not yet denoised", not "raw") — keeps
+    both panels on the same scale. Colour scale is taken from the denoised
+    (after) matrix's 99th percentile, so noise pixels clip to the top
+    colour in the "before" panel instead of washing out real structure.
 
-    Both panels show the same (sequential, single-hue) magnitude quantity,
-    so they share one colour scale. That scale is deliberately taken from
-    the *denoised* (after) matrix's own 99th percentile, not the noisy
-    (before) one: the raw/OE matrix's extreme tail is exactly the noise
-    being removed, so scaling to it would wash out every real, moderate
-    feature in both panels down to near-white. Scaling instead to the
-    clean matrix's own range means genuine compartment/TAD-scale structure
-    shows up clearly in both panels, while the removed noise pixels simply
-    clip to the top colour in the *before* panel — a visible flag for
-    "this was an outlier, and it's gone after denoising".
-
-    H_before/H_after: (N, N) matrices, same shape, same scale — whatever
-        ``preprocess_hic_matrix`` was about to denoise / just denoised.
-    chrom: optional chromosome label for the panel titles.
-    sigma: the Gaussian std (in beads) used for the smoothing, shown in the title.
-    oe_normalized: whether both panels are OE-normalized enrichment (above
-        background, floored at 0) rather than raw contact counts/frequencies.
+    H_before/H_after: (N, N), same shape/scale. chrom: optional label.
+    sigma: Gaussian std (beads) used, shown in the title. oe_normalized:
+    whether both panels are OE enrichment rather than raw counts.
     """
     import os
     import numpy as np
@@ -1121,20 +1265,21 @@ def plot_hic_validation_curves(
     r_dd=None, r_dd_rw=None,
     r_ins=None, r_ins_rw=None,
     r_pc1=None, r_pc1_rw=None,
-    pc1_smooth_sigma=1.2,
 ):
     """One figure with the three Hi-C validation curves side by side:
     diagonal decay, insulation score, and PC1 (A/B compartment), each
     comparing MultiMM against experimental Hi-C and an optional RW baseline.
 
-    Each curve is plotted *per-curve normalised* (not raw), since
-    experimental/simulated/RW values live on very different absolute
-    scales: decay is log-log normalised to 1.0 at the shortest separation,
-    insulation is min-max scaled to [0, 1], and PC1 is sign-aligned to the
-    experimental curve then scaled to [-1, 1] by peak magnitude.
+    Decay is plotted log-log normalised to 1.0 at the shortest separation
+    (display-only, not fed into r_dd). Insulation and PC1 arrive from
+    validation.py already smoothed and range-normalised — [0, 1] for
+    insulation, [-1, 1] (sign-preserving) for PC1 — the exact same signal
+    the reported r_ins/r_pc1 was computed on, so what's plotted always
+    matches what's scored. PC1 also arrives already sign-aligned to the
+    real A/B convention (validation.py: utils.align_pc1_sign, against each
+    matrix's own contact density), so no further re-alignment happens here
+    — the plotted curves match the signed r_pc1 reported.
     """
-    import scipy.ndimage as ndi
-
     os.makedirs(save_dir, exist_ok=True)
     sns.set_style("whitegrid")
 
@@ -1143,34 +1288,6 @@ def plot_hic_validation_curves(
     color_rw = "#898781"      # RW null baseline = muted gray, dashed
 
     has_rw = rw_decay is not None
-
-    def _normalize01(y):
-        """Per-curve min-max normalisation to [0, 1] (NaN-safe)."""
-        y = np.asarray(y, dtype=float)
-        ok = np.isfinite(y)
-        if ok.sum() < 2:
-            return y
-        lo, hi = y[ok].min(), y[ok].max()
-        span = hi - lo
-        if span < 1e-12:
-            return np.where(ok, 0.5, np.nan)
-        out = np.full_like(y, np.nan)
-        out[ok] = (y[ok] - lo) / span
-        return out
-
-    def _normalize_signed(y):
-        """Per-curve normalisation to [-1, 1] by peak magnitude — preserves
-        sign and zero-crossings (needed for the A/B compartment call)."""
-        y = np.asarray(y, dtype=float)
-        ok = np.isfinite(y)
-        if ok.sum() < 2:
-            return y
-        peak = np.max(np.abs(y[ok]))
-        if peak < 1e-12:
-            return y
-        out = np.full_like(y, np.nan)
-        out[ok] = y[ok] / peak
-        return out
 
     def _log_bin_average(x, y, n_bins=60):
         """Average *y* over log-spaced bins of *x* (smooths the noisy tail
@@ -1220,29 +1337,17 @@ def plot_hic_validation_curves(
     ax.set_ylabel("Mean contact (normalised to s=1)")
     ax.legend(fontsize=9, frameon=False)
 
-    # ---- (2) insulation score — lightly smoothed, then min-max normalised ----
-    # Light smoothing suppresses single-bead noise without flattening TAD
-    # dips; per-curve [0, 1] scaling lines up boundary positions visually.
+    # ---- (2) insulation score — already smoothed + [0, 1] normalised ----
+    # (see validation.py: same signal the reported r_ins was computed on)
     ax = axes[1]
-    ins_smooth_sigma = 0.8
     idx = np.arange(len(exp_ins))
 
-    def _smooth_ins(y):
-        y = np.asarray(y, dtype=float)
-        ok = np.isfinite(y)
-        if ok.sum() < 3:
-            return y
-        filled = np.interp(np.arange(len(y)), np.flatnonzero(ok), y[ok])
-        out = ndi.gaussian_filter1d(filled, sigma=ins_smooth_sigma)
-        out[~ok] = np.nan
-        return out
-
-    exp_ins_s = _normalize01(_smooth_ins(exp_ins))
-    sim_ins_s = _normalize01(_smooth_ins(sim_ins))
+    exp_ins_s = np.asarray(exp_ins, dtype=float)
+    sim_ins_s = np.asarray(sim_ins, dtype=float)
 
     mask = np.isfinite(sim_ins_s) & np.isfinite(exp_ins_s)
     if has_rw:
-        rw_ins_s = _normalize01(_smooth_ins(rw_ins))
+        rw_ins_s = np.asarray(rw_ins, dtype=float)
         mask &= np.isfinite(rw_ins_s)
 
     ax.plot(idx[mask], exp_ins_s[mask], color=ink_exp, linewidth=1.8, label="Experimental")
@@ -1258,39 +1363,25 @@ def plot_hic_validation_curves(
     ax.set_ylabel("Insulation score (normalised 0–1)")
     ax.legend(fontsize=9, frameon=False)
 
-    # ---- (3) PC1 — A/B compartment signal (sign-aligned, smoothed for display) ----
+    # ---- (3) PC1 — A/B compartment signal (already smoothed, [-1,1] ----
+    # normalised, and sign-aligned to the real A/B convention; see
+    # validation.py / utils.align_pc1_sign). Plotted as-is — no re-alignment
+    # here, so the curves match the signed r_pc1 reported.
     ax = axes[2]
 
-    def _sign_align(v, ref):
-        v = np.asarray(v, dtype=float)
-        ref = np.asarray(ref, dtype=float)
-        ok = np.isfinite(v) & np.isfinite(ref)
-        if ok.sum() < 2:
-            return v
-        c = np.corrcoef(v[ok], ref[ok])[0, 1]
-        return v if (np.isnan(c) or c >= 0) else -v
-
-    def _smooth(v):
-        ok = np.isfinite(v)
-        if not ok.all():
-            v = np.interp(np.arange(len(v)), np.flatnonzero(ok), v[ok])
-        return ndi.gaussian_filter1d(v, sigma=pc1_smooth_sigma)
-
-    # Smooth lightly, sign-align to experimental, then normalise to [-1, 1]
-    # by peak magnitude (preserves sign and zero-crossing positions).
-    exp_pc1_s = _normalize_signed(_smooth(exp_pc1))
-    sim_pc1_s = _normalize_signed(_smooth(_sign_align(sim_pc1, exp_pc1)))
+    exp_pc1_s = np.asarray(exp_pc1, dtype=float)
+    sim_pc1_s = np.asarray(sim_pc1, dtype=float)
 
     idx = np.arange(len(exp_pc1_s))
     ax.axhline(0, color="#c3c2b7", linewidth=1.0)
     ax.plot(idx, exp_pc1_s, color=ink_exp, linewidth=1.8, label="Experimental")
     ax.plot(idx, sim_pc1_s, color=color_sim, linewidth=1.6, alpha=0.9,
-            label=f"MultiMM (|r|={r_pc1:.2f})" if r_pc1 is not None else "MultiMM")
+            label=f"MultiMM (r={r_pc1:.2f})" if r_pc1 is not None else "MultiMM")
     ax.fill_between(idx, exp_pc1_s, sim_pc1_s, color=color_sim, alpha=0.08)
     if has_rw:
-        rw_pc1_s = _normalize_signed(_smooth(_sign_align(rw_pc1, exp_pc1)))
+        rw_pc1_s = np.asarray(rw_pc1, dtype=float)
         ax.plot(idx, rw_pc1_s, color=color_rw, linestyle="--", linewidth=1.3,
-                label=f"Random walk (|r|={r_pc1_rw:.2f})" if r_pc1_rw is not None else "Random walk")
+                label=f"Random walk (r={r_pc1_rw:.2f})" if r_pc1_rw is not None else "Random walk")
     ax.set_ylim(-1.05, 1.05)
     ax.set_title("PC1 — A/B Compartment Signal (normalised)", fontsize=12, fontweight="bold")
     ax.set_xlabel("Bead index")

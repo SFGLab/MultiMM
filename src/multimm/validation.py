@@ -4,11 +4,16 @@ from .logger import log_table, ProgressLogger
 
 import numpy as np
 import scipy.ndimage as ndimage
+from scipy.spatial import distance
 from scipy.stats import pearsonr, spearmanr, mannwhitneyu
 
-from .utils import get_coordinates_cif
-from .read_hic import pool_to_n_beads as _pool_to_n_beads
-from .hic_force import get_kernel_p_func, auto_contact_scale, preprocess_hic_matrix, denoise_contact_matrix
+from .utils import get_coordinates_cif, oe_matrix, bead_contact_density, align_pc1_sign
+from .read_hic import (
+    pool_to_n_beads as _pool_to_n_beads,
+    preprocess_hic_matrix, denoise_contact_matrix,
+    _DENOISE_SIGMA as _FORCE_DENOISE_SIGMA,  # same sigma the force's own input uses
+)
+from .hic_force import get_boltzmann_p_func, auto_contact_scale
 
 logger = logging.getLogger(__name__)
 
@@ -36,23 +41,75 @@ def _pool_matrix(m: np.ndarray, N: int) -> np.ndarray:
     return _pool_to_n_beads(m, N)
 
 
-def _smooth_matrix(m: np.ndarray, sigma: float = 1.0) -> np.ndarray:
-    """Denoise a contact matrix, applied identically to simulated/
-    experimental/RW maps before any metric is computed — so every metric
-    below compares against the *denoised* heatmap, the same one the Hi-C
-    force actually optimizes against (see `hic_force.preprocess_hic_matrix`
-    / `hic_force.denoise_contact_matrix`), never the raw/noisy one.
-    Suppresses the heavy-tailed, single-close-approach noise in the
-    1/(d+ε)-style contact proxies (and per-pixel shot noise in the
-    experimental matrix) without blurring out genuine TAD/compartment-scale
-    structure; outlier pixels are capped before smoothing so a single noise
-    spike isn't blurred outward into its neighbours.
-
-    m: (N, N) contact matrix. sigma: Gaussian std (beads); 0/None disables.
+def _smooth_matrix(m: np.ndarray, sigma: float = _FORCE_DENOISE_SIGMA) -> np.ndarray:
+    """Denoise sim/exp/RW matrices with `read_hic.denoise_contact_matrix`,
+    same default sigma the force's own input matrix uses, so every metric
+    compares against matrices denoised the exact same way. 0/None disables.
     """
     if not sigma:
         return m
     return denoise_contact_matrix(m, sigma=sigma)
+
+
+# ── 1-D signal pre-processing (insulation score / PC1) ───────────────────────
+# Applied identically before BOTH the Pearson correlation AND the validation
+# curve plot, so the reported r always matches what's actually plotted —
+# smoothing more than display-only levels and normalising to a fixed range
+# (correlation itself is scale/shift-invariant, so only the smoothing changes
+# the r value; normalising just fixes the plotted/compared scale).
+
+INSULATION_SMOOTH_SIGMA = 4.0  # beads; insulation score, normalized to [0, 1]
+PC1_SMOOTH_SIGMA        = 6.0  # beads; PC1, normalized to [-1, 1]
+# Heavier than a display-only smooth: we only want the general trend (where
+# the real minima/maxima are), not bead-to-bead noise. Checked against known
+# TAD/compartment ground truth on synthetic polymers (several noise levels):
+# true boundaries still resolve cleanly up to sigma~6 (insulation) / ~8 (PC1).
+
+
+def _smooth_signal(y: np.ndarray, sigma: float) -> np.ndarray:
+    """NaN-aware 1-D Gaussian smoothing: interpolate over NaNs, smooth, then
+    restore NaN at those same positions (insulation score is NaN-padded at
+    the window-boundary beads)."""
+    y = np.asarray(y, dtype=float)
+    ok = np.isfinite(y)
+    if not sigma or ok.sum() < 3:
+        return y
+    idx = np.arange(len(y))
+    y_interp = y.copy()
+    y_interp[~ok] = np.interp(idx[~ok], idx[ok], y[ok])
+    y_smooth = ndimage.gaussian_filter1d(y_interp, sigma=sigma)
+    y_smooth[~ok] = np.nan
+    return y_smooth
+
+
+def _normalize01(y: np.ndarray) -> np.ndarray:
+    """Per-curve min-max normalisation to [0, 1] (NaN-safe)."""
+    y = np.asarray(y, dtype=float)
+    ok = np.isfinite(y)
+    if ok.sum() < 2:
+        return y
+    lo, hi = y[ok].min(), y[ok].max()
+    span = hi - lo
+    if span < 1e-12:
+        return np.where(ok, 0.5, np.nan)
+    out = np.full_like(y, np.nan)
+    out[ok] = (y[ok] - lo) / span
+    return out
+
+
+def _normalize_signed(y: np.ndarray) -> np.ndarray:
+    """Per-curve normalisation to [-1, 1] by peak magnitude (NaN-safe) —
+    preserves sign and zero-crossings, unlike min-max."""
+    y = np.asarray(y, dtype=float)
+    ok = np.isfinite(y)
+    if ok.sum() < 2:
+        return y
+    peak = np.max(np.abs(y[ok]))
+    if peak < 1e-12:
+        return y
+    out = np.full_like(y, np.nan)
+    out[ok] = y[ok] / peak
+    return out
 
 
 def diagonal_decay_profile(mat: np.ndarray, max_diag: int | None = None) -> np.ndarray:
@@ -100,30 +157,16 @@ def insulation_score(mat: np.ndarray, window: int = 10) -> np.ndarray:
     return score
 
 
-def oe_matrix(mat: np.ndarray) -> np.ndarray:
-    """Observed / Expected contact matrix (divide each diagonal by its mean)."""
-    N = mat.shape[0]
-    oe = np.zeros_like(mat, dtype=float)
-    for k in range(N):
-        diag = np.diag(mat, k)
-        mean_k = diag.mean()
-        if mean_k > 0:
-            oe_diag = diag / mean_k
-        else:
-            oe_diag = diag
-        idx = np.arange(N - k)
-        oe[idx, idx + k] = oe_diag
-        oe[idx + k, idx] = oe_diag
-    return oe
+# oe_matrix() now lives in utils.py (the single canonical OE-normalisation
+# implementation, shared with plots.py and hic_force.py) — imported above.
 
 
 def pc1_of_oe(mat: np.ndarray) -> np.ndarray:
     """First principal component (PC1) of the O/E-normalised contact matrix.
 
-    The sign convention follows Hi-C practice: PC1 is flipped so that the
-    sign correlates with gene density (positive ↔ A compartment), but since
-    we compare two PC1 vectors the relative sign is still arbitrary; callers
-    should correlate |pc1_sim| with |pc1_exp|, or use the absolute Pearson r.
+    Sign is arbitrary (standard eigenvector ambiguity) -- callers should fix
+    it with `utils.align_pc1_sign` before correlating two PC1 vectors; see
+    its use in validate_hic_model/validate_hic_ensemble below.
 
     Parameters
     ----------
@@ -147,10 +190,10 @@ def inverse_contact_matrix(dist_map: np.ndarray, eps: float = 1e-3) -> np.ndarra
 
     Kept for backward compatibility / standalone use (e.g. notebooks). The
     validation pipeline itself no longer uses this generic proxy — see
-    :func:`_coords_to_kernel_contact_f32`, which instead evaluates the exact
-    same P(r) kernel used to build the Hi-C cross-entropy force, so that
-    validation is numerically consistent with what the force actually
-    optimises against.
+    :func:`_coords_to_contact_f32`, which instead evaluates the exact same
+    distance -> contact-probability inversion used by the Hi-C
+    Boltzmann-PMF force, so that validation is numerically consistent with
+    what the force actually optimises against.
 
     Parameters
     ----------
@@ -202,9 +245,10 @@ def _check_contact_distance_monotonicity(
 ) -> float:
     """Empirically verify that higher contact-proxy strength corresponds to
     a shorter 3-D distance for this structure/contact matrix — a sanity
-    check on the pipeline, not the kernel (which is monotonic by
-    construction). Logs the Spearman correlation between sampled contact
-    values and their 3-D distances; strongly negative confirms the rule."""
+    check on the pipeline, not the distance->contact inversion (which is
+    monotonic by construction). Logs the Spearman correlation between
+    sampled contact values and their 3-D distances; strongly negative
+    confirms the rule."""
     N = len(coords)
     if N < 3:
         return float("nan")
@@ -225,7 +269,7 @@ def _check_contact_distance_monotonicity(
         "Spearman ρ=%.3f (p=%.1e)  %s",
         label, rho, p,
         "✓ higher contact ⇒ closer distance, as expected" if ok
-        else "⚠ unexpected sign — inspect kernel/contact pipeline",
+        else "⚠ unexpected sign — inspect contact-proxy pipeline",
     )
     return rho
 
@@ -235,8 +279,6 @@ def _check_contact_distance_monotonicity(
 def _rw_baseline_contact(
     N: int,
     p_func,
-    needs_sep: bool = False,
-    sep_matrix: np.ndarray | None = None,
     n_rw: int = 20,
     step_nm: float = 0.1,
     seed: int = 0,
@@ -250,13 +292,11 @@ def _rw_baseline_contact(
     elastic reflection (recommended: set to the simulation's nuclear radius
     — unconfined walks are unrealistically large and inflate the RW
     baseline), computes each one's contact-probability proxy via the same
-    P(r) kernel as the Hi-C force (``p_func``), and returns the float64
-    N×N average.
+    distance->contact inversion as the Hi-C force (``p_func``), and returns
+    the float64 N×N average.
 
-    p_func: callable(r)->P, or callable(r, sep)->P if needs_sep. sep_matrix:
-    (N, N) genomic-separation matrix, required when needs_sep. n_rw: number
-    of realisations (default 20). step_nm: bond length (match
-    POL_HARMONIC_BOND_R0). seed: RNG seed.
+    p_func: callable(r) -> P. n_rw: number of realisations (default 20).
+    step_nm: bond length (match POL_HARMONIC_BOND_R0). seed: RNG seed.
     """
     _log = log or logger
     _log.info("Generating random-walk null baseline over %d realisations …", n_rw)
@@ -293,7 +333,7 @@ def _rw_baseline_contact(
                 [np.zeros((1, 3)), np.cumsum(steps, axis=0)]
             )
 
-        frame = _coords_to_kernel_contact_f32(coords, p_func, sep_matrix if needs_sep else None)
+        frame = _coords_to_contact_f32(coords, p_func)
         if acc is None:
             acc = frame.astype(np.float64)
         else:
@@ -337,21 +377,19 @@ def _coords_to_inv_contact_f32(coords: np.ndarray, eps: float = 1e-3) -> np.ndar
     return inv
 
 
-def _coords_to_kernel_contact_f32(
+def _coords_to_contact_f32(
     coords: np.ndarray,
     p_func,
-    sep_matrix: np.ndarray | None = None,
     dtype=np.float32,
 ) -> np.ndarray:
     """Compute the contact-probability proxy P(r_ij) using the *same*
-    distance→probability kernel that defines c_ij in the Hi-C cross-entropy
-    force (see :func:`hic_force.get_kernel_p_func`), instead of a generic
-    1/(d+ε) proxy.
+    distance->contact-probability inversion that defines c_ij in the Hi-C
+    Boltzmann-PMF force (see :func:`hic_force.get_boltzmann_p_func`),
+    instead of a generic 1/(d+ε) proxy.
 
     This makes validation numerically consistent with what the force
-    actually targets: if the force was built with, say, the "rouse" kernel,
-    validation now also measures contacts through P_rouse(r, sep) rather
-    than through an unrelated inverse-distance heuristic.
+    actually targets: P(r) is the functional inverse of the force's own
+    c_ij -> r_target mapping, so P(r_target(c)) == c exactly.
 
     Uses the same Gram-matrix trick as :func:`_coords_to_inv_contact_f32` to
     get the pairwise distance matrix D without ever materialising a separate
@@ -360,10 +398,7 @@ def _coords_to_kernel_contact_f32(
     Parameters
     ----------
     coords     : (N, 3) float array (any dtype — cast internally)
-    p_func     : callable(r) -> P, or callable(r, sep) -> P when the kernel
-                 needs genomic separation (e.g. "rouse")
-    sep_matrix : (N, N) genomic-separation matrix (sep[i,j] = |i-j|), only
-                 required when the kernel needs it (``needs_sep=True``)
+    p_func     : callable(r) -> P
     dtype      : output dtype (default float32, matching the distance calc)
 
     Returns
@@ -379,26 +414,21 @@ def _coords_to_kernel_contact_f32(
     np.maximum(D, 0.0, out=D)                 # numerical safety
     np.sqrt(D, out=D)                         # now D = pairwise distances
 
-    if sep_matrix is not None:
-        P = p_func(D, sep_matrix)
-    else:
-        P = p_func(D)
+    P = p_func(D)
     return np.asarray(P, dtype=dtype)
 
 
 def _accumulate_ensemble(
     cif_paths: list,
     p_func,
-    needs_sep: bool = False,
-    sep_matrix: np.ndarray | None = None,
     log=None,
 ) -> np.ndarray:
-    """Streaming accumulation of the kernel-contact ensemble average.
+    """Streaming accumulation of the contact-probability ensemble average.
 
     Converts each frame's distances to contact probability via the *same*
-    P(r) kernel used to build the Hi-C force (``p_func``), then averages
-    across frames — consistent with how the random-walk baseline and the
-    force itself interpret distances.
+    distance->contact inversion used to build the Hi-C force (``p_func``),
+    then averages across frames — consistent with how the random-walk
+    baseline and the force itself interpret distances.
 
     Memory cost: one N×N accumulator  +  one float32 N×N working buffer
     (both reused across frames — no extra allocations inside the loop).
@@ -408,7 +438,7 @@ def _accumulate_ensemble(
     avg : (N, N) float64  (upcast at the end for downstream precision)
     """
     _log = log or logger
-    _log.info("Streaming kernel-contact accumulation over %d frames …", len(cif_paths))
+    _log.info("Streaming contact-proxy accumulation over %d frames …", len(cif_paths))
 
     acc: np.ndarray | None = None
     n_total = len(cif_paths)
@@ -416,9 +446,7 @@ def _accumulate_ensemble(
 
     for i, path in enumerate(cif_paths):
         coords = get_coordinates_cif(path)          # (N, 3) float64
-        frame  = _coords_to_kernel_contact_f32(
-            coords, p_func, sep_matrix if needs_sep else None,
-        )
+        frame  = _coords_to_contact_f32(coords, p_func)
         if acc is None:
             acc = frame.astype(np.float64)           # first frame
         else:
@@ -531,54 +559,48 @@ def _hic_cv_metrics(
 
 # ── Public validation API ─────────────────────────────────────────────────────
 
-def _resolve_validation_kernel(
+def _resolve_validation_p_func(
     coords: np.ndarray,
-    kernel: str,
     rc: float,
     alpha: float,
-    sigma: float | None,
-    sigma_s: float | None,
-    kuhn_length: float | None,
     auto_scale: bool,
     auto_scale_percentile: float,
     log,
     r_min: float | None = None,
+    kernel: str = "exponential",
 ):
-    """Build the P(r) kernel used for validation, optionally auto-calibrating
-    its length scale from the structure's own pairwise-distance distribution.
+    """Build the P(r) contact-probability proxy used for validation,
+    optionally auto-calibrating its length scale from the structure's own
+    pairwise-distance distribution.
 
     ``rc`` is the Hi-C force's own microscopic bead-contact scale;
     reused directly here it underflows to ~0 beyond a few bead-spacings,
     giving a near-empty contact-proxy map. When ``auto_scale`` is True
     (default), the scale is instead calibrated from a percentile of the
-    structure's real pairwise distances (:func:`hic_force.auto_contact_scale`),
-    rescaling every length parameter by the same factor so only the
-    absolute scale changes, not the kernel family/shape. Set
-    ``auto_scale=False`` to use the literal force parameters instead.
+    structure's real pairwise distances (:func:`hic_force.auto_contact_scale`)
+    so only the absolute scale changes, not the shape of the inversion. Set
+    ``auto_scale=False`` to use the literal force parameter instead.
 
     ``r_min``, when given, is passed straight through to
-    :func:`hic_force.get_kernel_p_func` for its dynamic-range calibration
-    (see ``hic_force._calibrate_kernel_dynamics``) — an absolute physical
-    excluded-volume distance, so it is NOT rescaled by ``factor`` the way
-    ``rc``/``sigma``/``sigma_s``/``kuhn_length`` are.
+    :func:`hic_force.get_boltzmann_p_func` — the same excluded-volume floor
+    distance the force itself uses — and is NOT rescaled by the auto-scale
+    factor the way ``rc`` is.
+
+    ``kernel`` selects the P(r) shape and must match whatever the Hi-C force
+    itself was built with (HIC_BOLTZMANN_KERNEL), so validation scores the
+    structure against the exact same distance<->strength law it was
+    optimised under — see :func:`hic_force.get_boltzmann_p_func`.
     """
-    rc_eff, sigma_eff, sigma_s_eff, kuhn_length_eff = rc, sigma, sigma_s, kuhn_length
+    rc_eff = rc
     if auto_scale:
         calibrated = auto_contact_scale(coords, percentile=auto_scale_percentile)
-        factor = (calibrated / rc) if rc > 1e-12 else 1.0
         rc_eff = calibrated
-        sigma_eff = (sigma * factor) if sigma is not None else None
-        sigma_s_eff = (sigma_s * factor) if sigma_s is not None else None
-        kuhn_length_eff = (kuhn_length * factor) if kuhn_length is not None else None
         log.info(
             "  Auto-calibrated validation contact scale: %.4f nm "
             "(was rc=%.4f nm; %.0fth percentile of sampled pairwise distances)",
             calibrated, rc, auto_scale_percentile,
         )
-    return get_kernel_p_func(
-        kernel, rc_eff, alpha=alpha, sigma=sigma_eff,
-        sigma_s=sigma_s_eff, kuhn_length=kuhn_length_eff, r_min=r_min,
-    )
+    return get_boltzmann_p_func(rc_eff, alpha=alpha, r_min=r_min, kernel=kernel)
 
 
 def validate_hic_model(
@@ -590,23 +612,20 @@ def validate_hic_model(
     n_rw: int = 20,
     rw_step_nm: float = 0.1,
     confine_radius_nm: float | None = None,
-    smooth_sigma: float = 1.0,
-    kernel: str = "gaussian",
+    smooth_sigma: float = _FORCE_DENOISE_SIGMA,
     rc: float = 1.0,
-    alpha: float = 3.0,
-    sigma: float | None = None,
-    sigma_s: float | None = None,
-    kuhn_length: float | None = None,
+    alpha: float = 4.0,
     auto_scale: bool = True,
     auto_scale_percentile: float = 10.0,
     r_min: float | None = None,
+    kernel: str = "exponential",
     log=None,
 ) -> dict:
     """Validate a single simulated structure against experimental Hi-C.
 
-    The simulated contact proxy is P(r) evaluated with the same
-    kernel/parameters used to build the Hi-C force itself (see
-    :func:`hic_force.get_kernel_p_func`), applied identically to the
+    The simulated contact proxy is P(r) evaluated as the functional inverse
+    of the Hi-C Boltzmann-PMF force's own c_ij -> r_target mapping (see
+    :func:`hic_force.get_boltzmann_p_func`), applied identically to the
     simulated structure and the random-walk null baseline. Three
     correlations are computed: diagonal decay (distance-decay law),
     insulation score (TAD boundaries), and PC1 of the O/E matrix (A/B
@@ -614,29 +633,31 @@ def validate_hic_model(
 
     insulation_window: half-width of the insulation sliding window (beads).
     max_diag: diagonals to include in the decay profile (default N//2).
-    smooth_sigma: Gaussian smoothing (beads) applied identically to all
-    matrices before any metric is computed; 0 disables it.
-    kernel/rc/alpha/sigma/sigma_s/kuhn_length: same kernel family as the
-    Hi-C force's own parameters. auto_scale (default True) recalibrates the
-    absolute length scale from a percentile (auto_scale_percentile, default
-    10.0) of the structure's own pairwise distances instead of reusing the
-    force's microscopic rc directly, which would underflow to ~0 for
-    most pairs — see :func:`hic_force.auto_contact_scale`.
+    smooth_sigma: Gaussian smoothing (beads) applied identically to sim/
+    exp/RW before any metric is computed; defaults to the same sigma
+    preprocess_hic_matrix uses on the force's own input. 0 disables it.
+    rc/alpha/kernel: same Boltzmann-PMF parameters as the Hi-C force itself
+    (kernel must match HIC_BOLTZMANN_KERNEL for the score to be meaningful).
+    auto_scale (default True) recalibrates the absolute length scale from a
+    percentile (auto_scale_percentile, default 10.0) of the structure's own
+    pairwise distances instead of reusing the force's microscopic rc
+    directly, which would underflow to ~0 for most pairs — see
+    :func:`hic_force.auto_contact_scale`.
 
     Caveat on "diagonal decay r": this correlates each structure's raw
     per-separation contact MEAN against experimental Hi-C's, which is
     dominated by the aggregate, bulk distance-decay trend — a property an
     untouched random walk already reproduces reasonably well purely from
     generic (ideal/self-avoiding) chain statistics, since real chromatin's
-    own bulk decay law is close to that of an ideal polymer. None of the
-    Hi-C force's kernels are designed to target this bulk trend (they add
-    LOCAL deviations from it — compartments, TADs, loops), so a random-walk
-    baseline tying or even beating the simulated structure on this one
-    metric is not evidence the force isn't working. insulation_r, pc1_r and
-    pearson_r/spearman_r are computed on the O/E-normalised matrix, which
-    divides out that shared bulk trend first — these are the metrics that
-    actually isolate the force's contribution, and are where a working Hi-C
-    force should clearly separate from the random-walk baseline.
+    own bulk decay law is close to that of an ideal polymer. The Hi-C force
+    is not designed to target this bulk trend (it adds a LOCAL deviation on
+    top — compartments, TADs, loops, via each pair's own target distance),
+    so a random-walk baseline tying or even beating the simulated structure
+    on this one metric is not evidence the force isn't working. insulation_r,
+    pc1_r and pearson_r/spearman_r are computed on the O/E-normalised matrix,
+    which divides out that shared bulk trend first — these are the metrics
+    that actually isolate the force's contribution, and are where a working
+    Hi-C force should clearly separate from the random-walk baseline.
 
     Returns a dict with diag_decay_r/p, insulation_r/p, pc1_r/p,
     pearson_r/p, spearman_r/p, ssim, gmsd, nmi.
@@ -644,21 +665,19 @@ def validate_hic_model(
     _log = log or logger
 
     # Load coordinates first: auto-calibration (below) needs the structure's
-    # own pairwise-distance distribution to pick a sensible kernel scale.
+    # own pairwise-distance distribution to pick a sensible contact scale.
     coords = get_coordinates_cif(cif_path)
     N      = len(coords)
 
-    p_func, needs_sep = _resolve_validation_kernel(
-        coords, kernel, rc, alpha, sigma, sigma_s, kuhn_length,
-        auto_scale, auto_scale_percentile, _log, r_min=r_min,
+    p_func = _resolve_validation_p_func(
+        coords, rc, alpha, auto_scale, auto_scale_percentile, _log, r_min=r_min, kernel=kernel,
     )
 
     # Use the fast Gram-matrix accumulator (float32, in-place, no temp arrays)
-    sep_matrix  = np.abs(np.subtract.outer(np.arange(N), np.arange(N))) if needs_sep else None
-    sim_contact = _coords_to_kernel_contact_f32(coords, p_func, sep_matrix).astype(np.float64, copy=False)
+    sim_contact = _coords_to_contact_f32(coords, p_func).astype(np.float64, copy=False)
 
     # Sanity check: confirm "higher contact strength ⇒ closer 3-D distance"
-    # actually holds for this structure's own contact map (the kernel
+    # actually holds for this structure's own contact map (the inversion
     # guarantees it analytically pair-by-pair; this verifies nothing broke
     # that guarantee downstream — see _check_contact_distance_monotonicity).
     _check_contact_distance_monotonicity(coords, sim_contact, _log, label="simulated structure")
@@ -685,18 +704,26 @@ def validate_hic_model(
     exp_oe = oe_matrix(hic_r)
 
     # ── 2. Insulation score ───────────────────────────────────────────────────
+    # Smoothed (beyond display-only levels) and normalized to [0, 1] BEFORE
+    # correlating, so the reported r matches the curve actually plotted.
     sim_ins = insulation_score(sim_oe, insulation_window)
     exp_ins = insulation_score(exp_oe, insulation_window)
+    sim_ins = _normalize01(_smooth_signal(sim_ins, INSULATION_SMOOTH_SIGMA))
+    exp_ins = _normalize01(_smooth_signal(exp_ins, INSULATION_SMOOTH_SIGMA))
     r_ins, p_ins = _pearson(sim_ins, exp_ins)
 
     # ── 3. PC1 (A/B compartments) ─────────────────────────────────────────────
-    # Eigenvectors are defined only up to sign; use |r| (abs Pearson between
-    # the raw PC1 vectors) instead of correlating |PC1|, which loses
-    # compartment-identity information.
-    sim_pc1 = pc1_of_oe(sim_contact)
-    exp_pc1 = pc1_of_oe(hic_r)
-    r_pc1_raw, p_pc1 = _pearson(sim_pc1, exp_pc1)
-    r_pc1 = abs(r_pc1_raw)
+    # Eigenvectors are defined only up to sign; align each PC1 independently
+    # to its OWN matrix's contact density (dense -> B/negative, sparse ->
+    # A/positive, see utils.align_pc1_sign) rather than to each other, so sim
+    # and exp land on the same absolute convention and can be correlated
+    # directly (signed), without losing compartment identity to abs(). Then
+    # smoothed and normalized to [-1, 1] (sign-preserving), same as insulation.
+    sim_pc1 = align_pc1_sign(pc1_of_oe(sim_contact), bead_contact_density(sim_contact))
+    exp_pc1 = align_pc1_sign(pc1_of_oe(hic_r),       bead_contact_density(hic_r))
+    sim_pc1 = _normalize_signed(_smooth_signal(sim_pc1, PC1_SMOOTH_SIGMA))
+    exp_pc1 = _normalize_signed(_smooth_signal(exp_pc1, PC1_SMOOTH_SIGMA))
+    r_pc1, p_pc1 = _pearson(sim_pc1, exp_pc1)
 
     # ── 4. Direct matrix correlations (OE) ───────────────────────────────────
     sim_flat = _upper_tri(sim_oe)
@@ -713,7 +740,7 @@ def validate_hic_model(
     # metrics — giving a physically grounded lower-bound for each score.
     try:
         rw_contact = _rw_baseline_contact(
-            N, p_func, needs_sep=needs_sep, sep_matrix=sep_matrix,
+            N, p_func,
             n_rw=n_rw, step_nm=rw_step_nm,
             confine_radius_nm=confine_radius_nm,
             log=_log,
@@ -725,11 +752,12 @@ def validate_hic_model(
         r_dd_rw,  _         = _pearson(rw_decay, exp_decay)
 
         rw_ins              = insulation_score(rw_oe, insulation_window)
+        rw_ins              = _normalize01(_smooth_signal(rw_ins, INSULATION_SMOOTH_SIGMA))
         r_ins_rw, _         = _pearson(rw_ins, exp_ins)
 
-        rw_pc1              = pc1_of_oe(rw_contact)
-        r_pc1_rw_raw, _     = _pearson(rw_pc1, exp_pc1)
-        r_pc1_rw            = abs(r_pc1_rw_raw)
+        rw_pc1              = align_pc1_sign(pc1_of_oe(rw_contact), bead_contact_density(rw_contact))
+        rw_pc1              = _normalize_signed(_smooth_signal(rw_pc1, PC1_SMOOTH_SIGMA))
+        r_pc1_rw, _         = _pearson(rw_pc1, exp_pc1)
 
         rw_flat             = _upper_tri(rw_oe)
         r_pear_rw,  _       = _pearson(rw_flat, exp_flat)
@@ -753,7 +781,7 @@ def validate_hic_model(
             ("Metric",              "MultiMM  [RW baseline]"),
             ("Diagonal decay r",    _fmt(r_dd,       r_dd_rw,  p_dd)),
             ("Insulation score r",  _fmt(r_ins,      r_ins_rw, p_ins)),
-            ("|PC1| r",             _fmt(r_pc1,      r_pc1_rw, p_pc1)),
+            ("PC1 r",             _fmt(r_pc1,      r_pc1_rw, p_pc1)),
             ("Pearson r (OE tri)",  _fmt(r_pearson,  r_pear_rw,  p_pearson)),
             ("Spearman r (OE tri)", _fmt(r_spearman, r_spear_rw, p_spearman)),
             ("SSIM",                f"{cv['ssim']:.4f}  (local pattern)  [RW: {cv_rw['ssim']:.4f}]"),
@@ -764,7 +792,7 @@ def validate_hic_model(
         table_rows = [
             ("Diagonal decay r",    f"{r_dd:.4f}  (p={p_dd:.2e})"),
             ("Insulation score r",  f"{r_ins:.4f}  (p={p_ins:.2e})"),
-            ("|PC1| r",             f"{r_pc1:.4f}  (p={p_pc1:.2e})"),
+            ("PC1 r",             f"{r_pc1:.4f}  (p={p_pc1:.2e})"),
             ("Pearson r (OE tri)",  f"{r_pearson:.4f}  (p={p_pearson:.2e})"),
             ("Spearman r (OE tri)", f"{r_spearman:.4f}  (p={p_spearman:.2e})"),
             ("SSIM",                f"{cv['ssim']:.4f}  (local pattern similarity)"),
@@ -827,75 +855,67 @@ def validate_hic_ensemble(
     n_rw: int = 20,
     rw_step_nm: float = 0.1,
     confine_radius_nm: float | None = None,
-    smooth_sigma: float = 1.0,
-    kernel: str = "gaussian",
+    smooth_sigma: float = _FORCE_DENOISE_SIGMA,
     rc: float = 1.0,
-    alpha: float = 3.0,
-    sigma: float | None = None,
-    sigma_s: float | None = None,
-    kuhn_length: float | None = None,
+    alpha: float = 4.0,
     auto_scale: bool = True,
     auto_scale_percentile: float = 10.0,
     r_min: float | None = None,
+    kernel: str = "exponential",
     log=None,
 ) -> dict:
     """Validate an ensemble of simulated structures against experimental Hi-C.
 
     The simulated contact proxy is the average of the per-frame
     contact-probability P(r) across all trajectory frames:
-    C_sim = mean_k[ P(D_k) ], using the same kernel as the Hi-C force (see
-    :func:`hic_force.get_kernel_p_func`). The random-walk null baseline is
-    evaluated through the same kernel. Metrics are the same three as
-    ``validate_hic_model`` (diagonal decay, insulation, PC1 correlations).
+    C_sim = mean_k[ P(D_k) ], using the same distance->contact inversion as
+    the Hi-C force (see :func:`hic_force.get_boltzmann_p_func`). The
+    random-walk null baseline is evaluated through the same inversion.
+    Metrics are the same three as ``validate_hic_model`` (diagonal decay,
+    insulation, PC1 correlations).
 
     cif_paths: per-frame CIF paths from the MD trajectory. insulation_window,
-    max_diag, smooth_sigma, kernel/rc/alpha/sigma/sigma_s/kuhn_length,
-    auto_scale, auto_scale_percentile: same meaning as in
-    ``validate_hic_model`` (auto-calibration here uses the ensemble's first
-    frame as the representative structure).
+    max_diag, smooth_sigma, rc/alpha/kernel, auto_scale, auto_scale_percentile:
+    same meaning as in ``validate_hic_model`` (auto-calibration here uses the
+    ensemble's first frame as the representative structure).
 
     Caveat on "diagonal decay r" — see ``validate_hic_model``'s docstring:
     this metric is dominated by the bulk/aggregate distance-decay trend,
     which an untouched random walk already reproduces well from generic
-    polymer statistics alone, and which none of the Hi-C force's kernels
-    specifically target (they add LOCAL deviations on top — compartments,
-    TADs, loops). A random-walk baseline tying or beating the simulated
-    ensemble here is not evidence the force isn't working; insulation_r,
-    pc1_r and pearson_r/spearman_r (computed on the O/E-normalised matrix,
-    which divides out that shared bulk trend) are what actually isolate the
-    force's contribution.
+    polymer statistics alone, and which the Hi-C force is not designed to
+    specifically target (it adds a LOCAL deviation on top — compartments,
+    TADs, loops, via each pair's own target distance). A random-walk
+    baseline tying or beating the simulated ensemble here is not evidence
+    the force isn't working; insulation_r, pc1_r and pearson_r/spearman_r
+    (computed on the O/E-normalised matrix, which divides out that shared
+    bulk trend) are what actually isolate the force's contribution.
 
     Returns a dict with diag_decay_r/p, insulation_r/p, pc1_r/p,
     pearson_r/p, spearman_r/p, ssim, gmsd, nmi.
     """
     _log = log or logger
 
-    # Peek at bead count + coords from the first frame so the separation
-    # matrix (when the kernel needs one) can be built once and reused across
-    # all frames, and so auto-calibration (below) has a representative
-    # pairwise-distance distribution to calibrate against.
+    # Peek at bead count + coords from the first frame so auto-calibration
+    # (below) has a representative pairwise-distance distribution to
+    # calibrate against.
     _first_coords = get_coordinates_cif(cif_paths[0])
     N             = len(_first_coords)
 
-    p_func, needs_sep = _resolve_validation_kernel(
-        _first_coords, kernel, rc, alpha, sigma, sigma_s, kuhn_length,
-        auto_scale, auto_scale_percentile, _log, r_min=r_min,
+    p_func = _resolve_validation_p_func(
+        _first_coords, rc, alpha, auto_scale, auto_scale_percentile, _log, r_min=r_min, kernel=kernel,
     )
-
-    sep_matrix    = np.abs(np.subtract.outer(np.arange(N), np.arange(N))) if needs_sep else None
 
     # ── Fast streaming accumulation (float32, in-place, no temp arrays) ───────
     # Uses the Gram-matrix identity D²_ij = ||r_i||² + ||r_j||² − 2 r_i·r_j
     # so no separate N×N distance buffer is ever materialised; P(r) is then
-    # evaluated with the same kernel used to build the Hi-C force.
-    inv_avg = _accumulate_ensemble(
-        cif_paths, p_func, needs_sep=needs_sep, sep_matrix=sep_matrix, log=_log,
-    )
+    # evaluated with the same distance->contact inversion used to build the
+    # Hi-C force.
+    inv_avg = _accumulate_ensemble(cif_paths, p_func, log=_log)
 
     # Sanity check against a representative frame (the first one): confirms
     # "higher contact strength ⇒ closer 3-D distance" survived the
     # ensemble-average-of-per-frame-heatmaps step, not just the single-frame
-    # kernel guarantee — see _check_contact_distance_monotonicity.
+    # inversion guarantee — see _check_contact_distance_monotonicity.
     _check_contact_distance_monotonicity(
         _first_coords, inv_avg, _log, label="ensemble (vs. frame 1)",
     )
@@ -921,15 +941,25 @@ def validate_hic_ensemble(
     exp_oe = oe_matrix(hic_r)
 
     # ── 2. Insulation score ───────────────────────────────────────────────────
+    # Smoothed (beyond display-only levels) and normalized to [0, 1] BEFORE
+    # correlating, so the reported r matches the curve actually plotted.
     sim_ins = insulation_score(sim_oe, insulation_window)
     exp_ins = insulation_score(exp_oe, insulation_window)
+    sim_ins = _normalize01(_smooth_signal(sim_ins, INSULATION_SMOOTH_SIGMA))
+    exp_ins = _normalize01(_smooth_signal(exp_ins, INSULATION_SMOOTH_SIGMA))
     r_ins, p_ins = _pearson(sim_ins, exp_ins)
 
     # ── 3. PC1 (A/B compartments) ─────────────────────────────────────────────
-    sim_pc1 = pc1_of_oe(inv_avg)
-    exp_pc1 = pc1_of_oe(hic_r)
-    r_pc1_raw, p_pc1 = _pearson(sim_pc1, exp_pc1)
-    r_pc1 = abs(r_pc1_raw)
+    # Each PC1 aligned independently to its own matrix's contact density
+    # (see utils.align_pc1_sign) so sim/exp share one absolute convention and
+    # correlate directly (signed) instead of via abs(). Smoothed and
+    # normalized to [-1, 1] (sign-preserving) before correlating, same as
+    # insulation above.
+    sim_pc1 = align_pc1_sign(pc1_of_oe(inv_avg), bead_contact_density(inv_avg))
+    exp_pc1 = align_pc1_sign(pc1_of_oe(hic_r),   bead_contact_density(hic_r))
+    sim_pc1 = _normalize_signed(_smooth_signal(sim_pc1, PC1_SMOOTH_SIGMA))
+    exp_pc1 = _normalize_signed(_smooth_signal(exp_pc1, PC1_SMOOTH_SIGMA))
+    r_pc1, p_pc1 = _pearson(sim_pc1, exp_pc1)
 
     # ── 4. Direct matrix correlations (OE upper triangle) ────────────────────
     sim_flat = _upper_tri(sim_oe)
@@ -943,7 +973,7 @@ def validate_hic_ensemble(
     # ── 6. Random-walk null-model baseline ────────────────────────────────────
     try:
         rw_contact = _rw_baseline_contact(
-            N, p_func, needs_sep=needs_sep, sep_matrix=sep_matrix,
+            N, p_func,
             n_rw=n_rw, step_nm=rw_step_nm,
             confine_radius_nm=confine_radius_nm,
             log=_log,
@@ -955,11 +985,12 @@ def validate_hic_ensemble(
         r_dd_rw,  _         = _pearson(rw_decay, exp_decay)
 
         rw_ins              = insulation_score(rw_oe, insulation_window)
+        rw_ins              = _normalize01(_smooth_signal(rw_ins, INSULATION_SMOOTH_SIGMA))
         r_ins_rw, _         = _pearson(rw_ins, exp_ins)
 
-        rw_pc1              = pc1_of_oe(rw_contact)
-        r_pc1_rw_raw, _     = _pearson(rw_pc1, exp_pc1)
-        r_pc1_rw            = abs(r_pc1_rw_raw)
+        rw_pc1              = align_pc1_sign(pc1_of_oe(rw_contact), bead_contact_density(rw_contact))
+        rw_pc1              = _normalize_signed(_smooth_signal(rw_pc1, PC1_SMOOTH_SIGMA))
+        r_pc1_rw, _         = _pearson(rw_pc1, exp_pc1)
 
         rw_flat             = _upper_tri(rw_oe)
         r_pear_rw,  _       = _pearson(rw_flat, exp_flat)
@@ -983,7 +1014,7 @@ def validate_hic_ensemble(
             ("Metric",              "MultiMM  [RW baseline]"),
             ("Diagonal decay r",    _fmt(r_dd,       r_dd_rw,   p_dd)),
             ("Insulation score r",  _fmt(r_ins,      r_ins_rw,  p_ins)),
-            ("|PC1| r",             _fmt(r_pc1,      r_pc1_rw,  p_pc1)),
+            ("PC1 r",             _fmt(r_pc1,      r_pc1_rw,  p_pc1)),
             ("Pearson r (OE tri)",  _fmt(r_pearson,  r_pear_rw,  p_pearson)),
             ("Spearman r (OE tri)", _fmt(r_spearman, r_spear_rw, p_spearman)),
             ("SSIM",                f"{cv['ssim']:.4f}  (local pattern)  [RW: {cv_rw['ssim']:.4f}]"),
@@ -995,7 +1026,7 @@ def validate_hic_ensemble(
             ("Frames averaged",     str(len(cif_paths))),
             ("Diagonal decay r",    f"{r_dd:.4f}  (p={p_dd:.2e})"),
             ("Insulation score r",  f"{r_ins:.4f}  (p={p_ins:.2e})"),
-            ("|PC1| r",             f"{r_pc1:.4f}  (p={p_pc1:.2e})"),
+            ("PC1 r",             f"{r_pc1:.4f}  (p={p_pc1:.2e})"),
             ("Pearson r (OE tri)",  f"{r_pearson:.4f}  (p={p_pearson:.2e})"),
             ("Spearman r (OE tri)", f"{r_spearman:.4f}  (p={p_spearman:.2e})"),
             ("SSIM",                f"{cv['ssim']:.4f}  (local pattern similarity)"),
@@ -1117,10 +1148,16 @@ def validate_loops(
     except Exception:
         p_value = float("nan")
 
-    _log.info(
-        f"Loop validation ({len(ms)} loops): median loop distance={median_loop:.4f}, "
-        f"median background={median_bg:.4f}, fold-closer={fold_closer:.2f}x, "
-        f"p(loops closer)={p_value:.2e}"
+    log_table(
+        [
+            ("N loops (valid anchors)", f"{len(ms)}"),
+            ("Median loop distance", f"{median_loop:.4f}"),
+            ("Median background distance", f"{median_bg:.4f}"),
+            ("Fold closer than background", f"{fold_closer:.2f}x"),
+            ("Mann-Whitney p (loops < bg)", f"{p_value:.2e}"),
+        ],
+        title="Loop Validation (.bedpe vs structure)",
+        log_fn=_log.info,
     )
 
     if save_path is not None:
@@ -1191,10 +1228,16 @@ def validate_compartments(
     sens_a = float(np.mean(sign_call[is_a])) if is_a.sum() else float("nan")
     sens_b = float(np.mean(~sign_call[is_b])) if is_b.sum() else float("nan")
 
-    _log.info(
-        f"Compartment validation ({int(valid.sum())} labelled beads): "
-        f"|r|={r_abs:.3f}, sign-call accuracy={accuracy:.1%} "
-        f"(A sensitivity={sens_a:.1%}, B sensitivity={sens_b:.1%})"
+    log_table(
+        [
+            ("N labelled beads", f"{int(valid.sum())}"),
+            ("Derived PC1 |r| vs input track", f"{r_abs:.3f}  (p={p:.2e})" if np.isfinite(p) else f"{r_abs:.3f}"),
+            ("Sign-call accuracy", f"{accuracy:.1%}"),
+            ("A-compartment sensitivity", f"{sens_a:.1%}" if np.isfinite(sens_a) else "n/a"),
+            ("B-compartment sensitivity", f"{sens_b:.1%}" if np.isfinite(sens_b) else "n/a"),
+        ],
+        title="Compartment Validation (.bed vs structure)",
+        log_fn=_log.info,
     )
 
     if save_path is not None:
@@ -1217,6 +1260,128 @@ def validate_compartments(
     }
 
 
+def validate_compartment_aggregation(
+    cif_path: str,
+    Cs,
+    save_path: str | None = None,
+    name: str = "compartment_aggregation",
+    max_beads: int = 2500,
+    min_bead_sep: int = 5,
+    k_neighbors: int = 10,
+    log=None,
+) -> dict:
+    """Diagnostic check: do beads that share a compartment sign (A-A / B-B)
+    actually end up closer together in the output 3D structure than beads
+    of different compartments (A-B)?
+
+    This runs for ANY source of `Cs` — a .bed compartment track
+    (COB_USE_COMPARTMENT_BLOCKS / SCB_USE_SUBCOMPARTMENT_BLOCKS) or
+    Hi-C-derived PC1 compartments (HIC_BLOCK_COPOLYMER) — the check itself
+    only cares that self.Cs is populated, not how. It is distinct from
+    validate_compartments (which checks whether the structure's own 1D PC1
+    signal agrees with the input track): this one measures real 3D spatial
+    segregation between labelled beads.
+
+    Bead pairs closer than `min_bead_sep` along the chain are excluded, so
+    trivial backbone proximity isn't counted as spatial segregation (same
+    idea as utils.bead_contact_density's exclude_diag). Large structures
+    are randomly subsampled to `max_beads` to keep the pairwise distance
+    matrix tractable (GW runs can have ~5e5 beads).
+    """
+    _log = log or logger
+
+    coords = get_coordinates_cif(cif_path)
+    N = len(coords)
+
+    Cs = np.asarray(Cs)[:N]
+    idx = np.arange(N)
+
+    keep = np.isfinite(coords).all(axis=1) & (Cs != 0)
+    X, Cs_k, idx = coords[keep], Cs[keep], idx[keep]
+
+    if len(X) < 20:
+        _log.warning("validate_compartment_aggregation: not enough labelled beads, skipping.")
+        return {}
+
+    if len(X) > max_beads:
+        rng = np.random.default_rng(0)
+        sel = np.sort(rng.choice(len(X), size=max_beads, replace=False))
+        X, Cs_k, idx = X[sel], Cs_k[sel], idx[sel]
+
+    sign = np.sign(Cs_k)  # collapses A1/A2 -> A (+1), B1/B2 -> B (-1)
+
+    D = distance.cdist(X, X)
+    sep = np.abs(idx[:, None] - idx[None, :])
+
+    iu = np.triu_indices(len(X), k=1)
+    d_pairs, sep_pairs = D[iu], sep[iu]
+    same_pairs = sign[iu[0]] == sign[iu[1]]
+
+    far_enough = sep_pairs >= min_bead_sep
+    d_pairs, same_pairs = d_pairs[far_enough], same_pairs[far_enough]
+    same_d, diff_d = d_pairs[same_pairs], d_pairs[~same_pairs]
+
+    if len(same_d) < 10 or len(diff_d) < 10:
+        _log.warning("validate_compartment_aggregation: too few qualifying pairs, skipping.")
+        return {}
+
+    # one-sided Mann-Whitney U: are same-compartment pairs closer than different?
+    try:
+        u_stat, p_val = mannwhitneyu(same_d, diff_d, alternative="less")
+        p_val = float(p_val)
+        effect = 1 - (2 * u_stat) / (len(same_d) * len(diff_d))  # rank-biserial corr., -1..1
+    except Exception:
+        p_val, effect = float("nan"), float("nan")
+
+    # per-bead k-NN compartment purity (same chain-separation exclusion)
+    D_masked = np.where(sep < min_bead_sep, np.inf, D)
+    np.fill_diagonal(D_masked, np.inf)
+    k_eff = min(k_neighbors, len(X) - 1)
+    nn_idx = np.argpartition(D_masked, k_eff, axis=1)[:, :k_eff]
+    purity = (sign[nn_idx] == sign[:, None]).mean(axis=1)
+
+    p_a = float(np.mean(sign > 0))
+    chance_purity = p_a**2 + (1.0 - p_a)**2  # expected purity under random labels
+    mean_purity = float(np.mean(purity))
+    median_same, median_diff = float(np.median(same_d)), float(np.median(diff_d))
+    fold_separated = median_diff / median_same if median_same > 0 else float("nan")
+
+    log_table(
+        [
+            ("N labelled beads (subsampled)", f"{len(X)}"),
+            ("Median same-compartment distance", f"{median_same:.4f}"),
+            ("Median different-compartment distance", f"{median_diff:.4f}"),
+            ("Fold more separated (diff/same)", f"{fold_separated:.2f}x"),
+            ("Mann-Whitney p (same < diff)", f"{p_val:.2e}" if np.isfinite(p_val) else "n/a"),
+            ("Effect size (rank-biserial r)", f"{effect:.3f}" if np.isfinite(effect) else "n/a"),
+            (f"Mean {k_eff}-NN purity", f"{mean_purity:.1%}  (chance: {chance_purity:.1%})"),
+        ],
+        title="Compartment Aggregation Validation (3D spatial)",
+        log_fn=_log.info,
+    )
+
+    if save_path is not None:
+        from .plots import plot_compartment_aggregation
+        import os
+        plots_dir = os.path.join(save_path, "plots")
+        os.makedirs(plots_dir, exist_ok=True)
+        plot_compartment_aggregation(
+            same_d, diff_d, purity, chance_purity, plots_dir,
+            name=name, p_value=p_val, effect=effect, k_eff=k_eff,
+        )
+
+    return {
+        "n_beads": int(len(X)),
+        "median_same_dist": median_same,
+        "median_diff_dist": median_diff,
+        "fold_separated": fold_separated,
+        "p_value": p_val,
+        "effect_size": effect,
+        "mean_purity": mean_purity,
+        "chance_purity": chance_purity,
+    }
+
+
 # =============================================================================
 # Distance vs. experimental Hi-C strength — does the force actually do what
 # it is supposed to: pull high-strength (enriched) pairs to small distance,
@@ -1236,34 +1401,20 @@ def validate_distance_vs_strength(
     seed: int = 0,
     log=None,
 ) -> dict:
-    """Check that pairs with higher experimental Hi-C strength end up at a
-    smaller 3-D distance in the output structure — the basic physical claim
-    the Hi-C force is built to enforce (see hic_force._oe_normalize_matrix).
+    """Check that pairs with higher experimental Hi-C strength end up closer
+    in the output structure — the basic claim the Hi-C force enforces (see
+    read_hic.oe_enrichment_matrix).
 
-    ``strength`` is the same c_ij the force targets: the experimental
-    matrix run through :func:`hic_force.preprocess_hic_matrix` with the
-    same ``oe_normalize`` setting as the force (``HIC_FORCE_OE``). With
-    ``oe_normalize=True`` (default), strength = enrichment above the
-    distance-decay background, floored at 0 — so "low strength" mostly
-    means "at or below background" (the displayed heatmap's "towards -1"),
-    not just "a smaller positive number".
+    ``strength`` is the same c_ij the force targets (experimental matrix run
+    through read_hic.preprocess_hic_matrix with the same ``oe_normalize``
+    setting as ``HIC_FORCE_OE``).
 
-    Two complementary checks on a random sample of bead pairs:
-      * Classification — split pairs into a low-strength group
-        (<= ``low_pct`` percentile) and a high-strength group
-        (>= ``high_pct`` percentile), then test whether the high-strength
-        group's distances are stochastically smaller (one-sided
-        Mann-Whitney U). The U-statistic, rescaled, is an AUC: the
-        probability that a random low-strength pair is farther apart than
-        a random high-strength pair (0.5 = no better than chance, 1.0 =
-        perfectly separated).
-      * Regression — Pearson/Spearman correlation between strength and
-        distance across all sampled pairs (expected negative: higher
-        strength, shorter distance).
+    Two checks on a random pair sample: classification (AUC from a one-sided
+    Mann-Whitney U between low-strength and high-strength groups) and
+    regression (Pearson/Spearman between strength and distance).
 
     Returns a dict with auc, mannwhitney_p, pearson_r/p, spearman_r/p,
-    n_pairs, and the group sizes; also saves a two-panel diagnostic plot
-    under ``save_path/plots`` when ``save_path`` is given.
+    n_pairs, group sizes; saves a diagnostic plot if ``save_path`` is given.
     """
     _log = log or logger
 
