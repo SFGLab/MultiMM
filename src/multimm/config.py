@@ -273,7 +273,7 @@ class SimulationConfig(BaseModel):
         ),
     )
     HIC_BOLTZMANN_TOL_FRAC: float = Field(
-        default=0.0,
+        default=0.2,
         description=(
             "Flat-bottom tolerance for the Hi-C restraint well, as a fraction of each "
             "pair's own r_target (e.g. 0.2 -> +-20%% zero-force zone around the target, "
@@ -365,6 +365,18 @@ class SimulationConfig(BaseModel):
             "A/B compartments need several alternating domains to even be visible; below "
             "this a region is TAD-scale, not compartment-scale, so deriving compartments "
             "from it doesn't make sense."
+        ),
+    )
+    HIC_BLOCK_COPOLYMER_STRENGTH_SCALE: float = Field(
+        default=0.4,
+        description=(
+            "Scales COB_EA/COB_EB down for compartments derived from Hi-C PC1 "
+            "(HIC_BLOCK_COPOLYMER only) — a .bed-based compartment force "
+            "(COB_USE_COMPARTMENT_BLOCKS) always uses COB_EA/COB_EB at full strength, "
+            "unaffected by this field. Hi-C-derived PC1 labels are coarser and noisier "
+            "than a curated .bed compartment call, so COB_EA/COB_EB (tuned for .bed data) "
+            "tend to over-aggregate A/B segregation when applied at full strength to the "
+            "Hi-C-derived path. 1.0 disables scaling; lower values soften segregation."
         ),
     )
     GENE_TSV: str = Field(

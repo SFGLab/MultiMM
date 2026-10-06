@@ -218,6 +218,8 @@ Recommended `HIC_K_SCALE`: 20–80 kJ mol⁻¹ (default 40). Higher values (up t
 
 It only activates when `HIC_USE_FORCE=True` and no `COMPARTMENT_PATH` is given, and auto-disables itself (with a warning) when the modelled region is below `HIC_BLOCK_COPOLYMER_MIN_BP` (default 5 Mb) — a region that small is TAD-scale, not compartment-scale, so there's nothing for PC1 to resolve. Two guardrails: a warning if `HIC_FORCE_OE=True` is also set (the Boltzmann force already over-weights compartments under OE, so stacking the block-copolymer force on top risks double-counting them — `HIC_FORCE_OE=False` is recommended alongside `HIC_BLOCK_COPOLYMER`); and an error if a bed-based compartment force (`COB_USE_COMPARTMENT_BLOCKS` / `SCB_USE_SUBCOMPARTMENT_BLOCKS`) is enabled at the same time — pick one source of compartments, not both.
 
+**Softer by default than the `.bed` path:** Hi-C-derived PC1 labels are coarser and noisier than a curated `.bed` compartment call, so `COB_EA`/`COB_EB` (tuned for `.bed` data) over-aggregate A/B segregation if applied at full strength here. `HIC_BLOCK_COPOLYMER_STRENGTH_SCALE` (default `0.4`) scales `COB_EA`/`COB_EB` down for this path only — a `.bed`-based compartment force always uses `COB_EA`/`COB_EB` unscaled. Set it to `1.0` for full strength, or lower still if structures still look over-aggregated.
+
 **Validation** — after simulation, MultiMM reports seven metrics against the experimental Hi-C matrix, each alongside a random-walk null baseline, using the same `HIC_BOLTZMANN_KERNEL` `P(r)` the force itself was built with (`hic_force.get_boltzmann_p_func`):
 
 | Metric | What it measures |
@@ -533,12 +535,13 @@ Visualization is powered by [PyVista](https://pyvista.org/).
 | `HIC_AUTO_SCALE` | bool | `True` | When `HIC_RC` is unset, recalibrate `rc` from the median of the initial structure's own pairwise distances, instead of a fixed nucleus-scale guess that can leave the force with no gradient. |
 | `HIC_BOLTZMANN_ALPHA` | float | 4.0 | Hi-C scaling-law exponent converting contact strength to a target distance, shared by every `HIC_BOLTZMANN_KERNEL` as its steepness knob. Typical literature range: 3–4; higher values make the strength→distance mapping steeper. |
 | `HIC_BOLTZMANN_KERNEL` | str | `exponential` | `P(r)` shape for the `c_ij -> r_target` inversion: `exponential` (classic Boltzmann distribution), `power_law` (Hi-C scaling law), or `sigmoid` (bounded logistic contact probability) — see the kernel table above. |
-| `HIC_BOLTZMANN_TOL_FRAC` | float | 0.0 | Flat-bottom tolerance, as a fraction of each pair's own `r_target` (e.g. `0.2` → ±20% zero-force zone, harmonic beyond it). `0` (default) is the original exact two-sided well. Raise this (try `0.15–0.3`) if structures look like a spherical shell — see the note above. |
+| `HIC_BOLTZMANN_TOL_FRAC` | float | 0.2 | Flat-bottom tolerance, as a fraction of each pair's own `r_target` (e.g. `0.2` → ±20% zero-force zone, harmonic beyond it). `0` (default) is the original exact two-sided well. Raise this (try `0.15–0.3`) if structures look like a spherical shell — see the note above. |
 | `HIC_FORCE_OE` | bool | `False` | If `False` (default), target raw (KR-balanced) contact frequency directly. If `True`, apply Observed/Expected normalisation first, so the force optimises for relative enrichment over the distance-decay background instead — see the note above. |
 | `HIC_MAX_GAP` | int | 10 | Maximum gap fraction (%) tolerated when interpolating missing bins |
 | `HIC_INSULATION_WINDOW` | int | 10 | Half-width (beads) of the sliding window used by the insulation-score validation metric. Match it to your real TAD/domain size in beads — mismatched window size weakens `insulation_r` even when the force is working well. |
 | `HIC_BLOCK_COPOLYMER` | bool | `False` | Opt-in: derive A/B compartments from the Hi-C matrix's own (density-aligned) PC1 and feed them into the block-copolymer force, instead of requiring a `.bed` file — see the dedicated section above. Suggested for whole-chromosome/genome-wide runs with no compartment `.bed` on hand. Only active with `HIC_USE_FORCE=True` and no `COMPARTMENT_PATH`; auto-disables below `HIC_BLOCK_COPOLYMER_MIN_BP`; errors if a bed-based compartment force is enabled too. |
 | `HIC_BLOCK_COPOLYMER_MIN_BP` | float | 5,000,000 | Minimum modelled region size (bp) for `HIC_BLOCK_COPOLYMER` to stay enabled — below this the region is TAD-scale, not compartment-scale. |
+| `HIC_BLOCK_COPOLYMER_STRENGTH_SCALE` | float | 0.4 | Scales `COB_EA`/`COB_EB` down for Hi-C-derived (`HIC_BLOCK_COPOLYMER`) compartments only — never affects the `.bed`-based path. `1.0` = full strength (same as `.bed`); lower softens A/B segregation. |
 
 ### Compartment and Subcompartment Forces
 

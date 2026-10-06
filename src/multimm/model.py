@@ -383,6 +383,23 @@ class MultiMM:
             int((self.Cs > 0).sum()), int((self.Cs < 0).sum()), int((self.Cs == 0).sum()),
         )
 
+        # Soften the block-copolymer force for Hi-C-derived labels only — the
+        # .bed path (COB_USE_COMPARTMENT_BLOCKS) never reaches this method, so
+        # COB_EA/COB_EB stay untouched there. add_compartment_blocks() itself
+        # is unchanged; we just scale the values it reads.
+        scale = getattr(self.args, "HIC_BLOCK_COPOLYMER_STRENGTH_SCALE", 1.0)
+        if scale != 1.0:
+            ea0, eb0 = self.args.COB_EA, self.args.COB_EB
+            self.args.COB_EA = ea0 * scale
+            self.args.COB_EB = eb0 * scale
+            logger.info(
+                "HIC_BLOCK_COPOLYMER: scaling compartment-force strength by %.2f "
+                "(Hi-C-derived labels are noisier than a curated .bed track) — "
+                "Ea %.3g -> %.3g, Eb %.3g -> %.3g. Tune via "
+                "HIC_BLOCK_COPOLYMER_STRENGTH_SCALE.",
+                scale, ea0, self.args.COB_EA, eb0, self.args.COB_EB,
+            )
+
     def _log_hyperparameters(self) -> None:
         """Print a compact summary table of key simulation hyperparameters."""
         a = self.args
