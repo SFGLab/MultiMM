@@ -236,6 +236,8 @@ Results are saved to `metadata/hic_validation.npy` (keys: `diagonal_decay_r`, `i
 
 After coarse-grained optimization, nucleosome positions are interpolated using a beads-on-a-string zigzag model. Each nucleosome is represented as a helix with 1.65 DNA turns. The number of nucleosomes per bead is derived from normalized ATAC-seq signal, enforcing nucleosome-rich regions in low-accessibility chromatin.
 
+This runs once as a post-processing step after minimization/MD — it never feeds back into the simulation itself. For each pair of consecutive coarse beads, it inserts up to `MAX_NUCS_PER_BEAD` small nucleosome helices (radius `NUC_RADIUS`), joined by short linker segments and alternating left/right of the chain axis (`PHI_NORM` sets the zigzag angle) — the classic two-start zigzag arrangement of a 30 nm chromatin fiber. The result is saved separately as `MultiMM_minimized_with_nucs.cif`: a denser, near-nucleosome-resolution view of the same structure, meant for visualization rather than further modelling.
+
 ---
 
 ## Internal Parameter Definitions
