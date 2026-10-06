@@ -3,15 +3,19 @@ hic_force.py — builds the OpenMM Hi-C contact force.
 
 Boltzmann-inversion PMF: each pair's contact strength c_ij is converted to
 a target distance r_target via one of three P(r) kernels (see
-VALID_BOLTZMANN_KERNELS), then restrained there with a flat-bottom harmonic
-well weighted by c_ij:
+VALID_BOLTZMANN_KERNELS), then restrained there:
 
-    U_ij(r) = 0.5 * k_scale * c_ij * (r - r_target)^2   outside [r_lo, r_hi]
-    U_ij(r) = 0                                         inside [r_lo, r_hi]
+    U_ij(r) = 0.5 * k_scale * c_ij * (r - r_target)^2        (real evidence)
+    U_ij(r) = 0.5 * k_scale * c_ij * max(0, rc - r)^2         (background pair)
 
-A two-sided restraint (pulls when farther than target, pushes when closer)
-once outside its tolerance band; HIC_BOLTZMANN_TOL_FRAC sets the band width
-as a fraction of r_target (0 = exact harmonic, the original behaviour).
+Pairs whose kernel saturates at rc carry no distance information beyond
+"not enriched" — restraining the (often >50%) majority of such pairs to one
+shared exact distance with a two-sided well is what spreads beads onto a
+spherical shell (same mechanism as the Thomson problem). So those pairs
+automatically get a one-sided floor only (never pulled together, just kept
+from overlapping); pairs with real sub-rc evidence keep the full two-sided
+well. This split is derived per-pair straight from the data (whether its own
+r_target hit the rc cap) — there is no separate tunable for it.
 Matrix preprocessing (clean/resize/balance/OE/denoise) lives in
 read_hic.preprocess_hic_matrix — this module only builds the force.
 
@@ -208,25 +212,27 @@ def build_boltzmann_force(
     noise_seed   : int             = 0,
     r_min        : Optional[float] = None,
     kernel       : str             = "exponential",
-    tol_frac     : float           = 0.0,
 ):
     """Sparse CustomBondForce via Boltzmann-inversion: c_ij -> r_target per
-    kernel, then a flat-bottom harmonic well weighted by c_ij:
+    kernel, then restrained according to whether that target is real
+    distance evidence or just hit the kernel's rc cap:
 
-        U_ij(r) = 0                               for r in [r_lo, r_hi]
-        U_ij(r) = 0.5 * k_scale * c_ij * (r-r_lo)^2   for r < r_lo
-        U_ij(r) = 0.5 * k_scale * c_ij * (r-r_hi)^2   for r > r_hi
+        U_ij(r) = 0.5 * k_scale * c_ij * (r - r_target)^2   (r_target < rc)
+        U_ij(r) = 0.5 * k_scale * c_ij * max(0, rc - r)^2    (r_target == rc)
 
-    with r_lo/r_hi = r_target*(1 -+ tol_frac), clipped to [r_min, rc].
-    tol_frac=0 collapses r_lo=r_hi=r_target, recovering the plain two-sided
-    harmonic well (the original behaviour). tol_frac>0 gives every pair a
-    zero-force tolerance band around its target instead of one exact point
-    — this matters most for weak/background pairs, whose r_target is large
-    (often capped at rc): without slack, a huge share of all pairs are all
-    pinned to the *same* exact distance rc from each other, which is only
-    satisfiable in 3-D by spreading beads over a spherical shell (same
-    mechanism as the Thomson problem). A wide tolerance band removes that
-    false precision instead of forcing an exact consensus distance.
+    A pair whose kernel saturates at rc (c_ij too weak/background to pin
+    down a real distance) only tells you "not enriched" — not "exactly rc
+    away" — so it gets a one-sided floor only: pushed apart if closer than
+    rc, free to be anywhere farther. A pair with real sub-rc evidence keeps
+    the full two-sided well (pulls if farther, pushes if closer).
+
+    This matters because, with the plain two-sided well applied to every
+    pair, weak/background contacts are usually the majority and nearly all
+    saturate at the same r_target=rc: restraining that many pairs to one
+    shared *exact* distance is only satisfiable in 3-D by spreading beads
+    over a spherical shell (same mechanism as the Thomson problem). Exempting
+    those pairs from the pull-together side removes that false precision
+    automatically — it's derived from each pair's own data, not a tunable.
 
     Parameters
     ----------
@@ -240,8 +246,6 @@ def build_boltzmann_force(
     noise_seed  : RNG seed for the controller.
     r_min       : excluded-volume floor [nm]; falls back to 0.1*rc.
     kernel      : see VALID_BOLTZMANN_KERNELS.
-    tol_frac    : flat-bottom half-width as a fraction of r_target, e.g.
-                  0.2 -> +-20% zero-force zone. 0 (default) = exact harmonic.
 
     Returns
     -------
@@ -286,34 +290,22 @@ def build_boltzmann_force(
 
     r_target = _boltzmann_r_target(c_vals, rc, alpha, r_min, kernel=kernel)
 
-    n_at_cap = int(np.count_nonzero(r_target >= rc - 1e-12))
+    # capped == no real distance evidence (kernel saturated at rc); these
+    # get a one-sided floor only (r_hi pushed out past any realistic bead
+    # separation), everyone else keeps the exact two-sided well (r_lo==r_hi)
+    at_cap = r_target >= rc - 1e-9
+    n_at_cap = int(np.count_nonzero(at_cap))
     log.info(
         "  target distances: min=%.4f nm  median=%.4f nm  max=%.4f nm  "
-        "(%d/%d pairs, %.1f%%, capped at rc=%.3f nm)",
+        "(%d/%d pairs, %.1f%%, capped at rc=%.3f nm -> one-sided floor, no pull)",
         float(r_target.min()) if n_bonds else float("nan"),
         float(np.median(r_target)) if n_bonds else float("nan"),
         float(r_target.max()) if n_bonds else float("nan"),
         n_at_cap, n_bonds, 100.0 * n_at_cap / max(n_bonds, 1), rc,
     )
-    if n_bonds and n_at_cap / n_bonds > 0.5 and tol_frac <= 0:
-        log.warning(
-            "  Over half of pairs (%.0f%%) capped at rc — alpha=%.2f may be too "
-            "steep for this r_min/rc ratio, and/or set HIC_BOLTZMANN_TOL_FRAC>0 "
-            "to give these pairs slack instead of pinning them all to rc exactly.",
-            100.0 * n_at_cap / n_bonds, alpha,
-        )
 
-    # flat-bottom tolerance band: r_lo/r_hi collapse to r_target when
-    # tol_frac=0 (exact harmonic, unchanged original behaviour)
-    tol_frac = max(0.0, float(tol_frac))
-    r_lo = np.clip(r_target * (1.0 - tol_frac), r_min, rc)
-    r_hi = np.clip(r_target * (1.0 + tol_frac), r_min, rc)
-    if tol_frac > 0:
-        log.info(
-            "  flat-bottom tolerance: tol_frac=%.2f -> mean band width=%.4f nm "
-            "(zero-force zone around each pair's target)",
-            tol_frac, float(np.mean(r_hi - r_lo)) if n_bonds else 0.0,
-        )
+    r_lo = r_target
+    r_hi = np.where(at_cap, 10.0 * rc, r_target)
 
     w_mean = float(c_vals.mean()) if n_bonds else 0.0
     bonds_per_bead = 2.0 * n_bonds / N_beads
@@ -379,7 +371,6 @@ def build_hic_force(
     chrom            : Optional[str]   = None,
     r_min            : Optional[float] = None,
     kernel           : str             = "exponential",
-    tol_frac         : float           = 0.0,
 ):
     """Raw Hi-C array -> sparse Hi-C restraint force.
 
@@ -403,7 +394,6 @@ def build_hic_force(
     save_path/chrom  : if given, saves a before/after denoising plot.
     r_min            : excluded-volume floor [nm].
     kernel           : see VALID_BOLTZMANN_KERNELS.
-    tol_frac         : flat-bottom tolerance band, see build_boltzmann_force.
 
     Returns
     -------
@@ -426,7 +416,6 @@ def build_hic_force(
             ("OE normalize",  oe_normalize),
             ("Input shape",   str(H_raw.shape)),
             ("r_min (EV floor)", f"{r_min:.4f} nm" if r_min is not None else "not given — falls back to 0.1*rc"),
-            ("Tol frac (flat-bottom)", f"{tol_frac:.2f}" if tol_frac > 0 else "0 (exact harmonic)"),
         ],
         title="Hi-C Force — build",
         log_fn=log.info,
@@ -446,7 +435,6 @@ def build_hic_force(
         noise_seed=noise_seed,
         r_min=r_min,
         kernel=kernel,
-        tol_frac=tol_frac,
     )
 
     log.info("build_hic_force: done (group %d)", force_group)

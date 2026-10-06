@@ -408,6 +408,32 @@ _GREEN = f"\033[38;5;82m\033[1m" if _COLOR_ENABLED else ""
 _RST   = "\033[0m"               if _COLOR_ENABLED else ""
 
 
+# Cycle of 256-colour codes spanning the visible spectrum, for rainbow(). Picked
+# for even hue spacing and readability on both light and dark terminals.
+_RAINBOW_CYCLE = (196, 208, 220, 82, 51, 33, 93, 201)
+
+
+def rainbow(text: str) -> str:
+    """Bold text with each non-space character coloured a different hue,
+    cycling through `_RAINBOW_CYCLE`. For one-off festive log lines (e.g. a
+    banner message) — not for routine logging. Respects the same colour
+    detection as the rest of this module (NO_COLOR/FORCE_COLOR/tty check),
+    so it degrades to plain text when colour is off.
+    """
+    if not _COLOR_ENABLED:
+        return text
+    out = []
+    i = 0
+    for ch in text:
+        if ch.isspace():
+            out.append(ch)       # don't spend a colour code on whitespace
+            continue
+        out.append(fg(_RAINBOW_CYCLE[i % len(_RAINBOW_CYCLE)]) + BOLD + ch)
+        i += 1
+    out.append(RESET)
+    return "".join(out)
+
+
 def log_section(name: str) -> None:
     """Print a blue section-divider directly to stdout (bypasses formatter).
 

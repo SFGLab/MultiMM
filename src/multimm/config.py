@@ -126,17 +126,16 @@ class SimulationConfig(BaseModel):
         """
         hic_fields_nondefault = (
             self.HIC_BOLTZMANN_ALPHA != 4.0 or self.HIC_BOLTZMANN_KERNEL != "exponential"
-            or self.HIC_BOLTZMANN_TOL_FRAC != 0.0
         )
 
         if not self.HIC_USE_FORCE and hic_fields_nondefault:
             logger.warning(
                 "HIC_USE_FORCE=False, but HIC_BOLTZMANN_ALPHA=%s / "
-                "HIC_BOLTZMANN_KERNEL=%s / HIC_BOLTZMANN_TOL_FRAC=%s (set away from "
+                "HIC_BOLTZMANN_KERNEL=%s (set away from "
                 "default) will have no effect — the Hi-C force isn't being built at "
                 "all. Set HIC_USE_FORCE=True to actually apply it, or leave these at "
                 "their defaults if you don't intend to use the Hi-C force.",
-                self.HIC_BOLTZMANN_ALPHA, self.HIC_BOLTZMANN_KERNEL, self.HIC_BOLTZMANN_TOL_FRAC,
+                self.HIC_BOLTZMANN_ALPHA, self.HIC_BOLTZMANN_KERNEL,
             )
 
         return self
@@ -270,20 +269,6 @@ class SimulationConfig(BaseModel):
             "All three are exact functional inverses of their own P(r), reuse "
             "HIC_BOLTZMANN_ALPHA as their steepness knob, and are restrained with the "
             "same harmonic well — only the strength<->distance mapping's shape changes."
-        ),
-    )
-    HIC_BOLTZMANN_TOL_FRAC: float = Field(
-        default=0.2,
-        description=(
-            "Flat-bottom tolerance for the Hi-C restraint well, as a fraction of each "
-            "pair's own r_target (e.g. 0.2 -> +-20%% zero-force zone around the target, "
-            "harmonic beyond it). 0 (default) is the original exact two-sided harmonic "
-            "well. Weak/background pairs end up with very similar (often rc-capped) "
-            "r_target values; with no tolerance, restraining a large share of all pairs "
-            "to one exact shared distance tends to spread beads onto a spherical shell "
-            "(same mechanism as the Thomson problem) rather than a graded globule. A "
-            "nonzero tol_frac (try 0.15-0.3) removes that false precision without "
-            "discarding any contacts. See hic_force.build_boltzmann_force."
         ),
     )
     HIC_FORCE_OE: Boolean = Field(

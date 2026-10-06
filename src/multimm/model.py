@@ -18,7 +18,7 @@ from .validation import (
     validate_hic_model, validate_hic_ensemble, validate_loops, validate_compartments,
     validate_compartment_aggregation, validate_distance_vs_strength,
 )
-from .logger import log_table, log_section, log_success
+from .logger import log_table, log_section, log_success, rainbow
 from .quality_tests import run_quality_tests
 
 logger = logging.getLogger(__name__)
@@ -441,9 +441,7 @@ class MultiMM:
                                    if a.LE_USE_HARMONIC_BOND else "—"),
             ("Hi-C force",        (f"✓  kernel={a.HIC_BOLTZMANN_KERNEL}  "
                                     f"boltzmann_alpha={a.HIC_BOLTZMANN_ALPHA}  "
-                                    f"k_scale={a.HIC_K_SCALE}"
-                                    + (f"  tol_frac={a.HIC_BOLTZMANN_TOL_FRAC}"
-                                       if a.HIC_BOLTZMANN_TOL_FRAC else ""))
+                                    f"k_scale={a.HIC_K_SCALE}")
                                    if a.HIC_USE_FORCE else "—"),
             ("Compartment A/B",   (f"✓  Ea={a.COB_EA}  Eb={a.COB_EB}"
                                     + ("  (.bed)" if a.COB_USE_COMPARTMENT_BLOCKS else "  (Hi-C PC1)"))
@@ -1209,7 +1207,6 @@ class MultiMM:
                 ("k_scale",       f"{self.args.HIC_K_SCALE} kJ/mol"),
                 ("kernel",        boltzmann_kernel),
                 ("boltzmann_alpha", boltzmann_alpha),
-                ("tol_frac (flat-bottom)", getattr(self.args, "HIC_BOLTZMANN_TOL_FRAC", 0.0)),
                 ("r_min (EV floor)", f"{self.hic_r_min:.4f} nm"),
                 ("rc (hic_rc)",   f"{rc:.4f} nm" + (
                     "  (explicit HIC_RC)" if explicit_rc is not None else
@@ -1238,7 +1235,6 @@ class MultiMM:
             chrom=self.hic_chrom,
             r_min=self.hic_r_min,
             kernel=boltzmann_kernel,
-            tol_frac=getattr(self.args, "HIC_BOLTZMANN_TOL_FRAC", 0.0),
             force_group=hic_group_id,
         )
         force, self.hic_noise = result if use_noise else (result, None)
@@ -1342,7 +1338,7 @@ class MultiMM:
 
         # Report which platform is being used
         current_platform = self.simulation.context.getPlatform()
-        logger.info(f"Simulation will run on platform: {current_platform.getName()}.")
+        logger.info(rainbow(f"Simulation will run on platform: {current_platform.getName()}."))
 
         # Perform energy minimization
         start_time = time.time()

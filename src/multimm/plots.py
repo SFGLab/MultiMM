@@ -46,7 +46,24 @@ _HIC_CMAP = mcolors.LinearSegmentedColormap.from_list(
 
 pv.set_jupyter_backend("server")
 color_dict = {-2: "#bf0020", -1: "#e36a24", 1: "#20c8e6", 2: "#181385", 0: "#ffffff"}
+# Full subcompartment labels (Calder-style A1/A2/B1/B2) — only used when the
+# data actually carries that granularity. Plain A/B compartments (no
+# subcompartment split — e.g. HIC_BLOCK_COPOLYMER's Hi-C PC1 labels, or a
+# .bed file that only annotates "A"/"B") fall back to _AB_ONLY_LABELS, picked
+# per-call by _compartment_labels() below.
 comp_dict = {-2: "B2", -1: "B1", 1: "A2", 2: "A1", 0: "no compartment"}
+_AB_ONLY_LABELS = {-1: "B", 1: "A", 0: "no compartment"}
+
+
+def _compartment_labels(values) -> dict:
+    """A1/A2/B1/B2 labels if `values` has real subcompartment signal (+-2),
+    else plain A/B. Call with the actual unique compartment values being
+    plotted — never assume subcompartment granularity from the data source.
+    """
+    values = np.asarray(values)
+    if values.size and np.max(np.abs(values)) > 1:
+        return comp_dict
+    return _AB_ONLY_LABELS
 
 def _render_chain_image(points, colors=None, r=0.2, cmap="coolwarm", zoom=1.0):
     """Render a polymer chain via `viz_structure()` to a temp screenshot for
@@ -142,6 +159,8 @@ def plot_projection(struct_3D, Cs, save_path, name="structure"):
         abs_max = np.max(np.abs(unique_sub)) if len(unique_sub) > 0 else 1.0
         sub_norm = mcolors.Normalize(vmin=-abs_max, vmax=abs_max)
         point_colors = diverging_cmap(sub_norm(df.subcomp.values))
+        comp_labels = _compartment_labels(unique_sub)
+        comp_word = "Subcompartment" if comp_labels is comp_dict else "Compartment"
     else:
         r_norm = mcolors.Normalize(vmin=r.min(), vmax=r.max())
         point_colors = plt.get_cmap(sequential_cmap)(r_norm(r))
@@ -188,7 +207,7 @@ def plot_projection(struct_3D, Cs, save_path, name="structure"):
 
     if has_comps:
         cbar = fig.colorbar(plt.cm.ScalarMappable(norm=sub_norm, cmap=diverging_cmap), ax=ax2, fraction=0.046, pad=0.04)
-        cbar.set_label("Subcompartment (B ← 0 → A)")
+        cbar.set_label(f"{comp_word} (B ← 0 → A)")
     else:
         cbar = fig.colorbar(plt.cm.ScalarMappable(norm=r_norm, cmap=sequential_cmap), ax=ax2, fraction=0.046, pad=0.04)
         cbar.set_label("Distance from COM")
@@ -204,8 +223,8 @@ def plot_projection(struct_3D, Cs, save_path, name="structure"):
                 continue
             color = diverging_cmap(sub_norm(scv))
             sns.kdeplot(sub.r_com, ax=ax3, fill=True, alpha=0.25, color=color, linewidth=1.8,
-                        label=comp_dict.get(scv, str(scv)))
-        ax3.legend(fontsize=8, frameon=False, title="Subcompartment")
+                        label=comp_labels.get(scv, str(scv)))
+        ax3.legend(fontsize=8, frameon=False, title=comp_word)
     else:
         _hist_with_kde(ax3, r, accent, xlabel="Distance from COM", title="")
     ax3.set_title("Radial Distribution from COM", fontsize=11, fontweight="bold")
@@ -266,11 +285,11 @@ def plot_projection(struct_3D, Cs, save_path, name="structure"):
 
         legend_elements = [
             Line2D([0], [0], color=diverging_cmap(sub_norm(v)), lw=2,
-                   label=comp_dict.get(v, str(v)))
+                   label=comp_labels.get(v, str(v)))
             for v in unique_sub if v != 0
         ]
-        ax4.legend(handles=legend_elements, frameon=False, fontsize=8, title="Subcompartment (contour overlay)")
-        ax4.set_title("Free-Energy Landscape + Subcompartment Occupancy", fontsize=11, fontweight="bold")
+        ax4.legend(handles=legend_elements, frameon=False, fontsize=8, title=f"{comp_word} (contour overlay)")
+        ax4.set_title(f"Free-Energy Landscape + {comp_word} Occupancy", fontsize=11, fontweight="bold")
     else:
         ax4.set_title("Free-Energy Landscape (PCA space)", fontsize=11, fontweight="bold")
     ax4.set_xlabel("PC1")
@@ -286,9 +305,9 @@ def plot_projection(struct_3D, Cs, save_path, name="structure"):
         )
         sns.stripplot(data=df, x="subcomp", y="r_com", color="black", alpha=0.2, size=1.3, ax=ax5)
         ax5.set_xticks(range(len(unique_sub)))
-        ax5.set_xticklabels([comp_dict.get(v, str(v)) for v in unique_sub])
-        ax5.set_title("Radial Distance by Subcompartment", fontsize=11, fontweight="bold")
-        ax5.set_xlabel("Subcompartment state")
+        ax5.set_xticklabels([comp_labels.get(v, str(v)) for v in unique_sub])
+        ax5.set_title(f"Radial Distance by {comp_word}", fontsize=11, fontweight="bold")
+        ax5.set_xlabel(f"{comp_word} state")
         ax5.set_ylabel("Distance from COM")
     else:
         n_comp = len(explained_var)
@@ -1478,7 +1497,7 @@ def plot_compartment_validation(pc1_aligned, Cs, save_dir, name="compartment_val
     unique_sub = np.sort(np.unique(Cs))
     abs_max = np.max(np.abs(unique_sub)) if len(unique_sub) else 1.0
     norm = mcolors.Normalize(vmin=-abs_max, vmax=abs_max)
-    labels = comp_dict  # {-2: "B2", -1: "B1", 1: "A2", 2: "A1", 0: "no compartment"}
+    labels = _compartment_labels(unique_sub)  # A1/A2/B1/B2, or plain A/B if no subcompartment signal
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
