@@ -121,7 +121,8 @@ class MultiMM:
         #     else:
         #         raise ValueError('Eigenvector should be in tsv format.')
         if args.COMPARTMENT_PATH:
-            if args.COMPARTMENT_PATH.lower().endswith(".bed"):
+            comp_path_lower = args.COMPARTMENT_PATH.lower()
+            if comp_path_lower.endswith(".bed"):
                 self.Cs, self.chr_ends, self.chrom_idxs = import_bed(
                     bed_file=args.COMPARTMENT_PATH,
                     N_beads=self.args.N_BEADS,
@@ -133,8 +134,21 @@ class MultiMM:
                     flip_prob=args.COMPARTMENT_FLIP_PROB,
                     noise_strength=args.COMPARTMENT_NOISE_STD,
                 )
+            elif comp_path_lower.endswith(".bw") or comp_path_lower.endswith(".bigwig"):
+                # binary=True switches import_bw() into A/B compartment-calling
+                # mode (see its docstring) instead of a continuous signal track.
+                self.Cs, self.chr_ends, self.chrom_idxs = import_bw(
+                    args.COMPARTMENT_PATH,
+                    self.args.N_BEADS,
+                    chrom=chrom,
+                    coords=coords,
+                    path=self.save_path,
+                    binary=True,
+                    shuffle=args.SHUFFLE_CHROMS,
+                    seed=args.SHUFFLING_SEED,
+                )
             else:
-                raise ValueError("Compartments file should be in .bed format.")
+                raise ValueError("Compartments file should be in .bed, .bw or .bigwig format.")
 
         # Loops (optional)
         if not _is_empty(args.LOOPS_PATH):
@@ -383,23 +397,6 @@ class MultiMM:
             int((self.Cs > 0).sum()), int((self.Cs < 0).sum()), int((self.Cs == 0).sum()),
         )
 
-        # Soften the block-copolymer force for Hi-C-derived labels only — the
-        # .bed path (COB_USE_COMPARTMENT_BLOCKS) never reaches this method, so
-        # COB_EA/COB_EB stay untouched there. add_compartment_blocks() itself
-        # is unchanged; we just scale the values it reads.
-        scale = getattr(self.args, "HIC_BLOCK_COPOLYMER_STRENGTH_SCALE", 1.0)
-        if scale != 1.0:
-            ea0, eb0 = self.args.COB_EA, self.args.COB_EB
-            self.args.COB_EA = ea0 * scale
-            self.args.COB_EB = eb0 * scale
-            logger.info(
-                "HIC_BLOCK_COPOLYMER: scaling compartment-force strength by %.2f "
-                "(Hi-C-derived labels are noisier than a curated .bed track) — "
-                "Ea %.3g -> %.3g, Eb %.3g -> %.3g. Tune via "
-                "HIC_BLOCK_COPOLYMER_STRENGTH_SCALE.",
-                scale, ea0, self.args.COB_EA, eb0, self.args.COB_EB,
-            )
-
     def _log_hyperparameters(self) -> None:
         """Print a compact summary table of key simulation hyperparameters."""
         a = self.args
@@ -487,6 +484,36 @@ class MultiMM:
         self.force_groups[name] = gid
         return gid
 
+    def _set_local_cutoff(self, force) -> None:
+        """Bound a CustomNonbondedForce to genuinely nearby pairs only.
+
+        CustomNonbondedForce defaults to NoCutoff: every particle pair in
+        the system is summed, not just nearby ones. For a short-range
+        "like attracts like" contact force that silently turns a handful of
+        real neighbor contacts into hundreds as the system grows (energy
+        scales with N, not with local density) — a direct route to
+        structural collapse. `bead_contact_r` (a few bead diameters,
+        independent of N) is the genuinely local scale; `r_comp` grows with
+        the nucleus radius (~N^(1/3)) and is NOT a safe cutoff on its own.
+        """
+        force.setNonbondedMethod(mm.CustomNonbondedForce.CutoffNonPeriodic)
+        force.setCutoffDistance(self.bead_contact_r)
+
+    def _set_noop_cutoff(self, force) -> None:
+        """Give a CustomNonbondedForce a cutoff that never truncates anything.
+
+        OpenCL/CUDA require every CustomNonbondedForce in the System to
+        agree on whether a cutoff is used at all ("All Forces must agree
+        on whether to use a cutoff") — so once `_set_local_cutoff` puts a
+        real cutoff on the compartment forces, every other CustomNonbonded
+        Force needs one too. For forces whose range should stay exactly as
+        before (excluded volume, chromosomal blocks), set the cutoff
+        comfortably past the confinement sphere's diameter — no real pair
+        can ever be that far apart, so this is a behavior-preserving no-op.
+        """
+        force.setNonbondedMethod(mm.CustomNonbondedForce.CutoffNonPeriodic)
+        force.setCutoffDistance(5.0 * self.radius2)
+
     def add_evforce(self):
         """Excluded volume force with optional soft-core formulations.
 
@@ -532,6 +559,7 @@ class MultiMM:
             logger.error(f"Unknown EV_FORCE_TYPE: {mode}")
             raise ValueError(f"Unknown EV_FORCE_TYPE: {mode}")
 
+        self._set_noop_cutoff(self.ev_force)
         self.system.addForce(self.ev_force)
 
     def add_compartment_blocks(self):
@@ -609,6 +637,7 @@ class MultiMM:
             logger.error(f"Unknown COB_FORCE_TYPE: {mode}")
             raise ValueError(f"Unknown COB_FORCE_TYPE: {mode}")
 
+        self._set_local_cutoff(self.comp_force)
         self.system.addForce(self.comp_force)
 
     def add_subcompartment_blocks(self):
@@ -699,6 +728,7 @@ class MultiMM:
             logger.error(f"Unknown SCB_FORCE_TYPE: {mode}")
             raise ValueError(f"Unknown SCB_FORCE_TYPE: {mode}")
 
+        self._set_local_cutoff(self.scomp_force)
         self.system.addForce(self.scomp_force)
 
     def add_chromosomal_blocks(self):
@@ -766,6 +796,7 @@ class MultiMM:
             logger.error(f"Unknown CHB_FORCE_TYPE: {mode}")
             raise ValueError(f"Unknown CHB_FORCE_TYPE: {mode}")
 
+        self._set_noop_cutoff(self.chrom_block_force)
         self.system.addForce(self.chrom_block_force)
 
     def add_spherical_container(self):

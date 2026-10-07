@@ -203,7 +203,8 @@ class SimulationConfig(BaseModel):
     N_BEADS: int = Field(default=50000, description="Number of Simulation Beads.")
     COMPARTMENT_PATH: Optional[str] = Field(
         default=None,
-        description="It should be a .bed file with subcompartments from Calder (or something in the same format).",
+        description="A .bed file with (sub)compartments from Calder (or the same format), or a .bw/.bigwig "
+        "signal track (e.g. an eigenvector/PC1 track) from which A/B compartment calls are derived.",
     )
     LOOPS_PATH: Optional[str] = Field(default=None, description="A .bedpe file path with loops. Optional — simulation runs without loops if not provided.")
     HIC_PATH: Optional[str] = Field(
@@ -350,18 +351,6 @@ class SimulationConfig(BaseModel):
             "A/B compartments need several alternating domains to even be visible; below "
             "this a region is TAD-scale, not compartment-scale, so deriving compartments "
             "from it doesn't make sense."
-        ),
-    )
-    HIC_BLOCK_COPOLYMER_STRENGTH_SCALE: float = Field(
-        default=0.4,
-        description=(
-            "Scales COB_EA/COB_EB down for compartments derived from Hi-C PC1 "
-            "(HIC_BLOCK_COPOLYMER only) — a .bed-based compartment force "
-            "(COB_USE_COMPARTMENT_BLOCKS) always uses COB_EA/COB_EB at full strength, "
-            "unaffected by this field. Hi-C-derived PC1 labels are coarser and noisier "
-            "than a curated .bed compartment call, so COB_EA/COB_EB (tuned for .bed data) "
-            "tend to over-aggregate A/B segregation when applied at full strength to the "
-            "Hi-C-derived path. 1.0 disables scaling; lower values soften segregation."
         ),
     )
     GENE_TSV: str = Field(

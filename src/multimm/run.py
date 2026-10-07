@@ -239,7 +239,7 @@ def args_tests(args):
     # INPUT FILE EXISTENCE CHECKS (if provided)
     # -----------------------------------------
     check_file(args.LOOPS_PATH, "Loops (.bedpe)", ".bedpe")
-    check_file(args.COMPARTMENT_PATH, "Compartment data", ".bed")
+    check_file(args.COMPARTMENT_PATH, "Compartment data", ".bed/.bw/.bigwig")
     check_file(args.ATACSEQ_PATH, "Nucleosome/ATAC data", ".bigwig")
     check_file(args.HIC_PATH, "Hi-C contact matrix", ".hic/.cool/.mcool")
 

@@ -3,7 +3,6 @@
 #########################################################################
 
 import logging
-import random as rd
 import re
 import warnings
 from itertools import groupby
@@ -229,6 +228,37 @@ def compute_averages(arr1, N2):
     return averaged_arr
 
 
+# Bridge an unassigned run between two called regions only up to this many
+# beads (longer runs stay neutral) — internal, not user-tunable: a handful
+# of beads is almost always a resolution/annotation seam, not real data.
+_GAP_FILL_MAX_BEADS = 3
+
+
+def _fill_small_gaps(arr, max_gap=_GAP_FILL_MAX_BEADS):
+    """Bridge a run of unassigned (0) beads flanked by assigned beads on
+    both sides with the nearer flank's value — split the run down the
+    middle if both flanks have to be served and disagree. Only runs up to
+    `max_gap` beads long are bridged; longer ones are left at 0 (genuinely
+    unassigned), and a run touching either end of `arr` (no flank on that
+    side) is never bridged.
+    """
+    n = len(arr)
+    i = 0
+    while i < n:
+        if arr[i] != 0:
+            i += 1
+            continue
+        j = i
+        while j < n and arr[j] == 0:
+            j += 1
+        if i > 0 and j < n and (j - i) <= max_gap:
+            mid = i + (j - i + 1) // 2  # left flank gets the larger half on an odd gap
+            arr[i:mid] = arr[i - 1]
+            arr[mid:j] = arr[j]
+        i = j
+    return arr
+
+
 def import_bed(
     bed_file,
     N_beads,
@@ -243,19 +273,30 @@ def import_bed(
 ):
     # Load compartment dataset
     np.random.seed(seed)
-    comps_df = pd.read_csv(bed_file, header=None, sep="\t")
+    # keep_default_na=False: an "NA"/"NULL"/"None" label must stay a string,
+    # not silently become NaN (which used to crash .startswith() below).
+    comps_df = pd.read_csv(bed_file, header=None, sep="\t", keep_default_na=False)
 
     logger.debug("Cleaning and transforming subcompartments dataframe...")
 
     # Chromosome selection
     if chrom is not None:
+        # Overlap test (not full-containment): keep any row that overlaps the
+        # region at all, then clip it to the region bounds below. Requiring
+        # full containment dropped every row straddling either region edge —
+        # in practice the first and last annotated segment of almost any
+        # region query — leaving a lot of beads unassigned for no real reason.
         comps_df = comps_df[
             (comps_df[0] == chrom) &
-            (comps_df[1] > coords[0]) &
-            (comps_df[2] < coords[1])
+            (comps_df[2] > coords[0]) &
+            (comps_df[1] < coords[1])
         ].reset_index(drop=True)
+        comps_df[1] = comps_df[1].clip(lower=coords[0])
+        comps_df[2] = comps_df[2].clip(upper=coords[1])
 
-        chrom_idx = next((k for k, v in chrs.items() if v == chrom or v == f"chr{chrom}"), 0)
+        chrom_idx = next((k for k, v in chrs.items() if v == chrom or v == f"chr{chrom}"), None)
+        if chrom_idx is None:
+            raise ValueError(f"Unknown chromosome '{chrom}' — not found in chrs mapping.")
         chrom_idxs = np.array([chrom_idx])
 
     else:
@@ -295,9 +336,13 @@ def import_bed(
     # Build compartment vector (discrete base state)
     logger.debug("Building subcompartments_array...")
     comps_array = np.zeros(N_beads, dtype=float)
+    n_short = 0  # segments narrower than one bead's resolution
 
     for i in tqdm(range(len(comps_df))):
-        label = comps_df[3][i]
+        # strip + uppercase: tolerates stray whitespace/lowercase labels; a
+        # leftover "nan" string just falls through to `continue` below
+        # instead of crashing .startswith() on a non-string.
+        label = str(comps_df[3][i]).strip().upper()
 
         if label.startswith("A.1") or label.startswith("A1"):
             val = 2
@@ -310,7 +355,39 @@ def import_bed(
         else:
             continue
 
-        comps_array[comps_df[1][i]:comps_df[2][i]] = val
+        start, end = comps_df[1][i], comps_df[2][i]
+        if end <= start:
+            # shorter than one bead's resolution — floor division would
+            # collapse start==end into a zero-width (no-op) slice, silently
+            # dropping the segment. Give it its single nearest bead instead.
+            end = start + 1
+            n_short += 1
+        comps_array[start:end] = val
+
+    if n_short:
+        logger.warning(
+            "%d compartment segment(s) were shorter than one bead's resolution "
+            "(%d bp) — each was assigned to its single nearest bead instead of "
+            "being silently dropped.", n_short, resolution,
+        )
+
+    # ---------------------------------------------------------
+    # SMALL-GAP FILLING: a short run of unassigned beads sandwiched between
+    # two called regions is almost always a resolution/annotation seam, not
+    # real "no data" — bridge it from its nearest flank. Done per chromosome
+    # segment (chrom_ends) so a gap is never bridged across two different
+    # chromosomes. Longer gaps are left at 0 (genuinely unassigned).
+    # ---------------------------------------------------------
+    n_before = int(np.count_nonzero(comps_array == 0))
+    for k in range(len(chrom_ends) - 1):
+        s, e = chrom_ends[k], chrom_ends[k + 1]
+        comps_array[s:e] = _fill_small_gaps(comps_array[s:e])
+    n_filled = n_before - int(np.count_nonzero(comps_array == 0))
+    if n_filled:
+        logger.info(
+            "Filled %d bead(s) in small gaps (<=%d beads) between two "
+            "called compartment regions.", n_filled, _GAP_FILL_MAX_BEADS,
+        )
 
     # ---------------------------------------------------------
     # STOCHASTIC CONTINUOUS PERTURBATION (zero-mean by design)
@@ -586,6 +663,12 @@ def shuffle_blocks(array):
     return shuffled_array
 
 
+# Compartments-from-BigWig internal thresholds (not user-tunable, see import_bed's
+# own internal constants above for the same design choice).
+_BW_NEUTRAL_BAND = 0.2       # |normalized signal| below this stays unassigned (0)
+_BW_MIN_VALID_FRAC = 0.5     # a bead with more missing bp than this is unassigned, not guessed
+
+
 def import_bw(
     bw_path,
     N_beads,
@@ -599,14 +682,23 @@ def import_bw(
     seed=0,
     n_chroms=22,
 ):
-    """Imports .BigWig data and outputs compartments.
+    """Imports .BigWig data.
 
-    It assumes that higher signal coresponds to B compartment.
+    binary=False (default): a continuous per-bead signal track — this is the
+    ATAC-seq / nucleosome-occupancy path and behaves exactly as before.
 
-    In case that you would like to switch the sign then add flag
-    sign=-1.
+    binary=True: discretized A/B compartment calls from a single BigWig track,
+    on import_bed()'s own -2/-1/0/1/2 convention (here only ±1, since a plain
+    signal track carries no sub-compartment resolution). Higher signal ->
+    B (-1), lower signal -> A (+1); the signal is mean-centered and scaled to
+    [-1, 1] before discretizing, which keeps the zero-crossing meaningful
+    instead of depending on wherever the raw data happens to range. Missing
+    (NaN) bp are tracked as missing, not silently folded into the signal, so a
+    mostly-missing bead stays unassigned (0) rather than getting a confident
+    but meaningless call. Short unassigned runs are then bridged exactly like
+    import_bed() (`_fill_small_gaps`). Returns (comps_array, chrom_ends,
+    chrom_idxs), matching import_bed()'s contract, instead of a plain array.
     """
-    # Open file
     np.random.seed(seed)
     bw = pyBigWig.open(bw_path)
     chrom_idxs = np.arange(n_chroms).astype(int)
@@ -614,48 +706,81 @@ def import_bw(
         np.random.shuffle(chrom_idxs)
     logger.debug(f"Number of chromosomes: {n_chroms}")
 
-    # Compute the total length of chromosomes
+    # Per-chromosome bead-boundary bookkeeping
     if chrom is None:
-        chrom_length = 0
-        lengths = list()
-        for i in range(n_chroms):
-            chrom_length += bw.chroms(chrs[chrom_idxs[i]])
-            lengths.append(bw.chroms(chrs[chrom_idxs[i]]))
-        lengths = np.array(lengths)
-        resolution = chrom_length // (2 * N_beads)
-        polymer_lengths = lengths // resolution
-        np.save(path + "metadata/chrom_lengths.npy", polymer_lengths)
+        lengths = np.array([bw.chroms(chrs[chrom_idxs[i]]) for i in range(n_chroms)])
+        if binary:
+            # Same resolution convention as import_bed (total length // N_beads),
+            # so gap-filling and chrom_lengths.npy line up with the .bed path.
+            resolution = int(lengths.sum()) // N_beads
+            chrom_ends = np.cumsum(np.insert(lengths, 0, 0)) // resolution
+            chrom_ends[-1] = N_beads
+            polymer_lengths = np.diff(chrom_ends)
+        else:
+            # ATAC-seq bookkeeping — unchanged
+            resolution = int(lengths.sum()) // (2 * N_beads)
+            polymer_lengths = lengths // resolution
+        np.save(path + "metadata/chrom_lengths.npy", chrom_ends if binary else polymer_lengths)
+    elif binary:
+        chrom_idx = next((k for k, v in chrs.items() if v == chrom or v == f"chr{chrom}"), None)
+        if chrom_idx is None:
+            raise ValueError(f"Unknown chromosome '{chrom}' — not found in chrs mapping.")
+        chrom_idxs = np.array([chrom_idx])
+        chrom_ends = np.array([0, N_beads])
 
-    # Import the downgraded signal
+    # Import the downgraded signal (and, for compartments, a parallel
+    # valid/missing mask averaged the same way)
     logger.debug("Importing bw signal...")
     if chrom is None:
         genomewide_signal = list()
+        valid_frac = list() if binary else None
         for i in tqdm(range(n_chroms)):
             signal = bw.values(chrs[chrom_idxs[i]], 0, -1, numpy=True)
+            if binary:
+                valid_frac.append(compute_averages((~np.isnan(signal)).astype(float), polymer_lengths[i]))
             signal = np.nan_to_num(signal, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
             genomewide_signal.append(compute_averages(signal, polymer_lengths[i]))
         genomewide_signal = np.concatenate(genomewide_signal)
+        if binary:
+            valid_frac = np.concatenate(valid_frac)
     else:
         genomewide_signal = bw.values(chrom, coords[0], coords[1], numpy=True)
+        if binary:
+            valid_frac = (~np.isnan(genomewide_signal)).astype(float)
         genomewide_signal = np.nan_to_num(genomewide_signal, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
     bw.close()
 
     genomewide_signal = compute_averages(genomewide_signal, N_beads)
+
+    if binary:
+        valid_frac = compute_averages(valid_frac, N_beads)
+
+        # sign-preserving normalize to [-1, 1] — keeps the zero-crossing meaningful
+        centered = genomewide_signal - np.mean(genomewide_signal)
+        max_abs = np.max(np.abs(centered))
+        normalized = centered / max_abs if max_abs > 0 else centered
+
+        # higher signal -> B (-1), lower -> A (+1), matching import_bed's sign convention
+        comps_array = np.where(
+            normalized > _BW_NEUTRAL_BAND, -1,
+            np.where(normalized < -_BW_NEUTRAL_BAND, 1, 0),
+        ).astype(int)
+        comps_array[valid_frac < _BW_MIN_VALID_FRAC] = 0  # too much missing data to call
+
+        for k in range(len(chrom_ends) - 1):
+            s, e = chrom_ends[k], chrom_ends[k + 1]
+            comps_array[s:e] = _fill_small_gaps(comps_array[s:e])
+
+        np.save(path + "metadata/compartments.npy", comps_array)
+        np.save(path + "metadata/chrom_idxs.npy", chrom_idxs)
+        logger.debug("Done!\n")
+        return comps_array, chrom_ends.astype(int), chrom_idxs.astype(int)
+
+    # --- continuous (ATAC-seq) path, unchanged below ---
     if norm:
         genomewide_signal = (genomewide_signal - np.mean(genomewide_signal) + 3 * np.std(genomewide_signal)) / np.std(
             genomewide_signal
         )
-
-    # Transform signal to binary or adjuct it to have zero mean
-    if binary:
-        genomewide_signal[genomewide_signal > 0] = -1
-        genomewide_signal[genomewide_signal <= 0] = 1
-
-        # Subtitute zeros with random spin states
-        mask = genomewide_signal == 0
-        n_zeros = np.count_nonzero(mask)
-        nums = np.array(rd.choices([-1, 1], k=n_zeros))
-        genomewide_signal[mask] = nums
 
     logger.debug("Done!\n")
 
@@ -1101,5 +1226,3 @@ def distance_pc1(dist_map: np.ndarray) -> np.ndarray:
     corr = np.nan_to_num(np.corrcoef(contact, rowvar=False))
     _, eigvecs = eigsh(corr, k=1, which="LM")
     return eigvecs[:, 0]
-
-

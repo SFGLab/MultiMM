@@ -214,8 +214,6 @@ Turn this on to derive A/B compartments straight from the Hi-C matrix's own PC1,
 
 It's the easiest way to get compartment-level structure for a whole-chromosome or genome-wide run when you don't have a compartment track on hand. Leave it off for small, TAD-scale regions — there's nothing for PC1 to resolve there, and it auto-disables itself below `HIC_BLOCK_COPOLYMER_MIN_BP` (default 5 Mb) — or whenever you already have a real `.bed` annotation, which is the more reliable source. It can't be combined with a `.bed`-based compartment force (pick one), and pairing it with `HIC_FORCE_OE=True` risks double-counting compartment signal, so raw frequency is recommended alongside it.
 
-**If it over-aggregates:** Hi-C-derived PC1 labels are coarser and noisier than a curated `.bed` compartment call, so `COB_EA`/`COB_EB` (tuned for `.bed` data) can over-aggregate A/B segregation when applied at full strength here. `HIC_BLOCK_COPOLYMER_STRENGTH_SCALE` (default `1.0`, full strength — same as the `.bed` path) scales `COB_EA`/`COB_EB` down for this path only; a `.bed`-based compartment force always uses `COB_EA`/`COB_EB` unscaled. Lower it (try `0.15`–`0.4`) if structures look over-aggregated.
-
 **Validation** — after simulation, MultiMM reports seven metrics against the experimental Hi-C matrix, each alongside a random-walk null baseline, using the same `HIC_BOLTZMANN_KERNEL` `P(r)` the force itself was built with (`hic_force.get_boltzmann_p_func`):
 
 | Metric | What it measures |
@@ -264,7 +262,7 @@ R1 = R2 * f^(1/3)
 r_c ~ O(b0) ≈ 1.5 * b0
 ```
 
-ensuring interactions remain local relative to the polymer backbone.
+ensuring interactions remain local relative to the polymer backbone. This locality is also enforced as a hard distance cutoff on the compartment/subcompartment forces themselves (`setCutoffDistance` at this same `bead_contact_r` scale) — without it, OpenMM sums every particle pair in the system by default, letting far-apart same-compartment beads pull on each other and collapse the structure.
 
 **Loop equilibrium distances** — either globally fixed or derived from experimental loop lengths `d_i`:
 
@@ -306,9 +304,11 @@ Columns 1–3: first anchor (chrom, start, end); columns 4–6: second anchor; c
 
 For single-cell data, set columns 2 and 3 to the same value (and columns 5 and 6 likewise) and use strength = 1.
 
-### Compartments (`.bed`, CALDER format)
+### Compartments (`.bed` CALDER format, or `.bw` / `.BigWig`)
 
-Produced by [CALDER2](https://github.com/CSOgroup/CALDER2). The file must contain at least four columns: chrom, start, end, label.
+`COMPARTMENT_PATH` accepts either format.
+
+`.bed`, produced by [CALDER2](https://github.com/CSOgroup/CALDER2): the file must contain at least four columns: chrom, start, end, label.
 
 ```
 chr1  700001   900000   A.1.2.2.2.2.2.2
@@ -316,6 +316,8 @@ chr1  900001  1400000   A.1.1.1.1.2.1.1.1.1.1
 chr1 1400001  1850000   A.1.1.1.1.2.1.2.2.2.1
 chr1 1850001  2100000   B.1.1.2.2.1.2.1
 ```
+
+`.bw` / `.BigWig`: any single signal track that correlates with compartment identity (e.g. a Hi-C eigenvector/PC1 track). The signal is mean-centered and scaled to [-1, 1], then discretized into A/B calls (higher signal → B, lower → A); beads with too much missing data to call are left unassigned, same as an unannotated region in a `.bed` file. This path only distinguishes A/B, not CALDER's finer sub-compartments (A.1/A.2/B.1/B.2), and does not apply `COMPARTMENT_FLIP_PROB`/`COMPARTMENT_NOISE_STD`.
 
 ### Hi-C contact matrix (`.hic` / `.cool` / `.mcool`)
 
@@ -538,7 +540,7 @@ Visualization is powered by [PyVista](https://pyvista.org/).
 | `HIC_INSULATION_WINDOW` | int | 10 | Half-width (beads) of the sliding window used by the insulation-score validation metric. Match it to your real TAD/domain size in beads — mismatched window size weakens `insulation_r` even when the force is working well. |
 | `HIC_BLOCK_COPOLYMER` | bool | `False` | Opt-in: derive A/B compartments from the Hi-C matrix's own (density-aligned) PC1 and feed them into the block-copolymer force, instead of requiring a `.bed` file — see the dedicated section above. Suggested for whole-chromosome/genome-wide runs with no compartment `.bed` on hand. Only active with `HIC_USE_FORCE=True` and no `COMPARTMENT_PATH`; auto-disables below `HIC_BLOCK_COPOLYMER_MIN_BP`; errors if a bed-based compartment force is enabled too. |
 | `HIC_BLOCK_COPOLYMER_MIN_BP` | float | 5,000,000 | Minimum modelled region size (bp) for `HIC_BLOCK_COPOLYMER` to stay enabled — below this the region is TAD-scale, not compartment-scale. |
-| `HIC_BLOCK_COPOLYMER_STRENGTH_SCALE` | float | 1.0 | Scales `COB_EA`/`COB_EB` down for Hi-C-derived (`HIC_BLOCK_COPOLYMER`) compartments only — never affects the `.bed`-based path. `1.0` (default) = full strength (same as `.bed`); lower it (try 0.15–0.4) if A/B segregation looks over-aggregated. |
+
 
 ### Compartment and Subcompartment Forces
 
@@ -613,34 +615,57 @@ Visualization is powered by [PyVista](https://pyvista.org/).
 
 ## Output Directory Structure
 
+Everything below is written under `OUT_PATH`. Lines marked *(cond.)* only appear when the matching option/input is used; everything else is always written.
+
 ```
 OUT_PATH/
-├── config_auto.ini              # copy of all parameters used
-├── md_frames/
-│   └── frame_1_100.cif          # trajectory frames (if SIM_RUN_MD = True)
+├── config_auto.ini                      # copy of all parameters used for this run
 ├── metadata/
-│   ├── chrom_idxs.npy
-│   ├── chrom_lengths.npy
-│   ├── ms.npy                   # left loop anchor bead indices
-│   ├── ns.npy                   # right loop anchor bead indices
-│   ├── ds.npy                   # loop equilibrium distances (nm)
-│   ├── hic_validation.npy       # Hi-C validation metrics dict (if HIC_USE_FORCE = True)
-│   ├── quality_tests.csv        # post-simulation quality check results
-│   ├── parameters.txt           # human-readable parameter log
-│   ├── MultiMM_init.cif         # initial structure
-│   ├── MultiMM.psf              # UCSF Chimera topology
-│   ├── MultiMM_annealing.dcd    # MD trajectory (Chimera/VMD format)
-│   └── chimera_gene_coloring.cmd
+│   ├── MultiMM_init.cif                 # initial structure
+│   ├── MultiMM.psf                      # UCSF Chimera/VMD topology
+│   ├── MultiMM_annealing.dcd            # MD trajectory, Chimera/VMD format (cond.: SIM_RUN_MD)
+│   ├── parameters.txt                   # human-readable parameter log
+│   ├── chimera_gene_coloring.cmd        # Chimera coloring script (cond.: gene/region mode)
+│   ├── MultiMM_chromosome_colors.cmd    # Chimera coloring script (cond.: genome-wide mode)
+│   ├── MultiMM_compartment_colors.cmd   # Chimera coloring script (cond.: compartments given)
+│   ├── chrom_idxs.npy, chrom_lengths.npy   # per-chromosome bookkeeping (cond.: LOOPS_PATH or genome-wide mode)
+│   ├── ms.npy, ns.npy, ds.npy           # loop anchor bead indices + equilibrium distances (cond.: LOOPS_PATH)
+│   ├── compartments_from_hic.npy        # compartments derived from Hi-C PC1 (cond.: HIC_BLOCK_COPOLYMER)
+│   ├── hic_validation.npy               # Hi-C validation metrics (cond.: HIC_USE_FORCE)
+│   ├── distance_vs_strength.npy         # contact-strength vs. 3D-distance check (cond.: HIC_USE_FORCE)
+│   ├── loop_validation.npy              # loop-anchor validation (cond.: LOOPS_PATH)
+│   ├── compartment_validation.npy       # 1D compartment-track validation (cond.: compartments given)
+│   ├── compartment_aggregation.npy      # 3D compartment-clustering validation (cond.: compartments given)
+│   └── quality_tests.csv                # post-simulation quality-check results
+├── md_frames/
+│   └── frame_<n>.cif                    # one CIF per saved MD frame (cond.: SIM_RUN_MD)
 ├── model/
-│   ├── MultiMM_minimized.cif    # energy-minimized structure
-│   └── MultiMM_afterMD.cif      # structure after MD annealing
-└── plots/
-    ├── initial_structure.png
-    ├── minimized_structure.png
-    └── structure_afterMD.png
+│   ├── MultiMM_minimized.cif            # energy-minimized structure
+│   ├── MultiMM_afterMD.cif              # structure after MD annealing (cond.: SIM_RUN_MD)
+│   ├── MultiMM_minimized_with_nucs.cif  # nucleosome-interpolated structure (cond.: NUC_DO_INTERPOLATION)
+│   └── chromosomes/
+│       └── MultiMM_minimized_<chr>.cif  # one CIF per chromosome (cond.: genome-wide mode)
+├── plots/                                # (cond.: SAVE_PLOTS)
+│   ├── initial_structure.png, minimized_structure.png, structure_afterMD.png
+│   ├── <name>_projection.png            # PCA/compartment projection, one per structure above
+│   ├── <name>_contact_map.png           # structure-derived contact heatmap, one per structure above
+│   ├── <name>_compartment_coloring.png  # structure colored by A/B compartment (cond.: compartments given)
+│   ├── minimized_structure_chromosomes.png, minimized_structure_compartments.png   # (cond.: genome-wide mode)
+│   ├── chromosomes/<chr>_minimized_structure.png   # (cond.: genome-wide mode)
+│   ├── hic_comparison_*.png, hic_validation_curves_*.png   # simulated vs. experimental Hi-C (cond.: HIC_USE_FORCE)
+│   ├── distance_vs_strength.png         # (cond.: HIC_USE_FORCE)
+│   ├── loop_validation.png              # (cond.: LOOPS_PATH)
+│   ├── compartment_validation.png, compartment_aggregation.png   # (cond.: compartments given)
+│   └── energy_components.png            # per-force-term energy over the MD trajectory (cond.: SIM_RUN_MD)
+└── analysis/                             # polymer-physics diagnostics (Rg, end-to-end distance, bond/angle stats, ...)
+    ├── <name>_report.txt                 # plain-text summary, one per structure snapshot
+    ├── <name>_density_contour.png
+    └── plots/
+        ├── <name>_overview.png           # one consolidated multi-panel figure per snapshot
+        └── dynamics_dynamics.png         # velocity/kinetic-energy diagnostics (cond.: SIM_RUN_MD)
 ```
 
-For genome-wide runs, an additional `chromosomes/` folder contains per-chromosome CIF files.
+`<name>` above stands for whichever snapshot is being described (`initial_structure`, `minimized_structure`, `structure_afterMD`, …) — each snapshot gets its own projection, heatmap, and `analysis/` entry under that name.
 
 `hic_validation.npy` stores a dictionary with metrics keys `diagonal_decay_r`, `insulation_r`, `pc1_r`, `pearson_oe_r`, `spearman_oe_r`, `ssim`, `gmsd`, `nmi`; `_rw_*` variants hold the random-walk null-model baseline for each, and `_p` suffixes give p-values where available.
 
