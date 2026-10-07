@@ -1671,7 +1671,7 @@ class MultiMM:
         # the structure toward the experimental Hi-C map. The Hi-C force
         # further refines this via its own auto-calibrated scale — see
         # add_hic_force().
-        bead_contact_r = 1.5 * b0        # kept for reference/diagnostics only
+        bead_contact_r = 5 * b0        # kept for reference/diagnostics only
         r_comp = R2 / 3.0
 
         self.radius2 = R2
