@@ -1,0 +1,1375 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Multiscale chromatin modelling from nucleosomes to whole genomes">
+      
+      
+      
+      
+        <link rel="prev" href="../hic-force/">
+      
+      
+        <link rel="next" href="../dynamics/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/multimm_icon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Nuclear envelope and lamina - MultiMM</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#nuclear-organisation-and-lamina" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="MultiMM" class="md-header__button md-logo" aria-label="MultiMM" data-md-component="logo">
+      
+  <img src="../../assets/multimm_icon_header.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MultiMM
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Nuclear envelope and lamina
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/SFGLab/MultiMM" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SFGLab/MultiMM
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../.." class="md-tabs__link">
+          
+  
+  
+  Intro
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  The Model
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/running/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="MultiMM" class="md-nav__button md-logo" aria-label="MultiMM" data-md-component="logo">
+      
+  <img src="../../assets/multimm_icon_header.svg" alt="logo">
+
+    </a>
+    MultiMM
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/SFGLab/MultiMM" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SFGLab/MultiMM
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intro
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Intro
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/inspiration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inspiration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Model
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    The Model
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../initial-structure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Initial structure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scales/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Units and scales
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backbone/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backbone
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../loops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compartments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compartments
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hic-force/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hi-C force
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nuclear envelope and lamina
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nuclear envelope and lamina
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#spherical-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spherical container
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#b-lamina-interaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B-lamina interaction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#central-force-chromosome-size-positioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Central force (chromosome-size positioning)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dynamics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Minimisation and dynamics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../advanced/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/running/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running MultiMM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/config-file/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing a config file
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/arguments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arguments
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#spherical-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spherical container
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#b-lamina-interaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B-lamina interaction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#central-force-chromosome-size-positioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Central force (chromosome-size positioning)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="nuclear-organisation-and-lamina">Nuclear organisation and lamina<a class="headerlink" href="#nuclear-organisation-and-lamina" title="Permanent link">&para;</a></h1>
+<p>At genome scale, chromatin is not free: it sits inside the <strong>nucleus</strong>, and its position is not random. Heterochromatin (B) is enriched at the <strong>nuclear lamina</strong>, the protein mesh lining the nuclear envelope, while small, gene-rich chromosomes tend to sit toward the interior near the nucleolus. MultiMM encodes this with three optional radial forces. All of them act on the distance <span class="arithmatex">\(r\)</span> of a bead from the centre of mass of the structure.</p>
+<div class="admonition tip">
+<p class="admonition-title">In plain words</p>
+<p>The nucleus is a ball with a wall (the <strong>lamina</strong>) and, in the middle, a dense region (the <strong>nucleolus</strong>). Inactive chromatin likes to cling to the walls, while small chromosomes like to sit toward the centre. The forces on this page just express these preferences.</p>
+</div>
+<p><img alt="Nuclear geometry: a shell between the nucleolus and the lamina" src="../../assets/tikz/fig_nucleus.svg" width="520" /></p>
+<p>The sketch is a schematic. One chromosome (bead chain) is shown: its B segments (purple) stay near the lamina and its A segments (gold) farther inside. In the model the sizes follow from the number of beads (see <a href="../scales/">Units and scales</a>): <span class="arithmatex">\(R_2=b_0N^{1/3}\)</span> is the nuclear radius and <span class="arithmatex">\(R_1=0.2^{1/3}R_2\approx0.58R_2\)</span> is the radius of the inner region, which corresponds to <strong>20% of the nuclear volume</strong> and plays the role of the nucleolus.</p>
+<h2 id="spherical-container">Spherical container<a class="headerlink" href="#spherical-container" title="Permanent link">&para;</a></h2>
+<p>Beads are confined to the shell <span class="arithmatex">\(R_1&lt;r&lt;R_2\)</span> by a soft wall on both sides:</p>
+<div class="arithmatex">\[
+U_\text{container}(r)=C\,\bigl[\max(0,\,r-R_2)^2+\max(0,\,R_1-r)^2\bigr],
+\]</div>
+<p>with <span class="arithmatex">\(C=\)</span> <code>SC_SCALE</code>. Inside the shell the energy is zero; outside it grows quadratically, so the wall is a harmonic one, and strong (<span class="arithmatex">\(C=1000\)</span> by default).</p>
+<div class="admonition info">
+<p class="admonition-title">In MultiMM</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SC_USE_SPHERICAL_CONTAINER</code></td>
+<td><code>False</code> (the genome-wide preset <code>GW</code> switches it on)</td>
+</tr>
+<tr>
+<td><code>SC_SCALE</code> (<span class="arithmatex">\(C\)</span>)</td>
+<td>1000.0</td>
+</tr>
+</tbody>
+</table>
+<p><code>SC_RADIUS1</code> and <code>SC_RADIUS2</code> exist in the configuration but are <strong>not used</strong>: the radii always follow from <span class="arithmatex">\(N\)</span>.</p>
+</div>
+<div class="admonition question">
+<p class="admonition-title">Why this force, and what does it model?</p>
+<p>The nucleus has a boundary, and chromatin cannot leave it. A soft wall is the simplest way to say this: the energy is zero inside and rises quickly outside, so beads can move freely in the nucleus but are pushed back at its edge. The inner wall plays the role of the nucleolus, which chromatin avoids.</p>
+</div>
+<h2 id="b-lamina-interaction">B-lamina interaction<a class="headerlink" href="#b-lamina-interaction" title="Permanent link">&para;</a></h2>
+<p>Only <strong>B beads</strong> (<span class="arithmatex">\(s_i=-1\)</span> or <span class="arithmatex">\(-2\)</span>) feel this force (A beads and unassigned beads have zero energy). It pulls B chromatin toward the lamina. Four radial profiles are available (<code>BLAMINA_FORCE_TYPE</code>); <span class="arithmatex">\(B=\)</span> <code>IBL_SCALE</code>, <span class="arithmatex">\(r_0=\tfrac12(R_1+R_2)\)</span> is the middle of the shell.</p>
+<p><img alt="Radial profiles of the B-lamina force" src="../../assets/tikz/fig_lamina_profiles.svg" width="560" /></p>
+<table>
+<thead>
+<tr>
+<th><code>BLAMINA_FORCE_TYPE</code></th>
+<th>Energy of a B bead</th>
+<th>Character</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sin</code> (<strong>default</strong>)</td>
+<td><span class="arithmatex">\(B\left[\sin^8\!\left(\pi\frac{\bar r-R_1}{R_2-R_1}\right)-1\right]\)</span>, <span class="arithmatex">\(\bar r=\min(\max(r,R_1),R_2)\)</span></td>
+<td>Minimum <span class="arithmatex">\(-B\)</span> at <strong>both</strong> walls and maximum <span class="arithmatex">\(0\)</span> in the middle of the shell. The high power makes the wells narrow. Outside the shell <span class="arithmatex">\(r\)</span> is clamped, so the energy stays at <span class="arithmatex">\(-B\)</span> (no periodic bumps).</td>
+</tr>
+<tr>
+<td><code>gaussian_shell</code></td>
+<td><span class="arithmatex">\(-B\left[e^{-\frac{(r-R_1)^2}{2\sigma^2}}+e^{-\frac{(r-R_2)^2}{2\sigma^2}}\right]\)</span>, <span class="arithmatex">\(\sigma=0.1(R_2-R_1)\)</span></td>
+<td>Two Gaussian wells of depth <span class="arithmatex">\(B\)</span> at the walls, vanishing away from them.</td>
+</tr>
+<tr>
+<td><code>harmonic_shell</code></td>
+<td>$-B\,\left[\dfrac{\min(</td>
+<td>r-r_0</td>
+</tr>
+<tr>
+<td><code>logistic_shell</code></td>
+<td><span class="arithmatex">\(-B\left[\operatorname{sech}^2\!\frac{r-R_1}{2\lambda}+\operatorname{sech}^2\!\frac{r-R_2}{2\lambda}\right]\)</span>, <span class="arithmatex">\(\lambda=0.1(R_2-R_1)\)</span></td>
+<td>Two smooth (logistic-derivative) wells of depth <span class="arithmatex">\(B\)</span> at the walls with soft tails.</td>
+</tr>
+</tbody>
+</table>
+<p>All four share the same logic: the <strong>maximum is in the middle of the shell</strong> and the <strong>minima (<span class="arithmatex">\(-B\)</span>) sit at the radii <span class="arithmatex">\(R_1\)</span> and <span class="arithmatex">\(R_2\)</span></strong>. They differ only in how wide and how sharp the wells are. Here <span class="arithmatex">\(\operatorname{sech}x=1/\cosh x\)</span>.</p>
+<div class="admonition info">
+<p class="admonition-title">In MultiMM</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IBL_USE_B_LAMINA_INTERACTION</code></td>
+<td><code>False</code> (requires <code>COMPARTMENT_PATH</code>; switched on by the <code>GW</code> preset when a compartment file is given)</td>
+</tr>
+<tr>
+<td><code>BLAMINA_FORCE_TYPE</code></td>
+<td><code>sin</code></td>
+</tr>
+<tr>
+<td><code>IBL_SCALE</code> (<span class="arithmatex">\(B\)</span>)</td>
+<td>400.0 kJ/mol</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition question">
+<p class="admonition-title">Why this force, and what does it model?</p>
+<p>Heterochromatin is attached to the lamina through proteins, so B beads feel a well near the wall. The different forms only change how wide and how sharp this well is.</p>
+</div>
+<h2 id="central-force-chromosome-size-positioning">Central force (chromosome-size positioning)<a class="headerlink" href="#central-force-chromosome-size-positioning" title="Permanent link">&para;</a></h2>
+<p>Small chromosomes are found closer to the interior, large ones toward the periphery. The central force reproduces this with a bias that depends on chromosome size. Each bead carries a weight <span class="arithmatex">\(\chi_i\in[0,1]\)</span> given by its chromosome length, rescaled so that the shortest chromosome has <span class="arithmatex">\(\chi=1\)</span> and the longest <span class="arithmatex">\(\chi=0\)</span>, i.e. the force acts mostly on small chromosomes. With <span class="arithmatex">\(G=\)</span> <code>CF_STRENGTH</code> and <span class="arithmatex">\(\sigma\)</span>, <span class="arithmatex">\(\lambda\)</span> derived from <span class="arithmatex">\(R_1\)</span>:</p>
+<p><img alt="Radial profiles of the central force" src="../../assets/tikz/fig_central_profiles.svg" width="560" /></p>
+<table>
+<thead>
+<tr>
+<th><code>CENTRAL_FORCE_TYPE</code></th>
+<th>Energy of bead <span class="arithmatex">\(i\)</span></th>
+<th>Character</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harmonic</code> (<strong>default</strong>)</td>
+<td><span class="arithmatex">\(G\chi_i\,(r-R_1)^2\)</span></td>
+<td>A parabola whose minimum (energy <span class="arithmatex">\(0\)</span>) sits exactly at <span class="arithmatex">\(R_1\)</span>; all three forms have their minimum at <span class="arithmatex">\(R_1\)</span>: small chromosomes are pulled toward the nucleolus surface from both sides, and pay a penalty <span class="arithmatex">\(G\chi_i(r-R_1)^2\)</span> for straying.</td>
+</tr>
+<tr>
+<td><code>gaussian</code></td>
+<td><span class="arithmatex">\(-G\chi_i\,e^{-(r-R_1)^2/(2\sigma^2)},\ \sigma=0.3R_1\)</span></td>
+<td>A Gaussian well with its minimum <span class="arithmatex">\(-G\chi_i\)</span> at <span class="arithmatex">\(R_1\)</span>: the energy slopes down gently and flattens smoothly into the minimum, so small chromosomes are drawn to the nucleolus surface.</td>
+</tr>
+<tr>
+<td><code>logistic</code></td>
+<td><span class="arithmatex">\(-G\chi_i\,\operatorname{sech}^2\!\big((r-R_1)/\lambda\big),\ \lambda=0.25R_1\)</span></td>
+<td>A bell-shaped well (hyperbolic secant squared) with its minimum <span class="arithmatex">\(-G\chi_i\)</span> at <span class="arithmatex">\(R_1\)</span>. It has longer tails than the Gaussian, so the pull is felt from further away and increases smoothly toward <span class="arithmatex">\(R_1\)</span>.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">In MultiMM</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CF_USE_CENTRAL_FORCE</code></td>
+<td><code>False</code></td>
+</tr>
+<tr>
+<td><code>CENTRAL_FORCE_TYPE</code></td>
+<td><code>harmonic</code></td>
+</tr>
+<tr>
+<td><code>CF_STRENGTH</code> (<span class="arithmatex">\(G\)</span>)</td>
+<td>20.0 kJ/mol</td>
+</tr>
+</tbody>
+</table>
+<p>The chromosome weights <span class="arithmatex">\(\chi_i\)</span> come from the chromosome lengths of the model, so this force needs a multi-chromosome (genome-wide) run to be meaningful.</p>
+</div>
+<div class="admonition question">
+<p class="admonition-title">Why this force, and what does it model?</p>
+<p>Gene-poor, large chromosomes tend to be near the periphery and small, gene-rich ones in the interior, a trend seen in many cell types. We express it with a bias that grows as the chromosome gets smaller: a weak pull towards the centre, so it nudges the arrangement without forcing it.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Typical genome-wide setup</p>
+<p>Container on, B-lamina on (with a compartment file), central force off. This is what the <code>GW</code> preset configures; see <a href="../advanced/">Advanced options</a>.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "content.code.copy"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>
