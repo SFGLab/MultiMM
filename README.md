@@ -2,7 +2,20 @@
   <img src="https://raw.githubusercontent.com/SFGLab/MultiMM/main/docs/assets/multimm_logo.png" alt="MultiMM" width="100%">
 </p>
 
-[![PyPI](https://img.shields.io/pypi/v/MultiMM)](https://pypi.org/project/MultiMM/) · **[Documentation](https://sfglab.github.io/MultiMM/)** · [Source](https://github.com/SFGLab/MultiMM)
+<p align="center">
+  [![PyPI](https://img.shields.io/pypi/v/MultiMM?style=flat-square&color=3B37A0&logo=pypi&logoColor=white)](https://pypi.org/project/MultiMM/)
+  [![Python](https://img.shields.io/badge/python-3.10%2B-6A3AA8?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
+  [![Docs](https://img.shields.io/badge/docs-MkDocs-B5406C?style=flat-square&logo=materialformkdocs&logoColor=white)](https://sfglab.github.io/MultiMM/)
+  [![License](https://img.shields.io/badge/license-GPLv3-E9A62C?style=flat-square)](https://www.gnu.org/licenses/gpl-3.0)
+  [![OpenMM](https://img.shields.io/badge/OpenMM-%E2%89%A5%208.5-3B37A0?style=flat-square)](https://openmm.org)
+  [![PyVista](https://img.shields.io/badge/PyVista-3D%20plots-6A3AA8?style=flat-square)](https://pyvista.org)
+  [![NumPy](https://img.shields.io/badge/NumPy-%E2%89%A5%201.26-B5406C?style=flat-square&logo=numpy&logoColor=white)](https://numpy.org)
+  [![SciPy](https://img.shields.io/badge/SciPy-%E2%89%A5%201.11-E9A62C?style=flat-square&logo=scipy&logoColor=white)](https://scipy.org)
+  [![pandas](https://img.shields.io/badge/pandas-%E2%89%A5%202.2-3B37A0?style=flat-square&logo=pandas&logoColor=white)](https://pandas.pydata.org)
+  [![Matplotlib](https://img.shields.io/badge/Matplotlib-%E2%89%A5%203.8-6A3AA8?style=flat-square)](https://matplotlib.org)
+  [![scikit-learn](https://img.shields.io/badge/scikit--learn-%E2%89%A5%201.3-B5406C?style=flat-square&logo=scikitlearn&logoColor=white)](https://scikit-learn.org)
+  [![cooler](https://img.shields.io/badge/cooler-.cool%2F.mcool-E9A62C?style=flat-square)](https://cooler.readthedocs.io)
+</p>
 
 **MultiMM** is an [OpenMM](https://openmm.org)-based tool for building 3D models of chromatin, from single genomic regions to the whole human genome. It is *multiscale*: one energy function covers nucleosomes, loops and TADs, A/B compartments, chromosome territories and the nucleus. You give it loop calls, and optionally compartments or a Hi-C map, and it returns a 3D structure that you can open in any molecular viewer. The model is fast because it starts from a compact Hilbert-curve conformation and runs on GPUs through OpenMM.
 

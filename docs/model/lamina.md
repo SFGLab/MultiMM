@@ -40,7 +40,7 @@ Only **B beads** ($s_i=-1$ or $-2$) feel this force (A beads and unassigned bead
 |---|---|---|
 | `sin` (**default**) | $B\left[\sin^8\!\left(\pi\frac{\bar r-R_1}{R_2-R_1}\right)-1\right]$, $\bar r=\min(\max(r,R_1),R_2)$ | Minimum $-B$ at **both** walls and maximum $0$ in the middle of the shell. The high power makes the wells narrow. Outside the shell $r$ is clamped, so the energy stays at $-B$ (no periodic bumps). |
 | `gaussian_shell` | $-B\left[e^{-\frac{(r-R_1)^2}{2\sigma^2}}+e^{-\frac{(r-R_2)^2}{2\sigma^2}}\right]$, $\sigma=0.1(R_2-R_1)$ | Two Gaussian wells of depth $B$ at the walls, vanishing away from them. |
-| `harmonic_shell` | $-B\,\left[\dfrac{\min(|r-r_0|,\,h)}{h}\right]^2$, $h=\tfrac12(R_2-R_1)$ | An inverted parabola: $0$ at mid-shell, $-B$ at the walls, flat $-B$ outside. The broadest attraction of the four. |
+| `harmonic_shell` | $-B\,\left[\dfrac{\min(\lvert r-r_0\rvert,\,h)}{h}\right]^2$, $r_0=\tfrac12(R_1+R_2)$, $h=\tfrac12(R_2-R_1)$ | An inverted parabola: $0$ at mid-shell, $-B$ at the walls, flat $-B$ outside. The broadest attraction of the four. |
 | `logistic_shell` | $-B\left[\operatorname{sech}^2\!\frac{r-R_1}{2\lambda}+\operatorname{sech}^2\!\frac{r-R_2}{2\lambda}\right]$, $\lambda=0.1(R_2-R_1)$ | Two smooth (logistic-derivative) wells of depth $B$ at the walls with soft tails. |
 
 All four share the same logic: the **maximum is in the middle of the shell** and the **minima ($-B$) sit at the radii $R_1$ and $R_2$**. They differ only in how wide and how sharp the wells are. Here $\operatorname{sech}x=1/\cosh x$.
