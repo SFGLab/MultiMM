@@ -1,0 +1,83 @@
+name: MultiMM
+
+# One release publishes both the package (PyPI) and the documentation (GitHub Pages).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # lets you re-deploy the docs by hand from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Clean build artifacts
+      run: rm -rf build/ dist/ *.egg-info
+
+    - name: Install build tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install build
+        pip install .
+
+    - name: Build package (wheel + sdist)
+      run: python -m build
+
+    - name: Publish package
+      if: github.event_name == 'release'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        verify_metadata: false
+        skip_existing: false
+
+  docs-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install docs tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install "mkdocs>=1.6,<2" "mkdocs-material>=9.5,<10" pymdown-extensions
+
+    # keep the arguments table in sync with src/multimm/config.py
+    - name: Regenerate the arguments page
+      run: python docs_tools/gen_arguments.py
+
+    - name: Build site
+      run: mkdocs build --site-dir site
+
+    - name: Upload site
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: site
+
+  docs-deploy:
+    needs: docs-build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write      # publish to GitHub Pages
+      id-token: write   # verify the deployment source
+    environment:
+      name: github-pages  # shows up under the repository's Deployments
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4

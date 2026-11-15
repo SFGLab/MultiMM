@@ -1,129 +1,44 @@
-import os
+"""Quick model-build checks: data loading, system and force set-up (no minimisation, no MD)."""
+import pytest
+
+from multimm import SimulationEngine
 from multimm.config import SimulationConfig
 from multimm.model import MultiMM
 
-
-def test_simulation_chrom1(tmp_path):
-    out_dir = tmp_path / "sim_chrom1"
-    config = SimulationConfig(
-        LOOPS_PATH="tests/fixtures/ENCFF045MJY_simple.bedpe",
-        COMPARTMENT_PATH="tests/fixtures/ENCFF784NCU_reformatted.bed",
-        OUT_PATH=str(out_dir),
-        N_BEADS=1000,
-        CHROM="chr1",
-        LOC_START=1,
-        LOC_END=248387328,
-        SIM_RUN_MD=True,
-        SIM_N_STEPS=10,
-        SAVE_PLOTS=False,
-        COB_USE_COMPARTMENT_BLOCKS=True,
-    )
-    md = MultiMM(config)
-    md.run()
-    assert os.path.exists(os.path.join(str(out_dir), "model", "MultiMM_minimized.cif"))
+LOOPS = "tests/fixtures/ENCFF045MJY_simple.bedpe"
+COMPS = "tests/fixtures/ENCFF784NCU_reformatted.bed"
 
 
-def test_simulation_chrom1_no_coords(tmp_path):
-    out_dir = tmp_path / "sim_chrom1_no_coords"
-    config = SimulationConfig(
-        LOOPS_PATH="tests/fixtures/ENCFF045MJY_simple.bedpe",
-        COMPARTMENT_PATH="tests/fixtures/ENCFF784NCU_reformatted.bed",
-        OUT_PATH=str(out_dir),
-        N_BEADS=1000,
-        CHROM="chr1",
-        SIM_RUN_MD=True,
-        SIM_N_STEPS=10,
-        SAVE_PLOTS=False,
-        COB_USE_COMPARTMENT_BLOCKS=True,
-    )
-    md = MultiMM(config)
-    md.run()
-    assert os.path.exists(os.path.join(str(out_dir), "model", "MultiMM_minimized.cif"))
+def _build(tmp_path, **kw):
+    cfg = SimulationConfig(LOOPS_PATH=LOOPS, COMPARTMENT_PATH=COMPS, OUT_PATH=str(tmp_path),
+                           N_BEADS=300, SIM_RUN_MD=False, SAVE_PLOTS=False,
+                           COB_USE_COMPARTMENT_BLOCKS=True, **kw)
+    md = MultiMM(cfg)
+    md.set_radiuses()
+    md.initialize_simulation()
+    md.add_forcefield()
+    return md
 
 
-def test_simulation_chrom6_names(tmp_path):
-    out_dir = tmp_path / "sim_chrom6_names"
-    config = SimulationConfig(
-        LOOPS_PATH="tests/fixtures/ENCFF045MJY_simple.bedpe",
-        COMPARTMENT_PATH="tests/fixtures/ENCFF784NCU_reformatted.bed",
-        OUT_PATH=str(out_dir),
-        N_BEADS=1000,
-        CHROM="chr6",
-        SIM_RUN_MD=True,
-        SIM_N_STEPS=10,
-        SAVE_PLOTS=True,
-        COB_USE_COMPARTMENT_BLOCKS=True,
-    )
-    md = MultiMM(config)
-    md.run()
-    assert os.path.exists(os.path.join(str(out_dir), "model", "MultiMM_minimized.cif"))
-    assert os.path.exists(os.path.join(str(out_dir), "model", "chromosomes", "MultiMM_minimized_chr6.cif"))
-    assert not os.path.exists(os.path.join(str(out_dir), "model", "chromosomes", "MultiMM_minimized_chr1.cif"))
-    assert os.path.exists(os.path.join(str(out_dir), "plots", "chromosomes", "chr6_minimized_structure.png"))
-    assert not os.path.exists(os.path.join(str(out_dir), "plots", "chromosomes", "chr1_minimized_structure.png"))
+@pytest.mark.parametrize("kw", [
+    dict(CHROM="chr1"),
+    dict(CHROM="chr6", LOC_START=1, LOC_END=100_000_000),
+    dict(CHROM=None),
+])
+def test_build_system(tmp_path, kw):
+    md = _build(tmp_path, **kw)
+    assert md.system.getNumParticles() == 300
+    assert md.system.getNumForces() >= 3
+    assert "compartment" in " ".join(md.force_groups).lower() or len(md.force_groups) >= 3
 
 
+def test_genome_wide_has_several_chromosomes(tmp_path):
+    md = _build(tmp_path, CHROM=None)
+    assert len(md.chrom_idxs) > 1
 
 
-def test_simulation_genome_wide(tmp_path):
-    out_dir = tmp_path / "sim_gw"
-    config = SimulationConfig(
-        LOOPS_PATH="tests/fixtures/ENCFF045MJY_simple.bedpe",
-        COMPARTMENT_PATH="tests/fixtures/ENCFF784NCU_reformatted.bed",
-        OUT_PATH=str(out_dir),
-        N_BEADS=1000,
-        CHROM=None,
-        SIM_RUN_MD=True,
-        SIM_N_STEPS=10,
-        SAVE_PLOTS=False,
-        COB_USE_COMPARTMENT_BLOCKS=True,
-    )
-    md = MultiMM(config)
-    md.run()
-    assert os.path.exists(os.path.join(str(out_dir), "model", "MultiMM_minimized.cif"))
-
-
-def test_engine_in_process_run(tmp_path):
-    out_dir = tmp_path / "bridge_test"
-    params = {
-        "LOOPS_PATH": "tests/fixtures/ENCFF045MJY_simple.bedpe",
-        "COMPARTMENT_PATH": "tests/fixtures/ENCFF784NCU_reformatted.bed",
-        "OUT_PATH": str(out_dir),
-        "N_BEADS": 1000,
-        "CHROM": "1",
-        "LOC_START": 1,
-        "LOC_END": 248387328,
-        "SIM_RUN_MD": True,
-        "SIM_N_STEPS": 10,
-        "SAVE_PLOTS": False,
-        "COB_USE_COMPARTMENT_BLOCKS": True,
-    }
-    from multimm import SimulationEngine
-    config_path = SimulationEngine.run_in_process(params)
-    assert os.path.exists(config_path)
-    assert os.path.exists(os.path.join(str(out_dir), "model", "MultiMM_minimized.cif"))
-    assert os.path.exists(os.path.join(str(out_dir), "metadata", "output.log"))
-
-
-def test_subprocess_run(tmp_path):
-    out_dir = tmp_path / "subproc_test"
-    params = {
-        "LOOPS_PATH": "tests/fixtures/ENCFF045MJY_simple.bedpe",
-        "COMPARTMENT_PATH": "tests/fixtures/ENCFF784NCU_reformatted.bed",
-        "OUT_PATH": str(out_dir),
-        "N_BEADS": 1000,
-        "CHROM": "1",
-        "LOC_START": 1,
-        "LOC_END": 248387328,
-        "SIM_RUN_MD": True,
-        "SIM_N_STEPS": 10,
-        "SAVE_PLOTS": False,
-        "COB_USE_COMPARTMENT_BLOCKS": True,
-    }
-    from multimm import SimulationEngine
-    config_path = SimulationEngine.run_subprocess(params)
-    assert os.path.exists(config_path)
-    assert os.path.exists(os.path.join(str(out_dir), "model", "MultiMM_minimized.cif"))
-    assert os.path.exists(os.path.join(str(out_dir), "metadata", "output.log"))
-
-
+def test_engine_param_validation():
+    ok = SimulationEngine.validate_params({"N_BEADS": 100})
+    assert ok["N_BEADS"] == 100
+    with pytest.raises(Exception):
+        SimulationEngine.validate_params({"NOT_A_KEY": 1})

@@ -1,0 +1,24 @@
+\documentclass[tikz,border=4pt]{standalone}
+\input{preamble.tex}
+\begin{document}
+\begin{tikzpicture}
+% left: straight chain, theta = pi
+\node[lab,anchor=east] at (-0.4,0.9) {preferred: $\theta_0=\pi$};
+\foreach \x/\n in {0/i,2/i{+}1,4/i{+}2}{\node[bead] (b\x) at (\x,0.9) {};
+  \node[lab,below=3pt] at (b\x) {$\n$};}
+\draw[line width=1.2pt,indigo] (b0)--(b2)--(b4);
+\draw[<->,golddark] (0,1.45)--(2,1.45) node[midway,above,lab] {$b_0$};
+% right: bent chain
+\begin{scope}[shift={(0,-2.6)}]
+\node[lab,anchor=east] at (-0.4,0.6) {bent: $\theta<\pi$};
+\coordinate (p0) at (0,0); \coordinate (p1) at (2,0.6); \coordinate (p2) at (3.5,1.9);
+\foreach \p/\n in {p0/i,p1/i{+}1,p2/i{+}2}{\node[bead] at (\p) {}; }
+\draw[line width=1.2pt,indigo] (p0)--(p1)--(p2);
+\draw[dashed,grey] (p0)--($(p1)!-0.75!(p0)$)  ;
+\draw[dashed,grey] (p1)--($(p1)!1.0!(p1)+(1.9,0.57)$);
+\draw[crimson,line width=1pt,->] ($(p1)+(-0.75,-0.22)$) arc (200:42:0.75);
+\node[crimson,lab] at ($(p1)+(0.1,0.0)+(-0.15,-0.55)$) {$\theta$};
+\end{scope}
+\node[lab,align=left,anchor=west] at (5,0.9) {bond: $\tfrac{k_b}{2}(r-b_0)^2$\\[2pt]angle: $\tfrac{k_\theta}{2}(\theta-\theta_0)^2$};
+\end{tikzpicture}
+\end{document}

@@ -1,0 +1,25 @@
+\documentclass[tikz,border=4pt]{standalone}
+\input{preamble.tex}
+\begin{document}
+\begin{tikzpicture}
+% linear chain with two anchors
+\foreach \i in {0,...,14}{\node[bead=grey] (c\i) at (\i*0.55,0) {};}
+\foreach \i in {0,...,13}{\pgfmathtruncatemacro{\j}{\i+1}\draw[grey,line width=1pt] (c\i)--(c\j);}
+\node[bead=crimson] at (c3) {}; \node[bead=crimson] at (c11) {};
+\node[lab,below=4pt] at (c3) {$m_\ell$}; \node[lab,below=4pt] at (c11) {$n_\ell$};
+\draw[<->,decorate,decoration={brace,mirror,amplitude=4pt},grey] (c3.south west)++(0,-0.55) -- ++(4.4,0) node[midway,below=5pt,lab] {genomic distance $n_\ell-m_\ell$};
+\draw[->,line width=1.2pt,indigo] (3.2,-1.7)--(3.2,-2.5);
+\node[lab,indigo,anchor=west] at (3.35,-2.1) {fold};
+% folded loop
+\begin{scope}[shift={(0,-6.0)}]
+\foreach \i/\a in {0/200,1/230,2/260}{}
+\coordinate (m) at (2.6,1.0); \coordinate (n) at (3.7,1.0);
+\draw[grey,line width=1pt] (0.2,0.2) .. controls (1.2,0.2) and (2.0,0.8) .. (m);
+\draw[grey,line width=1pt] (m) .. controls (1.6,3.6) and (4.7,3.6) .. (n);
+\draw[grey,line width=1pt] (n) .. controls (4.2,0.8) and (5.2,0.2) .. (6.2,0.2);
+\node[bead=crimson] at (m) {}; \node[bead=crimson] at (n) {};
+\draw[<->,golddark,line width=0.8pt] (m)--(n) node[midway,below,lab] {$d_\ell$};
+\node[lab,above] at (3.15,2.9) {loop};
+\end{scope}
+\end{tikzpicture}
+\end{document}

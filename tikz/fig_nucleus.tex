@@ -1,0 +1,24 @@
+\documentclass[tikz,border=4pt]{standalone}
+\input{preamble.tex}
+\begin{document}
+\begin{tikzpicture}
+\def\Rb{3.4} \def\Ra{1.1}
+\fill[violet!8] (0,0) circle (\Rb);
+\draw[violet,line width=1.6pt] (0,0) circle (\Rb);
+\draw[golddark,line width=1pt,dashed] (0,0) circle (\Ra);
+\fill[gold!30] (0,0) circle (\Ra);
+% one chromosome as a chain: B segments hug the lamina, A segments stay inside
+\draw[grey,line width=1pt] (0:3.1) arc (0:60:3.1) -- (60:1.95) arc (60:130:1.95) -- (130:3.1)
+  arc (130:230:3.1) -- (230:1.95) arc (230:290:1.95) -- (290:3.1) arc (290:350:3.1);
+\foreach \a in {0,10,...,60}{\node[bead=violet] at (\a:3.1) {};}
+\foreach \a in {130,140,...,230}{\node[bead=violet] at (\a:3.1) {};}
+\foreach \a in {290,300,...,350}{\node[bead=violet] at (\a:3.1) {};}
+\foreach \a in {60,72,...,130}{\node[bead=gold] at (\a:1.95) {};}
+\foreach \a in {230,242,...,290}{\node[bead=gold] at (\a:1.95) {};}
+\draw[<->,indigo] (0,0)--(60:1.1) node[midway,below right=-2pt,lab] {$R_1$};
+\draw[<->,indigo] (0,0)--(-40:3.4) node[pos=0.72,below,lab] {$R_2$};
+\node[lab,violet,anchor=west] at (3.7,1.9) {lamina (B-lamina force)};
+\node[lab,golddark,anchor=west] at (3.7,0.9) {nucleolus / inner wall (container)};
+\node[lab,anchor=west] at (3.7,0) {$R_1<r<R_2$: beads live here};
+\end{tikzpicture}
+\end{document}

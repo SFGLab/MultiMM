@@ -821,29 +821,73 @@ def import_bw(
     return genomewide_signal
 
 
-def get_gene_region(gene_tsv, gene_id=None, gene_name=None, window_size=200000):
-    """Input a gene tsv and outputs a region around the gene."""
-    genes = pd.read_csv(gene_tsv, sep="\t")
-    if gene_id is not None:
-        if gene_id not in genes["gene_id"].values:
-            raise ValueError(f"Gene ID '{gene_id}' not found in the provided TSV file.")
-        logger.debug("Region will be defined based on gene ID.")
-        chrom = genes[genes["gene_id"] == gene_id]["chromosome"].values[0]
-        start = genes[genes["gene_id"] == gene_id]["start"].values[0]
-        end = genes[genes["gene_id"] == gene_id]["end"].values[0]
-    elif gene_name is not None:
-        if gene_name not in genes["gene_name"].values:
-            raise ValueError(f"Gene name '{gene_name}' not found in the provided TSV file.")
-        logger.debug("Region will be defined based on gene name.")
-        chrom = genes[genes["gene_name"] == gene_name]["chromosome"].values[0]
-        start = genes[genes["gene_name"] == gene_name]["start"].values[0]
-        end = genes[genes["gene_name"] == gene_name]["end"].values[0]
-    else:
-        raise ValueError("Either 'gene_id' or 'gene_name' must be provided.")
+def _split_list(x):
+    """'A, B' -> ['A', 'B'] (empty/None -> [])."""
+    if x is None or str(x).strip().lower() in ("", "none"):
+        return []
+    return [t.strip() for t in str(x).split(",") if t.strip()]
 
-    gene_region = [start, end]
+
+def _norm_chrom(c):
+    c = str(c)
+    return c if c.startswith("chr") else "chr" + c
+
+
+def get_gene_region(gene_tsv, gene_id=None, gene_name=None, window_size=200000):
+    """Region around one gene, or around several (comma-separated ids/names).
+
+    Returns (chrom, [start, end], [gene_start, gene_end]); the gene span is
+    the union of all requested genes, the region adds window_size each side.
+    """
+    genes = pd.read_csv(gene_tsv, sep="\t")
+    ids, names = _split_list(gene_id), _split_list(gene_name)
+    if not ids and not names:
+        raise ValueError("Either 'gene_id' or 'gene_name' must be provided.")
+    col, keys = ("gene_id", ids) if ids else ("gene_name", names)
+
+    rows = []
+    for k in keys:
+        hit = genes[genes[col] == k]
+        if hit.empty:
+            raise ValueError(f"Gene {col[5:]} '{k}' not found in the provided TSV file.")
+        if len(hit) > 1:  # duplicated name: take the longest annotation
+            logger.warning(f"'{k}' has {len(hit)} annotations; using the longest.")
+            hit = hit.assign(_len=hit["end"] - hit["start"]).sort_values("_len").tail(1)
+        rows.append(hit.iloc[0])
+
+    chroms = {r["chromosome"] for r in rows}
+    if len(chroms) > 1:
+        raise ValueError(f"Requested genes lie on different chromosomes: {sorted(chroms)}.")
+    start, end = min(r["start"] for r in rows), max(r["end"] for r in rows)
     region = [max(0, int(start - window_size)), int(end + window_size)]
-    return chrom, region, gene_region
+    return chroms.pop(), region, [int(start), int(end)]
+
+
+def genes_in_region(gene_tsv, chrom, region, n_beads, targets=()):
+    """All annotated genes overlapping a region, mapped to bead indices.
+
+    Columns: gene_id, gene_name, chromosome, start, end, bead_start,
+    bead_end, is_target. Targets are matched by gene name or id.
+    """
+    genes = pd.read_csv(gene_tsv, sep="\t")
+    lo, hi = region
+    g = genes[(genes["chromosome"] == _norm_chrom(chrom)) & (genes["end"] > lo) & (genes["start"] < hi)].copy()
+    scale = n_beads / (hi - lo)
+    g["bead_start"] = np.clip(np.floor((g["start"] - lo) * scale), 0, n_beads - 1).astype(int)
+    g["bead_end"] = np.clip(np.floor((g["end"] - lo) * scale), 0, n_beads - 1).astype(int)
+    tg = set(targets)
+    g["is_target"] = g["gene_name"].isin(tg) | g["gene_id"].isin(tg)
+    return g.sort_values("start").reset_index(drop=True)
+
+
+def annotate_gene_geometry(genes, V):
+    """Add per-gene radius of gyration and distance to the target genes' centre."""
+    g = genes.copy()
+    cen = [V[r.bead_start : r.bead_end + 1].mean(0) for r in g.itertuples()]
+    g["rg"] = [np.sqrt(((V[r.bead_start : r.bead_end + 1] - c) ** 2).sum(1).mean()) for r, c in zip(g.itertuples(), cen)]
+    ref = np.mean([c for c, t in zip(cen, g["is_target"]) if t], axis=0) if g["is_target"].any() else V.mean(0)
+    g["dist_to_target"] = [np.linalg.norm(c - ref) for c in cen]
+    return g, np.array(cen)
 
 
 def discretize_array(arr, thresholds):

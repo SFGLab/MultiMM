@@ -1,0 +1,18 @@
+\documentclass[tikz,border=4pt]{standalone}
+\input{preamble.tex}
+\begin{document}
+\begin{tikzpicture}
+\draw[violet,line width=1.6pt,fill=violet!5] (0,0) circle (3.3);
+% three chromosomes, each its own chain and territory
+\fill[indigo!10,draw=indigo,dashed] (-1.3,0.9) ellipse (1.25 and 1.0);
+\fill[crimson!10,draw=crimson,dashed] (1.3,0.7) ellipse (1.2 and 0.95);
+\fill[golddark!10,draw=golddark,dashed] (0.0,-1.55) ellipse (1.6 and 0.85);
+\draw[indigo,line width=1pt] plot[smooth,tension=0.7] coordinates {(-2.0,0.6) (-1.5,1.4) (-0.9,1.1) (-1.2,0.5) (-0.6,0.3) (-0.4,0.9)};
+\foreach \x/\y in {-2.0/0.6,-1.5/1.4,-0.9/1.1,-1.2/0.5,-0.6/0.3,-0.4/0.9}{\node[bead=indigo] at (\x,\y) {};}
+\draw[crimson,line width=1pt] plot[smooth,tension=0.7] coordinates {(0.5,0.4) (1.1,1.0) (1.7,0.6) (1.3,0.2) (1.9,1.2) (1.0,1.4)};
+\foreach \x/\y in {0.5/0.4,1.1/1.0,1.7/0.6,1.3/0.2,1.9/1.2,1.0/1.4}{\node[bead=crimson] at (\x,\y) {};}
+\draw[golddark,line width=1pt] plot[smooth,tension=0.7] coordinates {(-1.3,-1.3) (-0.6,-1.8) (0.1,-1.3) (0.7,-1.8) (1.3,-1.4) (1.0,-1.0)};
+\foreach \x/\y in {-1.3/-1.3,-0.6/-1.8,0.1/-1.3,0.7/-1.8,1.3/-1.4,1.0/-1.0}{\node[bead=golddark] at (\x,\y) {};}
+\node[lab,indigo] at (-1.3,2.3) {chr 1}; \node[lab,crimson] at (1.4,2.3) {chr 2}; \node[lab,golddark] at (0,-2.75) {chr 3};
+\end{tikzpicture}
+\end{document}

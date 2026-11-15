@@ -1,0 +1,29 @@
+\documentclass[tikz,border=4pt]{standalone}
+\input{preamble.tex}
+\begin{document}
+\begin{tikzpicture}
+% (a) actual defaults, log-log
+\begin{axis}[title={\small (a) defaults ($k=30000$)},xmode=log,ymode=log,
+  xlabel={deviation $|r-r_0|$ (nm)},ylabel={energy (kJ/mol)},
+  xmin=0.002,xmax=1,ymin=0.01,ymax=1e5,legend pos=south east,domain=0.002:1,samples=120]
+\addplot[indigo] {15000*x^2};
+\addlegendentry{\texttt{harmonic}}
+\addplot[crimson] {30000*x^2/(1+100*x^2)};
+\addlegendentry{\texttt{fene\_soft}}
+\addplot[gold] {30000*(1-exp(-x^2/0.0025))};
+\addlegendentry{\texttt{gaussian\_tether}}
+\end{axis}
+% (b) same initial stiffness, linear
+\begin{axis}[at={(0,-3.0cm)},anchor=north west,title={\small (b) shape at equal stiffness},
+  xlabel={deviation $|r-r_0|$ (nm)},ylabel={energy (kJ/mol)},
+  xmin=0,xmax=0.6,ymin=0,ymax=400,domain=0:0.6,samples=200,clip=true,
+  legend style={at={(0.5,0.97)},anchor=north}]
+\addplot[indigo] {15000*x^2};
+\addlegendentry{\texttt{harmonic}: unbounded}
+\addplot[crimson] {15000*x^2/(1+100*x^2)};
+\addlegendentry{\texttt{fene\_soft}: plateau}
+\addplot[gold] {37.5*(1-exp(-x^2/0.0025))};
+\addlegendentry{\texttt{gaussian\_tether}: plateau}
+\end{axis}
+\end{tikzpicture}
+\end{document}

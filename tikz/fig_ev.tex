@@ -1,0 +1,15 @@
+\documentclass[tikz,border=4pt]{standalone}
+\input{preamble.tex}
+\begin{document}
+\begin{tikzpicture}
+\begin{axis}[width=9.5cm,height=6cm,ymode=log,xlabel={distance $r$ (nm)},ylabel={energy (kJ/mol)},xmin=0,xmax=0.5,ymin=1e-3,ymax=1e4,
+  legend pos=north east,domain=0:0.5,samples=200]
+\addplot[indigo] {100*(0.1/(x+0.05))^6};
+\addlegendentry{\texttt{powerlaw} (default)}
+\addplot[gold] {100*exp(-x^2/(2*0.01))};
+\addlegendentry{\texttt{gaussian\_core}}
+\draw[dashed,grey] (axis cs:0.1,1e-3) -- (axis cs:0.1,1e4);
+\node[font=\footnotesize,grey,anchor=south west] at (axis cs:0.103,2e-3) {$b_0=\sigma$};
+\end{axis}
+\end{tikzpicture}
+\end{document}

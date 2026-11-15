@@ -16,44 +16,61 @@ from openmm.unit import Quantity
 from .config import SimulationConfig
 from .model import MultiMM
 from .utils import chrom_sizes
-from .logger import setup_logger
+from .logger import setup_logger, _COLOR_ENABLED
 
 setup_logger()
 logger = logging.getLogger(__name__)
 
-RESET  = "\033[0m"
-BOLD   = "\033[1m"
-CYAN   = "\033[38;5;75m"   # steel blue – professional, readable
+RESET = "\033[0m"
+BOLD = "\033[1m"
+
+# ANSI-Shadow ASCII art of the logo
+_ART = (
+    "███╗   ███╗██╗   ██╗██╗  ████████╗██╗███╗   ███╗███╗   ███╗",
+    "████╗ ████║██║   ██║██║  ╚══██╔══╝██║████╗ ████║████╗ ████║",
+    "██╔████╔██║██║   ██║██║     ██║   ██║██╔████╔██║██╔████╔██║",
+    "██║╚██╔╝██║██║   ██║██║     ██║   ██║██║╚██╔╝██║██║╚██╔╝██║",
+    "██║ ╚═╝ ██║╚██████╔╝███████╗██║   ██║██║ ╚═╝ ██║██║ ╚═╝ ██║",
+    "╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝   ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝",
+)
+_SCALES = "DNA ┈┈ nucleosome ┈┈ fiber ┈┈ loops ┈┈ chromosome"
+_GRADIENT = (63, 99, 134, 169, 208, 214)  # indigo -> gold (256-color)
+
+
+def _gradient(text: str) -> str:
+    """Colour text left-to-right along the logo gradient."""
+    if not _COLOR_ENABLED:
+        return text
+    n, k = max(len(text) - 1, 1), len(_GRADIENT) - 1
+    return "".join(
+        ch if ch == " " else f"\033[38;5;{_GRADIENT[round(i / n * k)]}m{ch}"
+        for i, ch in enumerate(text)
+    ) + RESET
 
 
 def print_startup_banner(logger):
-    """Print a clean, single-color startup banner for MultiMM."""
-
-    W = 72  # total banner width (inner)
-    border = CYAN + BOLD + "═" * W + RESET
-
-    def _row(text: str = "") -> str:
-        pad = W - 2 - len(text)
-        return CYAN + BOLD + "║ " + RESET + text + " " * max(pad, 0) + CYAN + BOLD + "║" + RESET
-
-    lines = [
-        border,
-        _row(),
-        _row("  MultiMM  ·  Chromatin 3D Structure Simulation Platform"),
-        _row(),
-        _row("  Creator : Sebastian Korsak  (Warsaw, Poland)"),
-        _row("  Nucleosome interpolation : Krzysztof Banecki"),
-        _row("  Web-server & infrastructure : Patryk Prusak"),
-        _row(),
-        _row("  Contact : s.korsak@datascience.edu.pl"),
-        _row("            d.plewczynski@datascience.edu.pl"),
-        _row(),
-        _row("  Starting simulation pipeline … good luck!"),
-        _row(),
-        border,
+    """Print the MultiMM ASCII-art startup banner."""
+    w = len(_ART[0])
+    dim = "\033[2m" if _COLOR_ENABLED else ""
+    rst = RESET if _COLOR_ENABLED else ""
+    lines = [""] + [_gradient(r) for r in _ART] + [
+        "",
+        " " * ((w - len(_SCALES)) // 2) + _gradient(_SCALES),
+        f"{dim}{'multiscale modeling of chromatin'.center(w)}{rst}",
+        "",
+        "  Creator : Sebastian Korsak  (Warsaw, Poland)",
+        "  Nucleosome interpolation : Krzysztof Banecki",
+        "  Web-server & infrastructure : Patryk Prusak",
+        "",
+        "  Contact : s.korsak@datascience.edu.pl",
+        "            d.plewczynski@datascience.edu.pl",
+        "",
+        "  Starting simulation pipeline … good luck!",
+        "",
     ]
     for line in lines:
         logger.info(line)
+
 
 class Tee:
     def __init__(self, *streams):

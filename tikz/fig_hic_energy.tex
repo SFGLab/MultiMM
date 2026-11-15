@@ -1,0 +1,17 @@
+\documentclass[tikz,border=4pt]{standalone}
+\input{preamble.tex}
+\begin{document}
+\begin{tikzpicture}
+\begin{axis}[xlabel={distance $r$ (units of $r_c$)},ylabel={restraint energy ($c_{ij}=1$, $k=40$)},
+  xmin=0,xmax=1.6,ymin=0,ymax=8,legend style={at={(0.5,1.03)},anchor=south,legend columns=1},domain=0:1.6,samples=200]
+\addplot[indigo] {0.5*40*(x-0.4)^2};
+\addlegendentry{evidence: $r_t<r_c$, two-sided}
+\addplot[crimson,smooth=false] coordinates {(0,20)(1,0)(1.6,0)};
+\addlegendentry{capped: $r_t=r_c$, floor only}
+\draw[dashed,grey] (axis cs:0.4,0) -- (axis cs:0.4,8);
+\node[font=\footnotesize,grey,anchor=south west] at (axis cs:0.4,0.1) {$r_t$};
+\draw[dashed,grey] (axis cs:1,0) -- (axis cs:1,8);
+\node[font=\footnotesize,grey,anchor=south west] at (axis cs:1,0.1) {$r_c$};
+\end{axis}
+\end{tikzpicture}
+\end{document}

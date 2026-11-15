@@ -1,0 +1,22 @@
+\documentclass[tikz,border=4pt]{standalone}
+\input{preamble.tex}
+\begin{document}
+\begin{tikzpicture}
+\begin{axis}[xlabel={radius $r$ (units of $R_2$)},ylabel={energy of a B bead (kJ/mol)},
+  xmin=0.45,xmax=1.15,ymin=-450,ymax=60,domain=0.45:1.15,samples=400,
+  legend style={font=\footnotesize,at={(0.5,1.03)},anchor=south,legend columns=2}]
+\addplot[indigo] {400*(sin(deg(pi*(min(max(x,0.585),1)-0.585)/0.415))^8-1)};
+\addlegendentry{\texttt{sin} (default)}
+\addplot[crimson] {-400*(exp(-(x-0.585)^2/0.003444)+exp(-(x-1)^2/0.003444))};
+\addlegendentry{\texttt{gaussian\_shell}}
+\addplot[gold] {-400*(min(abs(x-0.7925),0.2075)/0.2075)^2};
+\addlegendentry{\texttt{harmonic\_shell}}
+\addplot[violet] {-400*(1/cosh(abs(x-0.585)/0.083)^2+1/cosh(abs(x-1)/0.083)^2)};
+\addlegendentry{\texttt{logistic\_shell}}
+\draw[dashed,grey] (axis cs:0.585,-450) -- (axis cs:0.585,80);
+\draw[dashed,grey] (axis cs:1,-450) -- (axis cs:1,80);
+\node[font=\footnotesize,grey,anchor=south west] at (axis cs:0.59,15) {$R_1$};
+\node[font=\footnotesize,grey,anchor=south east] at (axis cs:0.995,15) {$R_2$};
+\end{axis}
+\end{tikzpicture}
+\end{document}

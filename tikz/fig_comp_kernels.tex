@@ -1,0 +1,21 @@
+\documentclass[tikz,border=4pt]{standalone}
+\input{preamble.tex}
+\begin{document}
+\begin{tikzpicture}
+\begin{axis}[width=10cm,height=6cm,xlabel={distance $r/r_c$},ylabel={pair energy $/E$ (Yukawa $\times r_c$)},
+  xmin=0,xmax=3,ymin=-4,ymax=0.4,domain=0.05:3,samples=300,clip=true,restrict y to domain=-4.5:0.5,
+  legend style={at={(0.97,0.42)},anchor=east}]
+\addplot[indigo] {-exp(-x^2/2)};
+\addlegendentry{\texttt{gaussian} (default)}
+\addplot[crimson,domain=0.2:3] {-exp(-x)/x};
+\addlegendentry{\texttt{yukawa}}
+\addlegendimage{gold,line width=1.2pt}
+\addlegendentry{\texttt{theta}}
+\draw[gold,line width=1.2pt] (axis cs:0,-1)--(axis cs:1,-1);
+\draw[gold,line width=1.2pt] (axis cs:1,0)--(axis cs:3,0);
+\draw[gold,dotted] (axis cs:1,-1)--(axis cs:1,0);
+\draw[dashed,grey] (axis cs:1.5,-4) -- (axis cs:1.5,0.4);
+\node[font=\footnotesize,grey,anchor=south east,rotate=90] at (axis cs:1.5,-3.95) {cutoff $5b_0$ (here $N=1000$)};
+\end{axis}
+\end{tikzpicture}
+\end{document}

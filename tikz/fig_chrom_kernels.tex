@@ -1,0 +1,15 @@
+\documentclass[tikz,border=4pt]{standalone}
+\input{preamble.tex}
+\begin{document}
+\begin{tikzpicture}
+\begin{axis}[xlabel={distance $r$ (nm)},ylabel={energy rise $[U(r)-U(0)]/\Delta E$},
+  width=9cm,height=6cm,xmin=0,xmax=6,ymin=0,ymax=1.6,legend pos=south east,domain=0:6,restrict y to domain=0:1.7,samples=200,clip=true]
+\addplot[indigo] {0.3*x^4 - x^3 + x^2};
+\addlegendentry{\texttt{polynomial} (default)}
+\addplot[crimson] {1-exp(-0.3*x^2)};
+\addlegendentry{\texttt{gaussian}}
+\addplot[gold] {1-1/(1+0.3*x^2)};
+\addlegendentry{\texttt{saturating}}
+\end{axis}
+\end{tikzpicture}
+\end{document}

@@ -644,6 +644,103 @@ def viz_gene_structure(V, start, end, r=0.1, cmap="coolwarm", save_path=None):
         plotter.show()
 
 
+# ----- gene annotation -----
+_GENE_BG, _GENE_TARGET = "#d9d9d9", "#d62728"
+
+
+def _gene_colors(genes):
+    """Distinct colour per gene (targets red, others tab20)."""
+    cols = plt.get_cmap("tab20")
+    return [_GENE_TARGET if t else mcolors.to_hex(cols(i % 20)) for i, t in enumerate(genes["is_target"])]
+
+
+def _label_order(genes, k=20):
+    """Targets first, then the longest genes; at most k labels."""
+    ln = (genes["end"] - genes["start"]).values
+    order = sorted(range(len(genes)), key=lambda i: (not genes["is_target"].iloc[i], -ln[i]))
+    return order[:k]
+
+
+def save_chimera_genes_cmd(genes, cmd_filename="genes_coloring.cmd"):
+    """Chimera script: grey backbone, one colour per gene (1-based beads)."""
+    with open(cmd_filename, "w") as f:
+        f.write("color #d9d9d9\n")
+        for c, r in zip(_gene_colors(genes), genes.itertuples()):
+            f.write(f"color {c} :{r.bead_start + 1}-{r.bead_end + 1}  # {r.gene_name}\n")
+        f.write("focus\n")
+
+
+def viz_gene_annotation(V, genes, r=0.2, save_path=None):
+    """3D structure: grey chain, each gene coloured (targets red), labelled."""
+    cols = [mcolors.to_rgb(_GENE_BG)] * len(V)
+    # long genes first so short ones stay visible when genes overlap
+    for i in sorted(range(len(genes)), key=lambda i: -(genes["end"].iloc[i] - genes["start"].iloc[i])):
+        g = genes.iloc[i]
+        c = mcolors.to_rgb(_gene_colors(genes)[i])
+        for b in range(g.bead_start, g.bead_end + 1):
+            cols[b] = c
+    pl = pv.Plotter(off_screen=bool(save_path))
+    pl.set_background("white")
+    # draw bead by bead so every gene gets its own colour
+    for i in range(len(V) - 1):
+        seg = pv.Line(V[i], V[i + 1]).tube(radius=r)
+        pl.add_mesh(seg, color=cols[i], smooth_shading=True)
+    pts, labs = [], []
+    for i in _label_order(genes):
+        g = genes.iloc[i]
+        pts.append(V[(g.bead_start + g.bead_end) // 2])
+        labs.append(g.gene_name)
+    if pts:
+        pl.add_point_labels(np.array(pts), labs, font_size=14, text_color="black", shape_color="white",
+                            shape_opacity=0.7, point_size=1, always_visible=True, show_points=False)
+    if save_path:
+        pl.show(screenshot=save_path)
+    else:
+        pl.show()
+
+
+def plot_gene_track(genes, n_beads, centres=None, save_path=None):
+    """Left: gene track along the chain (bead axis). Right: 3D distances
+    between gene centres (shows which genes are spatial neighbours)."""
+    fig, axes = plt.subplots(1, 2 if centres is not None else 1, figsize=(15 if centres is not None else 9, 6),
+                             gridspec_kw={"width_ratios": [1.4, 1]} if centres is not None else None)
+    ax = np.atleast_1d(axes)
+    fig.patch.set_facecolor("white")
+    cols = _gene_colors(genes)
+    # stack overlapping genes into rows
+    rows, ends = [], []
+    for g in genes.itertuples():
+        k = next((j for j, e in enumerate(ends) if g.bead_start > e), len(ends))
+        if k == len(ends):
+            ends.append(-1)
+        ends[k] = g.bead_end
+        rows.append(k)
+    for i, (g, k) in enumerate(zip(genes.itertuples(), rows)):
+        ax[0].barh(k, g.bead_end - g.bead_start + 1, left=g.bead_start, color=cols[i], height=0.7)
+    for i in _label_order(genes):
+        g = genes.iloc[i]
+        ax[0].text((g.bead_start + g.bead_end) / 2, rows[i], g.gene_name, ha="center", va="center", fontsize=8)
+    ax[0].set_xlim(0, n_beads)
+    ax[0].set_xlabel("bead index")
+    ax[0].set_yticks([])
+    ax[0].set_title("Genes along the modelled region (red = target)")
+    if centres is not None and len(genes) > 1:
+        D = np.linalg.norm(centres[:, None] - centres[None], axis=-1)
+        im = ax[1].imshow(D, cmap="viridis_r")
+        names = genes["gene_name"].tolist()
+        keep = _label_order(genes, 25)
+        ax[1].set_xticks(keep)
+        ax[1].set_yticks(keep)
+        ax[1].set_xticklabels([names[i] for i in keep], rotation=90, fontsize=7)
+        ax[1].set_yticklabels([names[i] for i in keep], fontsize=7)
+        fig.colorbar(im, ax=ax[1], label="distance between gene centres (nm)")
+        ax[1].set_title("Spatial distance between genes")
+    fig.tight_layout()
+    if save_path:
+        fig.savefig(save_path, dpi=150, facecolor="white")
+    plt.close(fig)
+
+
 def viz_chroms(sim_path, r=0.1, comps=True):
     logger.info(f"Chromosome visualization started: {sim_path}")
 

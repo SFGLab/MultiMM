@@ -11,6 +11,7 @@ from openmm.unit import Quantity, nanometers, kelvin, nanometer, picosecond, dal
 from .initial_structure_tools import build_init_mmcif, write_cmm, write_mmcif_chrom
 from .nucleosome_interpolation import NucleosomeInterpolation
 from .utils import *
+from .utils import _split_list, annotate_gene_geometry
 from .plots import *
 from .read_hic import read_hic_matrix
 from .hic_force import build_hic_force, auto_contact_scale
@@ -80,39 +81,27 @@ class MultiMM:
             if chrom in chrom_sizes:
                 coords = [0, chrom_sizes[chrom]]
 
-        if (args.GENE_TSV is not None) and (str(args.MODELLING_LEVEL).lower() == "gene"):
-            if args.GENE_ID is not None and str(args.GENE_ID).lower() != "none" and str(args.GENE_ID).lower() != "":
-                logger.info(f"Gene ID: {args.GENE_ID}")
-                chrom, coords, gene_coords = get_gene_region(
-                    gene_tsv=args.GENE_TSV,
-                    gene_id=args.GENE_ID,
-                    window_size=args.GENE_WINDOW,
-                )
-                self.gene_start, self.gene_end = ((gene_coords[0] - coords[0]) * self.args.N_BEADS) // (
-                    coords[1] - coords[0]
-                ), ((gene_coords[1] - coords[0]) * self.args.N_BEADS) // (coords[1] - coords[0])
-                logger.info(
-                    f"We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_ID}.\n"
-                )
-            elif (
-                args.GENE_NAME is not None
-                and str(args.GENE_NAME).lower() != "none"
-                and str(args.GENE_NAME).lower() != ""
-            ):
-                logger.info(f"Gene name: {args.GENE_NAME}")
-                chrom, coords, gene_coords = get_gene_region(
-                    gene_tsv=args.GENE_TSV,
-                    gene_name=args.GENE_NAME,
-                    window_size=args.GENE_WINDOW,
-                )
-                self.gene_start, self.gene_end = ((gene_coords[0] - coords[0]) * self.args.N_BEADS) // (
-                    coords[1] - coords[0]
-                ), ((gene_coords[1] - coords[0]) * self.args.N_BEADS) // (coords[1] - coords[0])
-                logger.info(
-                    f"We model the region {coords[0]}-{coords[1]} of chrom {chrom} of the gene {args.GENE_NAME}.\n"
-                )
-            else:
+        self.region_genes = None
+        level = str(args.MODELLING_LEVEL).lower()
+        targets = _split_list(args.GENE_ID) + _split_list(args.GENE_NAME)
+        if args.GENE_TSV is not None and level == "gene":
+            if not targets:
                 raise ValueError("You did not provide gene name or ID.")
+            # one or several comma-separated genes -> region around their union
+            chrom, coords, gene_coords = get_gene_region(
+                gene_tsv=args.GENE_TSV,
+                gene_id=args.GENE_ID if _split_list(args.GENE_ID) else None,
+                gene_name=args.GENE_NAME,
+                window_size=args.GENE_WINDOW,
+            )
+            span = coords[1] - coords[0]
+            self.gene_start = min(((gene_coords[0] - coords[0]) * args.N_BEADS) // span, args.N_BEADS - 1)
+            self.gene_end = min(((gene_coords[1] - coords[0]) * args.N_BEADS) // span, args.N_BEADS - 1)
+            logger.info(f"We model {chrom}:{coords[0]}-{coords[1]} around {', '.join(targets)}.\n")
+        # annotate every gene in a gene- or region-level window
+        if args.GENE_TSV is not None and level in ("gene", "region") and chrom is not None and coords is not None:
+            self.region_genes = genes_in_region(args.GENE_TSV, chrom, coords, args.N_BEADS, targets)
+            logger.info(f"{len(self.region_genes)} annotated genes in the modelled region.")
 
         # Compartments
         # if args.EIGENVECTOR_TSV!=None and args.EIGENVECTOR_TSV.lower()!='none' and args.EIGENVECTOR_TSV.lower()!='':
@@ -849,8 +838,10 @@ class MultiMM:
                 
             logger.info("Using sinusoidal lamina shell model")
 
+            # r is clamped to the shell, so there is no periodic bump outside it
             self.Blamina_force.setEnergyFunction(
-                "B*(sin(pi*(r-R1)/(R2-R1))^8 - 1)*(delta(s+1)+delta(s+2)); " + r_expr
+                "B*(sin(pi*(rs-R1)/(R2-R1))^8 - 1)*(delta(s+1)+delta(s+2)); "
+                "rs=min(max(r,R1),R2); " + r_expr
             )
             self.Blamina_force.addGlobalParameter("pi", np.pi)
             logger.info(f"Shell radii: R1={self.radius1}, R2={self.radius2}")
@@ -860,33 +851,36 @@ class MultiMM:
 
             logger.info("Using Gaussian lamina shell model (two-layer attraction)")
             self.Blamina_force.setEnergyFunction(
-                "-B*(exp(-(r-R1)^2/(2*sigma^2)) + exp(-(r-R2)^2/(2*sigma^2)))"
+                "-B*(exp(-(r-R1)^2/(2*sigma_l^2)) + exp(-(r-R2)^2/(2*sigma_l^2)))"
                 "*(delta(s+1)+delta(s+2)); " + r_expr
             )
             sigma = 0.1 * (self.radius2 - self.radius1)
-            self.Blamina_force.addGlobalParameter("sigma", sigma)
+            self.Blamina_force.addGlobalParameter("sigma_l", sigma)
             logger.info(f"sigma = {sigma}")
 
         # 3. HARMONIC SHELL (pull to mid-shell)
         elif mode == "harmonic_shell":
-            logger.info("Using harmonic lamina shell model (mid-shell attraction)")
+            logger.info("Using harmonic lamina shell model (inverted parabola, minima at the walls)")
+            # 0 at mid-shell r0, -B at the walls (h = half shell width), flat outside
             self.Blamina_force.setEnergyFunction(
-                "B*(r - r0)^2*(delta(s+1)+delta(s+2)); " + r_expr
+                "-B*(min(abs(r - r0), h)/h)^2*(delta(s+1)+delta(s+2)); " + r_expr
             )
             r0 = 0.5 * (self.radius1 + self.radius2)
             self.Blamina_force.addGlobalParameter("r0", r0)
+            self.Blamina_force.addGlobalParameter("h", 0.5 * (self.radius2 - self.radius1))
             logger.info(f"r0 (mid-shell) = {r0}")
 
         # 4. LOGISTIC WALLS (smooth boundary attraction)
         elif mode == "logistic_shell":
-            logger.info("Using logistic lamina shell model (soft boundaries)")
+            logger.info("Using logistic lamina shell model (soft wells at both walls)")
+            # logistic bump 1/cosh^2(x/2*lambda): -B at each wall, ~0 mid-shell (argument capped to avoid overflow)
             self.Blamina_force.setEnergyFunction(
-                "-B*(1/(1+exp((r-R2)/lambda)) + 1/(1+exp(-(r-R1)/lambda)))"
+                "-B*(1/cosh(min(abs(r-R1)/(2*lambda_l), 40))^2 + 1/cosh(min(abs(r-R2)/(2*lambda_l), 40))^2)"
                 "*(delta(s+1)+delta(s+2)); " + r_expr
             )
-            lam = 0.05 * (self.radius2 - self.radius1)
-            self.Blamina_force.addGlobalParameter("lambda", lam)
-            logger.info(f"lambda (boundary softness) = {lam}")
+            lam = 0.1 * (self.radius2 - self.radius1)
+            self.Blamina_force.addGlobalParameter("lambda_l", lam)
+            logger.info(f"lambda (well width) = {lam}")
 
         else:
             logger.error(f"Unknown BLAMINA_FORCE_TYPE: {mode}")
@@ -941,10 +935,10 @@ class MultiMM:
             logger.info("Using Gaussian central enrichment")
 
             sigma = 0.5 * self.radius1
-            self.central_force.addGlobalParameter("sigma", sigma)
+            self.central_force.addGlobalParameter("sigma_c", sigma)
 
             self.central_force.setEnergyFunction(
-                f"-G*chrom_s*exp(-({r}*{r})/(2*sigma*sigma))"
+                f"-G*chrom_s*exp(-({r}*{r})/(2*sigma_c*sigma_c))"
             )
 
         # ============================================================
@@ -954,10 +948,10 @@ class MultiMM:
             logger.info("Using logistic central attraction")
 
             lam = 0.2 * self.radius1
-            self.central_force.addGlobalParameter("lambda", lam)
+            self.central_force.addGlobalParameter("lambda_c", lam)
 
             self.central_force.setEnergyFunction(
-                f"-G*chrom_s*(1/(1+exp(({r}-R1)/lambda)))"
+                f"-G*chrom_s*(1/(1+exp(({r}-R1)/lambda_c)))"
             )
 
         else:
@@ -1811,6 +1805,16 @@ class MultiMM:
                     cmap="coolwarm",
                     save_path=self.save_path + "plots/structure_afterMD_gene_coloring.png",
                 )
+
+        # every annotated gene in the window: table, 3D labels, track, distances
+        if self.region_genes is not None and len(self.region_genes):
+            tag = "afterMD" if self.args.SIM_RUN_MD else "minimized"
+            V = get_coordinates_cif(self.save_path + f"model/MultiMM_{tag}.cif")
+            genes, cen = annotate_gene_geometry(self.region_genes, V)
+            genes.to_csv(self.save_path + "metadata/genes_in_region.tsv", sep="\t", index=False)
+            save_chimera_genes_cmd(genes, cmd_filename=self.save_path + "metadata/chimera_genes_coloring.cmd")
+            viz_gene_annotation(V, genes, save_path=self.save_path + "plots/genes_3d.png")
+            plot_gene_track(genes, self.args.N_BEADS, cen, save_path=self.save_path + "plots/genes_track.png")
 
         # COMMON STRUCTURES (always executed)
         snapshots = [

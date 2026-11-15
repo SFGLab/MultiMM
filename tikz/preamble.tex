@@ -1,0 +1,26 @@
+% Shared style for MultiMM figures (white background, logo palette)
+\usepackage{tikz,pgfplots,amsmath}
+\pgfplotsset{compat=1.16}
+\usetikzlibrary{arrows.meta,calc,decorations.pathreplacing,positioning,backgrounds}
+\definecolor{indigo}{HTML}{3B37A0}
+\definecolor{violet}{HTML}{6A3AA8}
+\definecolor{crimson}{HTML}{B5406C}
+\definecolor{gold}{HTML}{E9A62C}
+\definecolor{golddark}{HTML}{B9791A}
+\definecolor{grey}{HTML}{8A8AA0}
+\definecolor{lightgrey}{HTML}{E4E4EE}
+\tikzset{
+  bead/.style={circle,draw=#1!80!black,fill=#1!35,line width=0.5pt,minimum size=9pt,inner sep=0pt},
+  bead/.default=indigo,
+  lab/.style={font=\small},
+}
+\pgfplotsset{
+  every axis/.append style={
+    width=9.5cm,height=6.3cm,axis lines=left,line width=0.5pt,
+    grid=major,grid style={draw=lightgrey,line width=0.3pt},
+    tick label style={font=\small},label style={font=\normalsize},
+    legend style={font=\footnotesize,draw=none,fill=white,fill opacity=0.8,text opacity=1},
+    legend cell align=left,
+  },
+  every axis plot/.append style={line width=1.2pt,smooth},
+}
