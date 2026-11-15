@@ -1,0 +1,1568 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Multiscale chromatin modelling from nucleosomes to whole genomes">
+      
+      
+      
+      
+        <link rel="prev" href="../dynamics/">
+      
+      
+        <link rel="next" href="../../reference/running/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/multimm_icon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Advanced options - MultiMM</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#advanced-options" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="MultiMM" class="md-header__button md-logo" aria-label="MultiMM" data-md-component="logo">
+      
+  <img src="../../assets/multimm_icon_header.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MultiMM
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Advanced options
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/SFGLab/MultiMM" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SFGLab/MultiMM
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../.." class="md-tabs__link">
+          
+  
+  
+  Intro
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  The Model
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/running/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="MultiMM" class="md-nav__button md-logo" aria-label="MultiMM" data-md-component="logo">
+      
+  <img src="../../assets/multimm_icon_header.svg" alt="logo">
+
+    </a>
+    MultiMM
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/SFGLab/MultiMM" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SFGLab/MultiMM
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intro
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Intro
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/inspiration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inspiration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Model
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    The Model
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../initial-structure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Initial structure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scales/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Units and scales
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backbone/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backbone
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../loops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compartments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compartments
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hic-force/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hi-C force
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lamina/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nuclear envelope and lamina
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dynamics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Minimisation and dynamics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced options
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#modelling-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modelling levels
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gene-modelling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gene modelling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ensembles-and-randomness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ensembles and randomness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ensembles and randomness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-an-ensemble" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why an ensemble?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-to-switch-it-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to switch it on
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cost-and-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost and tips
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platforms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nucleosome-interpolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nucleosome interpolation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/running/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running MultiMM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/config-file/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing a config file
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/arguments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arguments
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#modelling-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modelling levels
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gene-modelling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gene modelling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ensembles-and-randomness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ensembles and randomness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ensembles and randomness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-an-ensemble" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why an ensemble?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-to-switch-it-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to switch it on
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cost-and-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost and tips
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platforms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nucleosome-interpolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nucleosome interpolation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="advanced-options">Advanced options<a class="headerlink" href="#advanced-options" title="Permanent link">&para;</a></h1>
+<p>This page collects options that change <em>what</em> is modelled or <em>how</em> the result is sampled, rather than the energy terms themselves.</p>
+<h2 id="modelling-levels">Modelling levels<a class="headerlink" href="#modelling-levels" title="Permanent link">&para;</a></h2>
+<p><code>MODELLING_LEVEL</code> is a shortcut that sets many parameters at once for a typical scale. The preset is applied after the configuration is read and <strong>overwrites</strong> the listed parameters (the changes are printed at the start of the run). Everything else keeps your value.</p>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Typical use</th>
+<th>Beads</th>
+<th>Container</th>
+<th>Compartment force</th>
+<th>B-lamina</th>
+<th>MD</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GENE</code></td>
+<td>one gene and its surroundings</td>
+<td>1000</td>
+<td>off</td>
+<td>off</td>
+<td>off</td>
+<td>on, 10 000 steps</td>
+</tr>
+<tr>
+<td><code>REGION</code> (or <code>LOC</code>)</td>
+<td>a TAD-scale or Mb-scale region</td>
+<td>5000</td>
+<td>off</td>
+<td>on if <code>COMPARTMENT_PATH</code> is given</td>
+<td>off</td>
+<td>on, 10 000 steps</td>
+</tr>
+<tr>
+<td><code>CHROM</code> (or <code>CHROMOSOME</code>)</td>
+<td>a whole chromosome</td>
+<td>20 000</td>
+<td>off</td>
+<td>on if <code>COMPARTMENT_PATH</code> is given</td>
+<td>off</td>
+<td>on, 10 000 steps</td>
+</tr>
+<tr>
+<td><code>GW</code> (or <code>GENOME</code>)</td>
+<td>the whole genome</td>
+<td>200 000</td>
+<td><strong>on</strong></td>
+<td>on if <code>COMPARTMENT_PATH</code> is given</td>
+<td>on if <code>COMPARTMENT_PATH</code> is given</td>
+<td><strong>off</strong></td>
+</tr>
+</tbody>
+</table>
+<p>All presets also switch off the chromosome blocks, the subcompartment force and the central force. <code>CHROM</code> additionally sets <code>LOC_START = 1</code> and <code>LOC_END</code> to the length of <code>CHROM</code>. Leave <code>MODELLING_LEVEL</code> empty to configure everything yourself.</p>
+<div class="admonition warning">
+<p class="admonition-title">Presets override your settings</p>
+<p>A preset overwrites, for example, <code>N_BEADS</code>. If you want 20 000 beads on a region, do not use a level; set the parameters directly.</p>
+</div>
+<h2 id="gene-modelling">Gene modelling<a class="headerlink" href="#gene-modelling" title="Permanent link">&para;</a></h2>
+<p>With <code>MODELLING_LEVEL = GENE</code>, the modelled region is built around a gene instead of from <code>CHROM</code>, <code>LOC_START</code> and <code>LOC_END</code>. Give the gene by name (<code>GENE_NAME</code>) or by identifier (<code>GENE_ID</code>). <strong>Several genes</strong> can be given as a comma-separated list (for example <code>GENE_NAME = MYC, PVT1</code>); the region then covers all of them plus the window (they must lie on the same chromosome). If a name has several annotations, the longest one is used. its position is looked up in an annotation table (<code>GENE_TSV</code>; the default is a bundled hg38 annotation). The region is the gene body extended by <code>GENE_WINDOW</code> base pairs on each side (default 100 000), cut to <code>N_BEADS</code> = 1000 beads.</p>
+<p><strong>Every annotated gene in the modelled window</strong> (also for <code>MODELLING_LEVEL = REGION</code>) is mapped onto the beads and reported, not only the requested ones:</p>
+<table>
+<thead>
+<tr>
+<th>Output</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>metadata/genes_in_region.tsv</code></td>
+<td>one row per gene: coordinates, first and last bead, whether it is a target, its radius of gyration <code>rg</code> (how compact the gene is in 3D) and <code>dist_to_target</code> (distance of its centre to the target genes)</td>
+</tr>
+<tr>
+<td><code>plots/genes_3d.png</code></td>
+<td>the structure with every gene in its own colour (targets red, the rest of the chain grey) and gene-name labels</td>
+</tr>
+<tr>
+<td><code>plots/genes_track.png</code></td>
+<td>left: gene track along the beads, with overlapping genes stacked; right: matrix of 3D distances between gene centres, showing which genes are spatial neighbours</td>
+</tr>
+<tr>
+<td><code>metadata/chimera_genes_coloring.cmd</code></td>
+<td>ChimeraX script with the same colours</td>
+</tr>
+</tbody>
+</table>
+<p>The target gene alone is also highlighted in <code>plots/structure_afterMD_gene_coloring.png</code> and <code>metadata/chimera_gene_coloring.cmd</code>. Gene mode is meant to be used with local data: a loop file and/or a Hi-C map for the region.</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Main]</span>
+<span class="na">MODELLING_LEVEL</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">GENE</span>
+<span class="na">GENE_NAME</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s">MYC</span>
+<span class="na">GENE_WINDOW</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s">200000</span>
+<span class="na">LOOPS_PATH</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s">loops.bedpe</span>
+<span class="na">OUT_PATH</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="s">results/MYC</span>
+</code></pre></div>
+<h2 id="ensembles-and-randomness">Ensembles and randomness<a class="headerlink" href="#ensembles-and-randomness" title="Permanent link">&para;</a></h2>
+<h3 id="why-an-ensemble">Why an ensemble?<a class="headerlink" href="#why-an-ensemble" title="Permanent link">&para;</a></h3>
+<p>A single run gives you <strong>one</strong> structure. But a Hi-C map is not the picture of one nucleus: it is an <em>average</em> over millions of cells, and in each cell the chromatin is folded a little differently (loops form and dissolve, domains wobble). One model, however good, is just one possible member of that crowd. An <strong>ensemble</strong> is a set of structures, each one a plausible conformation, that together describe the variety. Use it when you care about <em>how much</em> the structure varies (for example the spread of the distance between two loci), or when you want to compare with a population average such as Hi-C, which is best reproduced by averaging many structures rather than looking at one.</p>
+<div class="admonition tip">
+<p class="admonition-title">In plain words</p>
+<p>Think of taking many photographs of a crowd instead of one: each photo is different, but together they show what the crowd looks like. An ensemble is that stack of photos for a piece of chromatin.</p>
+</div>
+<h3 id="how-to-switch-it-on">How to switch it on<a class="headerlink" href="#how-to-switch-it-on" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="na">GENERATE_ENSEMBLE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">N_ENSEMBLE</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="s">20</span><span class="w">       </span><span class="c1">; number of structures (required)</span>
+</code></pre></div>
+<p><code>N_ENSEMBLE</code> must be set whenever <code>GENERATE_ENSEMBLE</code> is <code>True</code>; MultiMM stops with a clear message otherwise.</p>
+<h3 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h3>
+<p>MultiMM simply runs the whole pipeline <span class="arithmatex">\(n\)</span> times (<code>N_ENSEMBLE</code> = <span class="arithmatex">\(n\)</span>), one after another. Run number <span class="arithmatex">\(i\)</span> (<span class="arithmatex">\(i=0,\dots,n-1\)</span>) is written to its own folder <code>run_&lt;i&gt;/</code> inside <code>OUT_PATH</code> (numbers are zero-padded, so <code>run_00 … run_19</code>), with the usual layout of <a href="../../reference/output/">outputs</a>, and uses the random seed <code>SHUFFLING_SEED = i</code>. A <strong>seed</strong> is the starting number of a pseudo-random generator: the same seed always gives the same "random" choices, so every ensemble is <strong>reproducible</strong>, while different seeds give different structures.</p>
+<p>The seed feeds every random ingredient of the model:</p>
+<table>
+<thead>
+<tr>
+<th>Random ingredient</th>
+<th>Switched on by</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Random-walk initial structure</td>
+<td><code>INITIAL_STRUCTURE_TYPE</code> = <code>rw</code>, <code>confined_rw</code>, <code>self_avoiding_rw</code>, ...</td>
+<td>A different starting conformation for each run</td>
+</tr>
+<tr>
+<td>Initial velocities of the beads</td>
+<td><code>SIM_RUN_MD</code> with <code>SIM_SET_INITIAL_VELOCITIES</code></td>
+<td>A different dynamical trajectory for each run</td>
+</tr>
+<tr>
+<td>Loops randomly removed</td>
+<td><code>DOWNSAMPLING_PROB</code> &lt; 1</td>
+<td>Each run keeps a different random subset of loops, mimicking that not every loop is present in every cell</td>
+</tr>
+<tr>
+<td>Compartment flips</td>
+<td><code>COMPARTMENT_FLIP_PROB</code> &gt; 0</td>
+<td>Some beads switch A ↔ B at random</td>
+</tr>
+<tr>
+<td>Compartment noise</td>
+<td><code>COMPARTMENT_NOISE_STD</code> &gt; 0</td>
+<td>Compartment boundaries shift slightly</td>
+</tr>
+<tr>
+<td>Hi-C noise</td>
+<td><code>HIC_NOISE_INTENSITY</code> &gt; 0</td>
+<td>The strength of each Hi-C restraint is redrawn at every saved frame</td>
+</tr>
+<tr>
+<td>Chromosome order</td>
+<td><code>SHUFFLE_CHROMS</code></td>
+<td>The order of chromosomes in a genome-wide model is permuted</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">The runs must be able to differ</p>
+<p>With the default settings the initial structure is the deterministic Hilbert curve and there is no noise, so a run that only minimises the energy gives the <strong>same</strong> structure every time and an ensemble would be <span class="arithmatex">\(n\)</span> identical copies. To get variety, turn on <strong>at least one</strong> ingredient from the table: a random-walk start, molecular dynamics with random initial velocities, or one of the noise options.</p>
+</div>
+<h3 id="cost-and-tips">Cost and tips<a class="headerlink" href="#cost-and-tips" title="Permanent link">&para;</a></h3>
+<p>An ensemble multiplies the computing time by <span class="arithmatex">\(n\)</span>, so it is best for small and medium systems (a gene or a region); for a whole genome, think twice. Start with a small <span class="arithmatex">\(n\)</span> (5 to 10) to check that the structures indeed differ, then increase it. Because the structures are saved as ordinary files, you can average their contact maps afterwards or measure any distance across the runs.</p>
+<p><code>SHUFFLE_CHROMS</code> randomly permutes the order of the chromosomes in a genome-wide model, which probes how much the arrangement of territories depends on the starting order.</p>
+<h2 id="platforms">Platforms<a class="headerlink" href="#platforms" title="Permanent link">&para;</a></h2>
+<p><code>PLATFORM</code> selects the OpenMM backend: <code>CPU</code> (default), <code>Reference</code> (slow, for testing), and, when available in your OpenMM installation, <code>CUDA</code> or <code>OpenCL</code> on a GPU. Large genome-wide systems need a GPU. <code>CPU_THREADS</code> sets the number of CPU threads. All custom nonbonded forces are given a cutoff so that they run on the GPU platforms.</p>
+<h2 id="nucleosome-interpolation">Nucleosome interpolation<a class="headerlink" href="#nucleosome-interpolation" title="Permanent link">&para;</a></h2>
+<p>The beads of MultiMM are coarse (kilobases). <strong>Nucleosome interpolation</strong> is an optional post-processing step that decorates the minimised structure with explicit nucleosomes, to produce an atomistic-looking fibre for visualisation. It does not change the modelled structure.</p>
+<p><strong>Number of nucleosomes.</strong> From an ATAC-seq signal track (<code>ATACSEQ_PATH</code>, a <code>.bigWig</code>), the log signal <span class="arithmatex">\(\log(a_i+10^{-6})\)</span> is rescaled to <span class="arithmatex">\(\tilde a_i\in[0,1]\)</span>. The number of nucleosomes placed between bead <span class="arithmatex">\(i\)</span> and <span class="arithmatex">\(i+1\)</span> is proportional to this signal (a higher value gives more nucleosomes):</p>
+<div class="arithmatex">\[
+n_i=\operatorname{round}\!\bigl(\tilde a_i\,n_\text{max}\bigr),\qquad n_\text{max}=\left\lceil \frac{1}{2\,r_\text{nuc}}\right\rceil ,
+\]</div>
+<p>where <span class="arithmatex">\(r_\text{nuc}\)</span> is the nucleosome radius (<code>NUC_RADIUS</code>, 0.1) and <span class="arithmatex">\(n_\text{max}\)</span> is the maximum number of nucleosomes per bead (5 for the default).</p>
+<p><strong>Shape.</strong> Each nucleosome is a short <strong>helix</strong> of radius <span class="arithmatex">\(r_\text{nuc}\)</span>, height <span class="arithmatex">\(r_\text{nuc}\)</span> and <strong>1.65 turns</strong> (the DNA wraps about 1.65 times around the histone core), drawn with <code>POINTS_PER_NUC</code> points (20). Successive nucleosomes are placed at equal spacing along the segment between two beads, offset sideways in a <strong>zigzag</strong> by half a linker length (<span class="arithmatex">\(3.45\,r_\text{nuc}/2\)</span>, randomly scaled between 0.5 and 1.5), and rotated by a constant angle <code>PHI_NORM</code> (<span class="arithmatex">\(\pi/5\)</span>) between neighbours, which mimics the zigzag chromatin fibre.</p>
+<div class="admonition warning">
+<p class="admonition-title">Known issue: not functional in this release</p>
+<p>The step cannot currently run. The modelling-level code always resets <code>NUC_DO_INTERPOLATION</code> to <code>False</code> and <code>ATACSEQ_PATH</code> to none, and, in addition, the call that builds the nucleosomes passes its arguments in a different order from the function signature (<code>MAX_NUCS_PER_BEAD</code> is also ignored: <span class="arithmatex">\(n_\text{max}\)</span> is always computed from <code>NUC_RADIUS</code>). The output file <code>model/MultiMM_minimized_with_nucs.cif</code> is therefore not produced. The description above is how the method is designed to work.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">In MultiMM</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NUC_DO_INTERPOLATION</code></td>
+<td><code>False</code></td>
+</tr>
+<tr>
+<td><code>ATACSEQ_PATH</code></td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>NUC_RADIUS</code></td>
+<td>0.1</td>
+</tr>
+<tr>
+<td><code>POINTS_PER_NUC</code></td>
+<td>20</td>
+</tr>
+<tr>
+<td><code>PHI_NORM</code></td>
+<td>0.6283 (<span class="arithmatex">\(\pi/5\)</span>)</td>
+</tr>
+<tr>
+<td><code>MAX_NUCS_PER_BEAD</code></td>
+<td>4 (ignored)</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "content.code.copy"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

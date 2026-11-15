@@ -1,11 +1,13 @@
 <p align="center">
-  <img src="docs/assets/multimm_logo.svg" alt="MultiMM" width="100%">
+  <img src="https://raw.githubusercontent.com/SFGLab/MultiMM/main/docs/assets/multimm_logo.png" alt="MultiMM" width="100%">
 </p>
+
+[![PyPI](https://img.shields.io/pypi/v/MultiMM)](https://pypi.org/project/MultiMM/) · **[Documentation](https://sfglab.github.io/MultiMM/)** · [Source](https://github.com/SFGLab/MultiMM)
 
 **MultiMM** is an [OpenMM](https://openmm.org)-based tool for building 3D models of chromatin, from single genomic regions to the whole human genome. It is *multiscale*: one energy function covers nucleosomes, loops and TADs, A/B compartments, chromosome territories and the nucleus. You give it loop calls, and optionally compartments or a Hi-C map, and it returns a 3D structure that you can open in any molecular viewer. The model is fast because it starts from a compact Hilbert-curve conformation and runs on GPUs through OpenMM.
 
 <p align="center">
-  <img src="docs/assets/workflow.png" alt="MultiMM workflow" width="720">
+  <img src="https://raw.githubusercontent.com/SFGLab/MultiMM/main/docs/assets/workflow.png" alt="MultiMM workflow" width="720">
 </p>
 
 ## Scales of modelling
@@ -69,7 +71,7 @@ OUT_PATH         = results/chr1_region
 
 ## Documentation
 
-The full documentation, with the mathematics of every force and a table of all arguments, is written with [MkDocs](https://www.mkdocs.org) and its source is in [`docs/`](docs). To read it locally:
+The full documentation, with the mathematics of every force and a table of all arguments, is written with [MkDocs](https://www.mkdocs.org) and its source is in [`docs/`](https://github.com/SFGLab/MultiMM/tree/main/docs). To read it locally:
 
 ```bash
 pip install mkdocs-material

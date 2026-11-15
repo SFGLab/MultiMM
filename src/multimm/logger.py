@@ -697,10 +697,27 @@ def print_banner(version: Optional[str] = None) -> None:
 
     pad = "  " + (" " * (sym_w + 3) if show_sym else "")
     beads = "".join(gradient("●─" if i < 15 else "●", i / 15, i / 15) for i in range(16))
+
+    # one random chromatin fact right under the tagline, aligned with it
+    from .facts import random_fact
+
+    width = max(40, min(cols, 100) - len(pad) - 4)
+    wrapped = textwrap.wrap(random_fact(), width)
+    rule = "─" * min(width, 56)
+    quote = [pad + _tint("◆ did you know?  " + rule[:max(0, len(rule) - 17)], italic=True)]
+    for k, ln in enumerate(wrapped):
+        t0, t1 = k / len(wrapped), (k + 1) / len(wrapped)
+        mark = "❝ " if k == 0 else "  "
+        end = " ❞" if k == len(wrapped) - 1 else ""
+        quote.append(pad + _tint(mark + ln + end, t0, t1, italic=True))
+
     lines += [
         "",
         pad + gradient(" ┈ ".join(_SCALES)),
         pad + f"{d}multiscale modelling of chromatin{rst}" + (f"   {gradient('v' + version)}" if version else ""),
+        "",
+        *quote,
+        "",
         pad + beads,
         "",
         f"  {d}Creator{rst}      Sebastian Korsak  (Warsaw, Poland)",
@@ -708,19 +725,6 @@ def print_banner(version: Optional[str] = None) -> None:
         f"  {d}Contact{rst}      s.korsak@datascience.edu.pl · d.plewczynski@datascience.edu.pl",
         "",
     ]
-    # one random chromatin fact: gradient rule, italic gradient text, closing mark
-    from .facts import random_fact
-
-    width = max(40, min(cols, 100) - 10)
-    wrapped = textwrap.wrap(random_fact(), width)
-    rule = "─" * min(width + 2, 60)
-    lines.append("  " + _tint("◆ did you know?  " + rule[:max(0, len(rule) - 17)], italic=True))
-    for k, ln in enumerate(wrapped):
-        t0, t1 = k / len(wrapped), (k + 1) / len(wrapped)
-        mark = "❝ " if k == 0 else "  "
-        end = " ❞" if k == len(wrapped) - 1 else ""
-        lines.append("  " + _tint(mark + ln + end, t0, t1, italic=True))
-    lines.append("")
     for line in lines:
         _emit(line)
 
@@ -733,7 +737,7 @@ if __name__ == "__main__":
     v = int(sys.argv[1]) if len(sys.argv) > 1 else 0
     setup_logger(verbosity=v)
     log = logging.getLogger("multimm.demo")
-    print_banner("2.1.0")
+    print_banner("2.1.1")
     with stage("Input data", 3) as s:
         for name in ("Loops", "Compartments", "Hi-C"):
             s.next(name)

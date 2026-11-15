@@ -8,4 +8,4 @@ def main(*args, **kwargs):
     return _main(*args, **kwargs)
 
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"

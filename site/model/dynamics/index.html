@@ -1,0 +1,1604 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Multiscale chromatin modelling from nucleosomes to whole genomes">
+      
+      
+      
+      
+        <link rel="prev" href="../lamina/">
+      
+      
+        <link rel="next" href="../advanced/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/multimm_icon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Minimisation and dynamics - MultiMM</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#minimisation-and-molecular-dynamics" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="MultiMM" class="md-header__button md-logo" aria-label="MultiMM" data-md-component="logo">
+      
+  <img src="../../assets/multimm_icon_header.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MultiMM
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Minimisation and dynamics
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/SFGLab/MultiMM" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SFGLab/MultiMM
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../.." class="md-tabs__link">
+          
+  
+  
+  Intro
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  The Model
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/running/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="MultiMM" class="md-nav__button md-logo" aria-label="MultiMM" data-md-component="logo">
+      
+  <img src="../../assets/multimm_icon_header.svg" alt="logo">
+
+    </a>
+    MultiMM
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/SFGLab/MultiMM" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SFGLab/MultiMM
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intro
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Intro
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/inspiration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inspiration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Model
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    The Model
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../initial-structure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Initial structure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scales/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Units and scales
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backbone/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backbone
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../loops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compartments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compartments
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hic-force/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hi-C force
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lamina/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nuclear envelope and lamina
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Minimisation and dynamics
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Minimisation and dynamics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-two-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why two steps?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimisation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimisation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is integration?
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is integration?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-time-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The time step
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#temperature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Temperature
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-integrators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The integrators
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The integrators">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#langevin-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Langevin (default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#brownian" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Brownian
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verlet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verlet
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#variable-step-integrators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Variable-step integrators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#accelerated-md-amd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accelerated MD (amd)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-long-and-what-is-saved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How long, and what is saved
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../advanced/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/running/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running MultiMM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/config-file/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing a config file
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/arguments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arguments
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-two-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why two steps?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimisation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimisation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is integration?
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is integration?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-time-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The time step
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#temperature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Temperature
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-integrators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The integrators
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The integrators">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#langevin-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Langevin (default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#brownian" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Brownian
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verlet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verlet
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#variable-step-integrators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Variable-step integrators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#accelerated-md-amd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accelerated MD (amd)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-long-and-what-is-saved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How long, and what is saved
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="minimisation-and-molecular-dynamics">Minimisation and molecular dynamics<a class="headerlink" href="#minimisation-and-molecular-dynamics" title="Permanent link">&para;</a></h1>
+<p>The forces described in the previous pages define an <strong>energy</strong> <span class="arithmatex">\(E\)</span> for every possible shape of the chromatin chain. This page explains the next step: how MultiMM finds good shapes, and how it can then make the chain move like a real, jiggling polymer. Everything here is controlled by a handful of <code>SIM_*</code> settings, and the defaults work for most runs.</p>
+<div class="admonition tip">
+<p class="admonition-title">In plain words</p>
+<p>Think of <span class="arithmatex">\(E\)</span> as a landscape of hills and valleys, where every position on the map is one possible folding of the chain. <strong>Minimisation</strong> is a hiker walking downhill to the bottom of the nearest valley: you get one comfortable shape. <strong>Molecular dynamics (MD)</strong> is the same hiker, but now warm and restless: the chain keeps jiggling around the valley floor, and the hiker takes a photo every now and then. You get a <em>movie</em> of plausible shapes.</p>
+</div>
+<h2 id="why-two-steps">Why two steps?<a class="headerlink" href="#why-two-steps" title="Permanent link">&para;</a></h2>
+<p>Starting from the <a href="../initial-structure/">initial structure</a>, the chain is compact and tidy, but it does not yet agree with your data. Minimisation fixes this quickly. It is cheap, deterministic, and for large systems (a whole chromosome or genome) it is often all you need.</p>
+<p>A real chromosome, however, is never frozen in a single shape. Thermal motion makes it fluctuate constantly, and the cells in a sample each have a slightly different structure. MD mimics this. It is most useful for small and medium systems (a gene, a region) where you want</p>
+<ul>
+<li>an <strong>ensemble</strong> of structures rather than one,</li>
+<li>a measure of <strong>how flexible</strong> each part is (the RMSF, see below),</li>
+<li>a check that the structure is <strong>stable</strong>, not just a lucky point of the landscape.</li>
+</ul>
+<h2 id="minimisation">Minimisation<a class="headerlink" href="#minimisation" title="Permanent link">&para;</a></h2>
+<p>MultiMM calls OpenMM's <code>minimizeEnergy</code>, which uses the <strong>L-BFGS</strong> method: at every step it moves all beads a little in the direction that lowers <span class="arithmatex">\(E\)</span> the fastest, and it uses the memory of earlier steps to choose smart step sizes. It stops when the largest force on any bead is below a tolerance (10 kJ/mol/nm, the OpenMM default). The result is written to <code>model/MultiMM_minimized.cif</code>.</p>
+<p>Minimisation always finishes in a <em>local</em> minimum, the nearest valley, which is why a good starting structure matters.</p>
+<h2 id="what-is-integration">What is integration?<a class="headerlink" href="#what-is-integration" title="Permanent link">&para;</a></h2>
+<p>To make the chain move we need Newton's law: <em>force = mass × acceleration</em>. For bead <span class="arithmatex">\(i\)</span> with position <span class="arithmatex">\(\mathbf{r}_i\)</span> and velocity <span class="arithmatex">\(\mathbf{v}_i\)</span>,</p>
+<div class="arithmatex">\[
+m\,\frac{d\mathbf{v}_i}{dt}=\mathbf{F}_i=-\nabla_{\mathbf{r}_i}E,
+\qquad
+\frac{d\mathbf{r}_i}{dt}=\mathbf{v}_i .
+\]</div>
+<p>In words: the energy tells us the force (a bead is pushed in the direction in which <span class="arithmatex">\(E\)</span> decreases), the force changes the velocity, and the velocity changes the position. For more than two beads there is no formula for the answer, so the computer advances time in many tiny steps of length <span class="arithmatex">\(\Delta t\)</span> (the <strong>time step</strong>). <strong>Integration</strong> means repeating this update step after step, and an <strong>integrator</strong> is the recipe for one update.</p>
+<p>A recipe has to be good in two ways. It must be <em>accurate</em>, so that errors do not pile up, and it must be <em>stable</em>, so that the energy does not slowly drift. The simplest recipe (move along the current velocity, then update the velocity, called Euler) is neither, which is why MD programs use better ones such as the <strong>Verlet</strong> scheme:</p>
+<div class="arithmatex">\[
+\mathbf{v}\leftarrow\mathbf{v}+\tfrac{\Delta t}{2m}\mathbf{F}(\mathbf{r}),\qquad
+\mathbf{r}\leftarrow\mathbf{r}+\Delta t\,\mathbf{v},\qquad
+\mathbf{v}\leftarrow\mathbf{v}+\tfrac{\Delta t}{2m}\mathbf{F}(\mathbf{r}_\text{new}) .
+\]</div>
+<p>First kick the velocity with the current force, then let the bead drift, then kick again with the new force. (OpenMM uses the equivalent leap-frog arrangement, which gives the same trajectory.) The Verlet scheme conserves energy very well, but it has no temperature control: it keeps whatever energy the system started with.</p>
+<h3 id="the-time-step">The time step<a class="headerlink" href="#the-time-step" title="Permanent link">&para;</a></h3>
+<p>The time step must be small compared with the fastest motion in the system, which here is the vibration of the stiff bonds. A step that is too large makes the energy explode (you will see <code>NaN</code> in the log). MultiMM uses <strong>1 femtosecond</strong> (<code>SIM_INTEGRATOR_STEP</code>), which is very safe. Each bead has the mass of 10 kb of chromatin (16 428 atomic mass units).</p>
+<div class="admonition warning">
+<p class="admonition-title">Time is relative</p>
+<p>The lengths of the model are not physical nanometres (<a href="../scales/">Units and scales</a>), so the simulated time is not real time either. Use MD to compare <em>relative</em> fluctuations and to produce an ensemble, not to measure absolute speeds.</p>
+</div>
+<h3 id="temperature">Temperature<a class="headerlink" href="#temperature" title="Permanent link">&para;</a></h3>
+<p>Real chromatin sits in a bath at about 310 K, which keeps it jiggling. The integrators below that have a <strong>thermostat</strong> (Langevin, Brownian) imitate this: they add a little friction and random kicks, and the balance between the two keeps the average kinetic energy at <span class="arithmatex">\(\tfrac32k_BT\)</span> per bead. The temperature is set by <code>SIM_TEMPERATURE</code> (default 310 K); it never needs to be changed unless you want to explore other conditions. Remember that <span class="arithmatex">\(k_BT\approx2.58\)</span> kJ/mol at 310 K is the yardstick for how strong an interaction is.</p>
+<h2 id="the-integrators">The integrators<a class="headerlink" href="#the-integrators" title="Permanent link">&para;</a></h2>
+<p><code>SIM_INTEGRATOR_TYPE</code> chooses the recipe. The default is <code>langevin</code>.</p>
+<table>
+<thead>
+<tr>
+<th><code>SIM_INTEGRATOR_TYPE</code></th>
+<th>Thermostat</th>
+<th>Settings it uses</th>
+<th>Use it for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>langevin</code> (<strong>default</strong>)</td>
+<td>yes</td>
+<td><code>SIM_TEMPERATURE</code>, <code>SIM_FRICTION_COEFF</code>, <code>SIM_INTEGRATOR_STEP</code></td>
+<td>almost everything</td>
+</tr>
+<tr>
+<td><code>brownian</code></td>
+<td>yes (overdamped)</td>
+<td><code>SIM_TEMPERATURE</code>, <code>SIM_FRICTION_COEFF</code>, <code>SIM_INTEGRATOR_STEP</code></td>
+<td>slow, viscous motion; no inertia</td>
+</tr>
+<tr>
+<td><code>verlet</code></td>
+<td>no</td>
+<td><code>SIM_INTEGRATOR_STEP</code></td>
+<td>tests; checking energy conservation</td>
+</tr>
+<tr>
+<td><code>variable_langevin</code></td>
+<td>yes</td>
+<td><code>SIM_TEMPERATURE</code>, <code>SIM_FRICTION_COEFF</code>, <code>SIM_ERROR_TOLERANCE</code></td>
+<td>automatic time step with a thermostat</td>
+</tr>
+<tr>
+<td><code>variable_verlet</code></td>
+<td>no</td>
+<td><code>SIM_ERROR_TOLERANCE</code></td>
+<td>automatic time step, no thermostat</td>
+</tr>
+<tr>
+<td><code>amd</code></td>
+<td>no</td>
+<td><code>SIM_INTEGRATOR_STEP</code>, <code>SIM_AMD_ALPHA</code>, <code>SIM_AMD_E</code></td>
+<td>exploring beyond the nearest valley</td>
+</tr>
+</tbody>
+</table>
+<h3 id="langevin-default">Langevin (default)<a class="headerlink" href="#langevin-default" title="Permanent link">&para;</a></h3>
+<p>The Langevin integrator adds two ingredients to Newton's law. A <strong>friction</strong> <span class="arithmatex">\(-\gamma m\mathbf{v}\)</span> slows the beads down, as if they moved through a thick liquid, and a <strong>random force</strong> kicks them, as if molecules of the liquid were hitting them:</p>
+<div class="arithmatex">\[
+m\,\dot{\mathbf{v}}=-\nabla E-\gamma m\,\mathbf{v}+\sqrt{2\gamma m k_BT}\;\boldsymbol{\xi}(t),
+\]</div>
+<p>where <span class="arithmatex">\(\boldsymbol{\xi}(t)\)</span> is random noise with zero average. Friction removes energy, the noise puts it back, and the balance is exactly the temperature <span class="arithmatex">\(T\)</span> (the <em>fluctuation-dissipation</em> relation: the stronger the friction, the stronger the kicks needed).</p>
+<ul>
+<li><strong><code>SIM_FRICTION_COEFF</code></strong> is <span class="arithmatex">\(\gamma\)</span>, in 1/ps (default 0.5). Its inverse <span class="arithmatex">\(1/\gamma=2\)</span> ps is the time it takes a bead to forget its velocity. A <em>small</em> <span class="arithmatex">\(\gamma\)</span> gives inertial, quickly moving beads with a weak thermostat; a <em>large</em> <span class="arithmatex">\(\gamma\)</span> gives slow, sticky motion. The static result (the average structure) does not depend on <span class="arithmatex">\(\gamma\)</span>, only the speed of exploring does.</li>
+<li><strong><code>SIM_TEMPERATURE</code></strong> is <span class="arithmatex">\(T\)</span>.</li>
+<li><strong><code>SIM_INTEGRATOR_STEP</code></strong> is <span class="arithmatex">\(\Delta t\)</span>.</li>
+</ul>
+<h3 id="brownian">Brownian<a class="headerlink" href="#brownian" title="Permanent link">&para;</a></h3>
+<p>When friction is so large that velocities die out immediately, inertia does not matter and the beads simply <em>diffuse</em> while being pushed by the force. This is the <strong>overdamped</strong> limit, and is what the Brownian integrator computes:</p>
+<div class="arithmatex">\[
+\mathbf{r}\leftarrow\mathbf{r}+\frac{\Delta t}{\gamma m}\,\mathbf{F}+\sqrt{\frac{2k_BT\,\Delta t}{\gamma m}}\;\boldsymbol{\xi}.
+\]</div>
+<p>The first term is a drift along the force, the second a random walk. Chromatin lives in a very viscous nucleus, so this is often a realistic picture. It uses the same settings as Langevin, but velocities play no role.</p>
+<h3 id="verlet">Verlet<a class="headerlink" href="#verlet" title="Permanent link">&para;</a></h3>
+<p>The plain Verlet scheme above, with <strong>no thermostat</strong>. It conserves the total energy: the temperature is whatever the starting velocities (and the energy released by the structure relaxing) give, and it can drift. It uses only <code>SIM_INTEGRATOR_STEP</code>. Choose it for tests and to check that the time step is small enough (the total energy in the plots should stay flat).</p>
+<h3 id="variable-step-integrators">Variable-step integrators<a class="headerlink" href="#variable-step-integrators" title="Permanent link">&para;</a></h3>
+<p><code>variable_verlet</code> and <code>variable_langevin</code> choose the time step <em>by themselves</em>. After every step they estimate the integration error by comparing the result with a simpler method, and they shrink or grow <span class="arithmatex">\(\Delta t\)</span> to keep that error below <code>SIM_ERROR_TOLERANCE</code> (default 0.01). They have <strong>no fixed time step</strong>, so <code>SIM_INTEGRATOR_STEP</code> is ignored, and the simulated time per MD step varies. They are useful when you are unsure which step is safe. A smaller tolerance means a more careful, slower run.</p>
+<h3 id="accelerated-md-amd">Accelerated MD (<code>amd</code>)<a class="headerlink" href="#accelerated-md-amd" title="Permanent link">&para;</a></h3>
+<p>Chromatin can sit in a valley for a very long time because the hills around it are high. <strong>Accelerated MD</strong> lifts the valley floors, so the chain crosses the hills more easily. Whenever the energy <span class="arithmatex">\(V\)</span> is below a threshold <span class="arithmatex">\(E_\text{thr}\)</span>, the force is rescaled as if the energy were</p>
+<div class="arithmatex">\[
+V^*=V+\frac{(E_\text{thr}-V)^2}{\alpha+E_\text{thr}-V},
+\]</div>
+<p>and unchanged otherwise (OpenMM, following Hamelberg et al. 2007).</p>
+<ul>
+<li><strong><code>SIM_AMD_E</code></strong> is the threshold <span class="arithmatex">\(E_\text{thr}\)</span> in kJ/mol (default 1000). Valleys deeper than this are lifted.</li>
+<li><strong><code>SIM_AMD_ALPHA</code></strong> is <span class="arithmatex">\(\alpha\)</span> in kJ/mol (default 100). A <em>small</em> <span class="arithmatex">\(\alpha\)</span> flattens the landscape more strongly (a stronger boost); a <em>large</em> <span class="arithmatex">\(\alpha\)</span> is gentler.</li>
+</ul>
+<p>The numbers must be adapted to the size of your system, because the total energy grows with the number of beads. AMD has no thermostat, and the structures it samples come from a modified landscape, so use it for exploration, not for reading off thermodynamic averages.</p>
+<div class="admonition tip">
+<p class="admonition-title">Which one should I use?</p>
+<p>Keep <code>langevin</code> unless you have a reason. Use <code>brownian</code> if you want purely diffusive motion, <code>verlet</code> only for tests, and <code>amd</code> only to explore further than the nearest valley. If a run produces <code>NaN</code>, reduce <code>SIM_INTEGRATOR_STEP</code> or try a <code>variable_*</code> integrator.</p>
+</div>
+<h2 id="how-long-and-what-is-saved">How long, and what is saved<a class="headerlink" href="#how-long-and-what-is-saved" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SIM_RUN_MD</code></td>
+<td><code>False</code></td>
+<td>run MD after the minimisation (presets such as <code>GENE</code> switch it on)</td>
+</tr>
+<tr>
+<td><code>SIM_N_STEPS</code></td>
+<td>10 000</td>
+<td>total number of time steps</td>
+</tr>
+<tr>
+<td><code>SIM_SAMPLING_STEP</code></td>
+<td>100</td>
+<td>save a frame every this many steps (so 100 frames by default)</td>
+</tr>
+<tr>
+<td><code>TRJ_FRAMES</code></td>
+<td>none</td>
+<td>if set, exactly this many frames are saved (it overrides <code>SIM_SAMPLING_STEP</code>)</td>
+</tr>
+<tr>
+<td><code>SIM_SET_INITIAL_VELOCITIES</code></td>
+<td><code>True</code></td>
+<td>draw the starting velocities from the temperature, so that the system starts at the right <span class="arithmatex">\(T\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>The frames are written to <code>md_frames/</code>, together with a trajectory file <code>metadata/MultiMM_annealing.dcd</code>, and the last structure is <code>model/MultiMM_afterMD.cif</code>. With <code>SAVE_PLOTS</code> on, MultiMM also reports how the run went:</p>
+<ul>
+<li>the <strong>energy of every force term</strong> over time (<code>plots/energy_components.png</code>), which shows which force is doing the work,</li>
+<li>the <strong>potential, kinetic and total energy</strong> and the <strong>temperature</strong>, computed from the kinetic energy (it should hover around <code>SIM_TEMPERATURE</code>),</li>
+<li>the <strong>RMSD</strong> from the minimised structure (how far the chain wanders),</li>
+<li>the <strong>RMSF</strong> of every bead (how flexible each part is), and the distribution of velocities, which should look like a bell curve.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">How do I know that the run is long enough?</p>
+<p>Look at the energy components and the RMSD: when they stop drifting and just fluctuate around a level, the structure has relaxed. If they are still going up or down at the end, increase <code>SIM_N_STEPS</code>.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "content.code.copy"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>
