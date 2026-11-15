@@ -54,3 +54,19 @@ tmp/
 temp/
 *.pyc
 __pycache__/
+
+# Build outputs
+site/
+dist/
+build/
+tikz/.build/
+
+# Tests and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Run outputs and scratch
+results/
+tmp/
+Claude outputs/
