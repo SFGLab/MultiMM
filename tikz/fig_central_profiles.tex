@@ -3,15 +3,16 @@
 \begin{document}
 \begin{tikzpicture}
 \begin{axis}[xlabel={radius $r$ (units of $R_2$)},ylabel={energy, $\chi_i=1$, $G=20$ (kJ/mol)},
-  xmin=0,xmax=1,ymin=-22,ymax=8,legend pos=north east,domain=0:1,samples=300]
-\addplot[indigo] {20*(x-0.585)^2};
+  xmin=0,xmax=1,ymin=-22,ymax=16,legend pos=north east,legend style={font=\footnotesize},domain=0:1,samples=300]
+\addplot[indigo,very thick] {20*(x-0.585)^2};
 \addlegendentry{\texttt{harmonic} (default)}
-\addplot[crimson] {-20*exp(-x^2/(2*0.2925^2))};
+\addplot[only marks,mark=*,mark size=3pt,indigo,forget plot] coordinates {(0.585,0)};
+\addplot[crimson] {-20*exp(-(x-0.585)^2/(2*0.1755^2))};
 \addlegendentry{\texttt{gaussian}}
-\addplot[gold] {-20/(1+exp((x-0.585)/0.117))};
+\addplot[gold] {-20/cosh((x-0.585)/0.14625)^2};
 \addlegendentry{\texttt{logistic}}
 \draw[dashed,grey] (axis cs:0.585,-22) -- (axis cs:0.585,8);
-\node[font=\footnotesize,grey,anchor=south west] at (axis cs:0.59,-21) {$R_1$};
+\node[font=\footnotesize,grey,anchor=south east] at (axis cs:0.58,-21) {$R_1$};
 \end{axis}
 \end{tikzpicture}
 \end{document}

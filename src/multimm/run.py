@@ -16,70 +16,23 @@ from openmm.unit import Quantity
 from .config import SimulationConfig
 from .model import MultiMM
 from .utils import chrom_sizes
-from .logger import setup_logger, _COLOR_ENABLED
+from .logger import setup_logger, set_verbosity, print_banner, close_active_stage, _COLOR_ENABLED
 
 setup_logger()
 logger = logging.getLogger(__name__)
-
-RESET = "\033[0m"
-BOLD = "\033[1m"
-
-# ANSI-Shadow ASCII art of the logo
-_ART = (
-    "███╗   ███╗██╗   ██╗██╗  ████████╗██╗███╗   ███╗███╗   ███╗",
-    "████╗ ████║██║   ██║██║  ╚══██╔══╝██║████╗ ████║████╗ ████║",
-    "██╔████╔██║██║   ██║██║     ██║   ██║██╔████╔██║██╔████╔██║",
-    "██║╚██╔╝██║██║   ██║██║     ██║   ██║██║╚██╔╝██║██║╚██╔╝██║",
-    "██║ ╚═╝ ██║╚██████╔╝███████╗██║   ██║██║ ╚═╝ ██║██║ ╚═╝ ██║",
-    "╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝   ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝",
-)
-_SCALES = "DNA ┈┈ nucleosome ┈┈ fiber ┈┈ loops ┈┈ chromosome"
-_GRADIENT = (63, 99, 134, 169, 208, 214)  # indigo -> gold (256-color)
-
-
-def _gradient(text: str) -> str:
-    """Colour text left-to-right along the logo gradient."""
-    if not _COLOR_ENABLED:
-        return text
-    n, k = max(len(text) - 1, 1), len(_GRADIENT) - 1
-    return "".join(
-        ch if ch == " " else f"\033[38;5;{_GRADIENT[round(i / n * k)]}m{ch}"
-        for i, ch in enumerate(text)
-    ) + RESET
-
-
-def print_startup_banner(logger):
-    """Print the MultiMM ASCII-art startup banner."""
-    w = len(_ART[0])
-    dim = "\033[2m" if _COLOR_ENABLED else ""
-    rst = RESET if _COLOR_ENABLED else ""
-    lines = [""] + [_gradient(r) for r in _ART] + [
-        "",
-        " " * ((w - len(_SCALES)) // 2) + _gradient(_SCALES),
-        f"{dim}{'multiscale modeling of chromatin'.center(w)}{rst}",
-        "",
-        "  Creator : Sebastian Korsak  (Warsaw, Poland)",
-        "  Nucleosome interpolation : Krzysztof Banecki",
-        "  Web-server & infrastructure : Patryk Prusak",
-        "",
-        "  Contact : s.korsak@datascience.edu.pl",
-        "            d.plewczynski@datascience.edu.pl",
-        "",
-        "  Starting simulation pipeline … good luck!",
-        "",
-    ]
-    for line in lines:
-        logger.info(line)
-
 
 class Tee:
     def __init__(self, *streams):
         self.streams = streams
 
     def write(self, data):
-        for s in self.streams:
-            s.write(data)
-            s.flush()
+        self.streams[0].write(data)
+        self.streams[0].flush()
+        # progress-bar redraws (carriage returns) stay out of the log files
+        if "\r" not in data:
+            for s in self.streams[1:]:
+                s.write(data)
+                s.flush()
 
     def flush(self):
         for s in self.streams:
@@ -238,31 +191,44 @@ class ArgumentChanger:
 
 def args_tests(args):
 
-    def check_file(path, name, ext_hint=None):
-        """
-        Validate optional input files.
-        If provided, ensure they exist.
-        """
-        if path is None or path == "":
-            return  # optional → OK
+    def resolve(path):
+        """Existing path, matching name and extension case-insensitively; else None."""
+        if os.path.exists(path):
+            return path
+        folder, base = os.path.split(os.path.expanduser(path))
+        try:
+            hits = [f for f in os.listdir(folder or ".") if f.lower() == base.lower()]
+        except OSError:
+            return None
+        return os.path.join(folder, hits[0]) if len(hits) == 1 else None
 
-        if not os.path.exists(path):
-            ext_msg = f" (expected {ext_hint})" if ext_hint else ""
-            raise ValueError(
-                f"\033[91m{name} file was provided but not found: {path}{ext_msg}\033[0m"
-            )
+    def check_file(field, name, exts):
+        """Optional input file: must exist and have an allowed extension (any letter case)."""
+        path = getattr(args, field)
+        if path is None or path == "":
+            return  # optional
+        found = resolve(path)
+        hint = "/".join(exts)
+        if found is None:
+            raise ValueError(f"{name} file was provided but not found: {path}")
+        if not found.lower().endswith(tuple(exts)):
+            raise ValueError(f"{name} file has an unsupported extension: {found} (expected {hint})")
+        setattr(args, field, found)  # use the real spelling
 
     # -----------------------------------------
     # INPUT FILE EXISTENCE CHECKS (if provided)
     # -----------------------------------------
-    check_file(args.LOOPS_PATH, "Loops (.bedpe)", ".bedpe")
-    check_file(args.COMPARTMENT_PATH, "Compartment data", ".bed/.bw/.bigwig")
-    check_file(args.ATACSEQ_PATH, "Nucleosome/ATAC data", ".bigwig")
-    check_file(args.HIC_PATH, "Hi-C contact matrix", ".hic/.cool/.mcool")
+    check_file("LOOPS_PATH", "Loops", (".bedpe",))
+    check_file("COMPARTMENT_PATH", "Compartment", (".bed", ".bw", ".bigwig"))
+    check_file("ATACSEQ_PATH", "Nucleosome/ATAC", (".bw", ".bigwig"))
+    check_file("HIC_PATH", "Hi-C", (".hic", ".cool", ".mcool"))
 
     # -----------------------------------------
     # REQUIRED COMBINATIONS
     # -----------------------------------------
+    if args.GENERATE_ENSEMBLE and not args.N_ENSEMBLE:
+        raise ValueError("GENERATE_ENSEMBLE=True needs N_ENSEMBLE (the number of structures, e.g. 10).")
+
     if args.LE_USE_HARMONIC_BOND and (args.LOOPS_PATH is None or args.LOOPS_PATH == ""):
         raise ValueError(
             "\033[91mLE_USE_HARMONIC_BOND=True but no LOOPS_PATH provided. "
@@ -445,12 +411,15 @@ def get_config():
 
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("-c", "--config_file", help="Specify config file (ini format)", metavar="FILE")
+    arg_parser.add_argument("-v", "--verbose", action="count", default=0,
+                            help="Console detail: none = stages only, -v info, -vv + tables, -vvv everything")
 
     for field_name, field in SimulationConfig.model_fields.items():
         arg_parser.add_argument(f"--{field_name.lower()}", help=field.description)
 
     args_ap = arg_parser.parse_args()
     args_dict = vars(args_ap)
+    args_dict.pop("verbose", None)  # not a simulation setting
 
     raw_config = {}
 
@@ -572,7 +541,11 @@ def archive_run(run_path):
 
 def main():
     try:
-        print_startup_banner(logger)
+        # verbosity is needed before the full parse, so read -v flags first
+        vp = argparse.ArgumentParser(add_help=False)
+        vp.add_argument("-v", "--verbose", action="count", default=0)
+        set_verbosity(vp.parse_known_args()[0].verbose)
+        print_banner()
 
         args = get_config()
         args_tests(args)
@@ -627,6 +600,7 @@ def main():
         sys.exit(0)
 
     except Exception as e:
+        close_active_stage(ok=False)
         logger.error(f"ERROR: {e}")
         sys.exit(1)
 

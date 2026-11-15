@@ -63,9 +63,9 @@ Small chromosomes are found closer to the interior, large ones toward the periph
 
 | `CENTRAL_FORCE_TYPE` | Energy of bead $i$ | Character |
 |---|---|---|
-| `harmonic` (**default**) | $G\chi_i\,(r-R_1)^2$ | A parabola with its minimum at the radius $R_1$: small chromosomes are drawn toward the nucleolus surface from both sides. |
-| `gaussian` | $-G\chi_i\,e^{-r^2/(2\sigma^2)},\ \sigma=R_1/2$ | A Gaussian well at the **centre** ($r=0$): a soft enrichment of small chromosomes in the middle. |
-| `logistic` | $-G\chi_i\,\dfrac{1}{1+e^{(r-R_1)/\lambda}},\ \lambda=0.2R_1$ | A smooth step: bonus $-G\chi_i$ inside $R_1$ that fades out across the radius $R_1$. Beads are pulled *into* the inner region without a sharp edge. |
+| `harmonic` (**default**) | $G\chi_i\,(r-R_1)^2$ | A parabola whose minimum (energy $0$) sits exactly at $R_1$; all three forms have their minimum at $R_1$: small chromosomes are pulled toward the nucleolus surface from both sides, and pay a penalty $G\chi_i(r-R_1)^2$ for straying. |
+| `gaussian` | $-G\chi_i\,e^{-(r-R_1)^2/(2\sigma^2)},\ \sigma=0.3R_1$ | A Gaussian well with its minimum $-G\chi_i$ at $R_1$: the energy slopes down gently and flattens smoothly into the minimum, so small chromosomes are drawn to the nucleolus surface. |
+| `logistic` | $-G\chi_i\,\operatorname{sech}^2\!\big((r-R_1)/\lambda\big),\ \lambda=0.25R_1$ | A bell-shaped well (hyperbolic secant squared) with its minimum $-G\chi_i$ at $R_1$. It has longer tails than the Gaussian, so the pull is felt from further away and increases smoothly toward $R_1$. |
 
 !!! info "In MultiMM"
     | Key | Default |

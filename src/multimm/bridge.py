@@ -8,7 +8,6 @@ import openmm
 
 from .config import SimulationConfig
 from .model import MultiMM
-from .run import write_config
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +90,7 @@ class SimulationEngine:
         try:
             base_out_path = config.OUT_PATH
 
+            from .run import write_config  # lazy: keeps `python -m multimm.run` warning-free
             write_config(config)
 
             if config.GENERATE_ENSEMBLE and config.N_ENSEMBLE is not None:
@@ -141,6 +141,7 @@ class SimulationEngine:
         os.makedirs(metadata_dir, exist_ok=True)
         config_path = os.path.join(metadata_dir, "config_auto.ini")
 
+        from .run import write_config
         write_config(config)
 
         cmd = [

@@ -43,7 +43,7 @@ where $E_A,E_B$ are the strengths and $g(r)$ is a **range function**. Three choi
 | `yukawa` | $e^{-r/r_c}/r$ | A "screened" attraction. It is *not* bounded: it grows strongly at very short distance and has a longer tail than the Gaussian. Relies on excluded volume to stay finite at $r\to0$. |
 | `theta` | $\Theta(r_c-r)$ (1 inside $r_c$, 0 outside) | A square well: a constant attraction for every pair closer than $r_c$. A pure "contact" rule with a sharp edge. |
 
-**Every form is cut off at $5b_0$** (0.5 nm with the default $b_0$), independent of $N$. The cutoff is deliberate: without it all pairs in the system would attract and large structures would collapse. Because $r_c=R_2/3$ grows with the system, for large $N$ ($r_c>5b_0$, roughly $N\gtrsim1500$) the cutoff, not $r_c$, sets the real range.
+In the figure, the dotted line marks $r_c$ (the length scale of the kernels) and the dashed line marks the **cutoff**: beyond it, in the grey region, pairs feel no force at all. For $N=1000$ the cutoff ($0.5$ nm) lies at $1.5\,r_c$. **Every form is cut off at $5b_0$ by default** (0.5 nm with the default $b_0$), independent of $N$, and you can change it with `COB_CUTOFF` (in units of $b_0$). The cutoff is deliberate: without it all pairs in the system would attract and large structures would collapse. Because $r_c=R_2/3$ grows with the system, for large $N$ ($r_c>5b_0$, roughly $N\gtrsim1500$) the cutoff, not $r_c$, sets the real range. A larger `COB_CUTOFF` lets like regions feel each other from further away (stronger segregation, slower runs, more risk of over-compaction); a smaller one makes the attraction purely local.
 
 !!! warning "Known issue: `yukawa`"
     In the current source the Yukawa energy uses the state of the *first* bead twice (`s1` and `s1`) instead of `s1` and `s2`. A bead in a compartment therefore attracts *every* other bead, not only those of its own kind, so Yukawa does not segregate A from B. Use `gaussian` or `theta` for compartment modelling until this is fixed.
@@ -55,6 +55,7 @@ where $E_A,E_B$ are the strengths and $g(r)$ is a **range function**. Three choi
     | `COB_USE_COMPARTMENT_BLOCKS` | `False` | Enable the force (requires `COMPARTMENT_PATH`) |
     | `COB_FORCE_TYPE` | `gaussian` | Range function $g$ |
     | `COB_EA`, `COB_EB` | 1.0, 2.0 kJ/mol | $E_A$, $E_B$ (B is stickier, hence denser) |
+    | `COB_CUTOFF` | 5.0 (in $b_0$) | Distance beyond which the force is zero (also used by the subcompartment force) |
 
 !!! question "Why this force, and what does it model?"
     Hi-C shows that active (A) and inactive (B) chromatin prefer their own kind, but there is no known single protein holding them together, so we model the *effect*: a short-range attraction between beads of the same type. The attraction is stronger for B, which makes B denser, as observed. Different kernels (Gaussian, Yukawa, step) only change how the attraction fades with distance.
@@ -68,7 +69,7 @@ U_{ij}=-\,\varepsilon_{s_i}\,\delta(s_i,s_j)\;g(r_{ij}),\qquad
 \varepsilon_{+2}=E_{A1},\ \varepsilon_{+1}=E_{A2},\ \varepsilon_{-1}=E_{B1},\ \varepsilon_{-2}=E_{B2},
 $$
 
-where $\delta(s_i,s_j)$ is 1 if the two states are equal and 0 otherwise. The default energies $1.0,\ 1.33,\ 1.66,\ 2.0$ kJ/mol increase from the most open to the most compact subtype, giving a finer microphase separation inside A and B. The three range functions `gaussian` (**default**), `yukawa` and `theta` are the same as above (`SCB_FORCE_TYPE`), with the same $r_c$ and the same $5b_0$ cutoff. Unlike the compartment force, the subcompartment Yukawa form correctly uses both beads.
+where $\delta(s_i,s_j)$ is 1 if the two states are equal and 0 otherwise. The default energies $1.0,\ 1.33,\ 1.66,\ 2.0$ kJ/mol increase from the most open to the most compact subtype, giving a finer microphase separation inside A and B. The three range functions `gaussian` (**default**), `yukawa` and `theta` are the same as above (`SCB_FORCE_TYPE`), with the same $r_c$ and the same cutoff (`COB_CUTOFF`). Unlike the compartment force, the subcompartment Yukawa form correctly uses both beads.
 
 !!! info "In MultiMM"
     | Key | Default |

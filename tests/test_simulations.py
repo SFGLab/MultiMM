@@ -42,3 +42,17 @@ def test_engine_param_validation():
     assert ok["N_BEADS"] == 100
     with pytest.raises(Exception):
         SimulationEngine.validate_params({"NOT_A_KEY": 1})
+
+
+@pytest.mark.parametrize("kind,cls", [
+    ("langevin", "LangevinIntegrator"), ("brownian", "BrownianIntegrator"), ("verlet", "VerletIntegrator"),
+    ("variable_verlet", "VariableVerletIntegrator"), ("variable_langevin", "VariableLangevinIntegrator"),
+    ("amd", "AMDIntegrator"),
+])
+def test_every_integrator_can_be_built(tmp_path, kind, cls):
+    cfg = SimulationConfig(LOOPS_PATH=LOOPS, OUT_PATH=str(tmp_path), N_BEADS=100, CHROM="chr1",
+                           SIM_RUN_MD=False, SAVE_PLOTS=False, SIM_INTEGRATOR_TYPE=kind)
+    md = MultiMM(cfg)
+    md.set_radiuses()
+    md.initialize_simulation()
+    assert type(md.integrator).__name__ == cls

@@ -172,7 +172,7 @@ class SimulationConfig(BaseModel):
     DEVICE: str = Field(default="", description="device index for CUDA or OpenCL (count from 0)")
     MODELLING_LEVEL: str = Field(
         default="",
-        description="Choose 'GENE' or 'REGION' for gene or TAD level, 'CHROM' for chromosome leve, and 'GW' for genome level. It will setup some parameters for you and print you helpful comments.",
+        description="Choose 'GENE' or 'REGION' for gene or TAD level, 'CHROM' for chromosome level, and 'GW' for genome level. It will setup some parameters for you and print you helpful comments.",
     )
     INITIAL_STRUCTURE_PATH: str = Field(default="", description="Path to CIF file.")
     BUILD_INITIAL_STRUCTURE: Boolean = Field(default=True, description="To build a new initial structure.")
@@ -182,7 +182,7 @@ class SimulationConfig(BaseModel):
     )
     GENERATE_ENSEMBLE: Boolean = Field(
         default=False,
-        description="Default value: false. True in case that you would like to have an ensemble of structures instead of one. Better to disable it for large simulations that require long computational time. Moreover it is better to start random walk initial structure in case of true value.",
+        description="Generate an ensemble of structures instead of one. Better disabled for large, slow simulations; a random-walk initial structure works best with it.",
     )
     COMPARTMENT_FLIP_PROB: float = Field(
         default=0.0,
@@ -310,7 +310,7 @@ class SimulationConfig(BaseModel):
     )
     HIC_MAX_GAP: int = Field(
         default=10,
-        description="Maximum gap fraction (in %) tolerated when interpolating missing Hi-C bins.",
+        description="Longest run of empty Hi-C bins (in bins) filled by interpolation.",
     )
     HIC_INSULATION_WINDOW: int = Field(
         default=10,
@@ -368,7 +368,7 @@ class SimulationConfig(BaseModel):
     LOC_END: Optional[int] = Field(default=None, description="Ending region coordinate.")
     CHROM: ChromStr = Field(
         default=None,
-        description="Chromosome that corresponds the the modelling region of interest (in case that you do not want to model the whole genome).",
+        description="Chromosome that corresponds the modelling region of interest (in case that you do not want to model the whole genome).",
     )
     SHUFFLE_CHROMS: Boolean = Field(default=False, description="Shuffle the chromosomes.")
     SHUFFLING_SEED: int = Field(default=0, description="Shuffling random seed.")
@@ -422,6 +422,10 @@ class SimulationConfig(BaseModel):
     )
     COB_EA: float = Field(default=1.0, description="Energy strength for A compartment.")
     COB_EB: float = Field(default=2.0, description="Energy strength for B compartment.")
+    COB_CUTOFF: float = Field(
+        default=5.0, gt=0,
+        description="Cutoff of the compartment and subcompartment forces, in bond lengths b0 (5 = 0.5 nm). Pairs farther apart feel no force.",
+    )
     SCB_USE_SUBCOMPARTMENT_BLOCKS: Boolean = Field(default=False, description="Use Subcompartment Blocks.")
     SCB_DISTANCE: Optional[OpenMMQuantity] = Field(default=None, description="Block copolymer equilibrium distance for chromosomal blocks.")
     SCB_EA1: float = Field(default=1.0, description="Energy strength for A1 compartment.")
@@ -429,7 +433,7 @@ class SimulationConfig(BaseModel):
     SCB_EB1: float = Field(default=1.66, description="Energy strength for B1 compartment.")
     SCB_EB2: float = Field(default=2.0, description="Energy strength for B2 compartment.")
     IBL_USE_B_LAMINA_INTERACTION: Boolean = Field(default=False, description="Interactions of B compartment with lamina.")
-    IBL_SCALE: float = Field(default=400.0, description="Scaling factor for B comoartment interaction with lamina.")
+    IBL_SCALE: float = Field(default=400.0, description="Scaling factor for B compartment interaction with lamina.")
     CF_USE_CENTRAL_FORCE: Boolean = Field(default=False, description="Attraction of smaller chromosomes.")
     CF_STRENGTH: float = Field(default=20.0, description="Strength of Interaction")
     NUC_DO_INTERPOLATION: Boolean = Field(default=False, description="Attraction of smaller chromosomes.")
@@ -442,7 +446,7 @@ class SimulationConfig(BaseModel):
     SIM_ERROR_TOLERANCE: float = Field(default=0.01, description="Error tolerance for variable MD simulation")
     SIM_AMD_ALPHA: float = Field(default=100.0, description="Alpha of AMD simulation.")
     SIM_AMD_E: float = Field(default=1000.0, description="E (energy) of AMD simulation.")
-    SIM_SAMPLING_STEP: int = Field(default=100, description="It determines in t how many steps we save a structure.")
+    SIM_SAMPLING_STEP: int = Field(default=100, description="Save a structure every this many MD steps.")
     SIM_INTEGRATOR_TYPE: str = Field(default="langevin", description="Alternative: langevin, verlet")
     SIM_INTEGRATOR_STEP: OpenMMQuantity = Field(default="1 femtosecond", description="The step of integrator.")
     SIM_FRICTION_COEFF: float = Field(
@@ -509,6 +513,6 @@ class SimulationConfig(BaseModel):
             "Encodes chromosome-size dependent positioning. "
             "Options: "
             "harmonic (default, quadratic confinement around R1), "
-            "gaussian (soft nucleolar enrichment field), "
-            "logistic (soft-core radial partitioning with smooth boundary)."
+            "gaussian (Gaussian well at R1), "
+            "logistic (sech^2 well at R1)."
     ))

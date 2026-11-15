@@ -69,7 +69,7 @@ A term whose switch is off simply does not exist in the energy.
 
 1. **Build.** Create the initial structure ([Initial structure](initial-structure.md)), load the data, convert it to per-bead quantities, and assemble the force field.
 2. **Minimise.** OpenMM's `minimizeEnergy` moves the beads to the nearest local minimum of $E$. This produces `MultiMM_minimized.cif` and is the main result.
-3. **Relax (optional, `SIM_RUN_MD`).** Molecular dynamics at temperature $T$ with a Langevin thermostat, starting from Maxwell–Boltzmann velocities. It samples fluctuations around the minimum and writes one structure per saved frame.
+3. **Relax (optional, `SIM_RUN_MD`).** Molecular dynamics at temperature $T$ with a Langevin thermostat, starting from Maxwell–Boltzmann velocities. It samples fluctuations around the minimum and writes one structure per saved frame. See [Minimisation and dynamics](dynamics.md) for what this means and for the integrators.
 4. **Validate and post-process.** Compare the model with the input data (Hi-C correlations, loop distances, compartment clustering), run quality checks, make plots, and optionally add nucleosomes.
 
 A note on strategy: because the Hilbert-curve start is already compact and ordered, minimisation alone is usually enough for large systems, while molecular dynamics is most useful for small regions where you want an ensemble of conformations.

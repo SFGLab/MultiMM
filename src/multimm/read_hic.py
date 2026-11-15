@@ -65,6 +65,18 @@ from .utils import oe_matrix  # noqa: E402 — canonical OE-normalisation step
 # Layer 0 — Format detection & name normalisation
 # ═════════════════════════════════════════════════════════════════════════════
 
+def _import_hicstraw():
+    """Import hicstraw (optional dependency) with a helpful error."""
+    try:
+        import hicstraw
+    except ImportError as exc:
+        raise ImportError(
+            "Reading .hic files needs the optional package hic-straw: pip install 'MultiMM[hic]' "
+            "(or convert the file to .mcool)."
+        ) from exc
+    return hicstraw
+
+
 def _detect_format(path: str) -> str:
     """Return 'hic', 'cool', or 'mcool' based on file extension.
 
@@ -145,7 +157,7 @@ def list_resolutions(path: str) -> Dict[str, object]:
     log.info("list_resolutions: %s  [%s]", path, fmt)
 
     if fmt == "hic":
-        import hicstraw
+        hicstraw = _import_hicstraw()
         hic  = hicstraw.HiCFile(str(path))
         ress = sorted(int(r) for r in hic.getResolutions())
 
@@ -191,7 +203,7 @@ def get_chromosome_sizes(path: str) -> Dict[str, int]:
     fmt = _detect_format(path)
 
     if fmt == "hic":
-        import hicstraw
+        hicstraw = _import_hicstraw()
         hic   = hicstraw.HiCFile(str(path))
         sizes = {
             c.name: int(c.length)
@@ -309,7 +321,7 @@ def _load_from_hic(
     -------
     H : (n_bins, n_bins) dense float64 ndarray, symmetric, diagonal = 0
     """
-    import hicstraw
+    hicstraw = _import_hicstraw()
 
     log.info(
         "_load_from_hic: %s  %d–%d  res=%d  norm=%s",

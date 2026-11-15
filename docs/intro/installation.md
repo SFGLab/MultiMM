@@ -14,6 +14,14 @@ Getting started takes a few minutes and a few commands. If you have never instal
 pip install MultiMM
 ```
 
+Reading `.hic` Hi-C files needs one optional package, `hic-straw`, which has to compile some C++ code and can be fussy to install. It is therefore not installed by default; if you use `.hic` files, add it with
+
+```bash
+pip install "MultiMM[hic]"
+```
+
+`.cool` and `.mcool` files need nothing extra.
+
 Using a virtual environment keeps the many scientific dependencies separate from your system Python:
 
 ```bash

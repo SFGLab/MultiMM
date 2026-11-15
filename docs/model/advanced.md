@@ -44,59 +44,46 @@ OUT_PATH        = results/MYC
 
 ## Ensembles and randomness
 
-One run gives one structure, but chromatin in a population of cells is heterogeneous. An **ensemble** is a set of structures that differ in the random ingredients of the model.
+### Why an ensemble?
 
-With `GENERATE_ENSEMBLE = True` and `N_ENSEMBLE = n`, MultiMM runs the whole pipeline $n$ times. Run $i$ is stored in `run_<i>/` inside `OUT_PATH` (numbers are zero-padded) and uses `SHUFFLING_SEED = i`. The seed controls every random choice: the random-walk initial structures, the loops removed by `DOWNSAMPLING_PROB`, the compartment flips and noise (`COMPARTMENT_FLIP_PROB`, `COMPARTMENT_NOISE_STD`) and the Hi-C noise (`HIC_NOISE_INTENSITY`). For the structures to differ, **at least one of these must be on**; a random-walk initial structure is the simplest source of variety. Ensembles multiply the cost by $n$, so they are best used for small systems.
+A single run gives you **one** structure. But a Hi-C map is not the picture of one nucleus: it is an *average* over millions of cells, and in each cell the chromatin is folded a little differently (loops form and dissolve, domains wobble). One model, however good, is just one possible member of that crowd. An **ensemble** is a set of structures, each one a plausible conformation, that together describe the variety. Use it when you care about *how much* the structure varies (for example the spread of the distance between two loci), or when you want to compare with a population average such as Hi-C, which is best reproduced by averaging many structures rather than looking at one.
+
+!!! tip "In plain words"
+    Think of taking many photographs of a crowd instead of one: each photo is different, but together they show what the crowd looks like. An ensemble is that stack of photos for a piece of chromatin.
+
+### How to switch it on
+
+```ini
+GENERATE_ENSEMBLE = True
+N_ENSEMBLE        = 20       ; number of structures (required)
+```
+
+`N_ENSEMBLE` must be set whenever `GENERATE_ENSEMBLE` is `True`; MultiMM stops with a clear message otherwise.
+
+### How it works
+
+MultiMM simply runs the whole pipeline $n$ times (`N_ENSEMBLE` = $n$), one after another. Run number $i$ ($i=0,\dots,n-1$) is written to its own folder `run_<i>/` inside `OUT_PATH` (numbers are zero-padded, so `run_00 … run_19`), with the usual layout of [outputs](../reference/output.md), and uses the random seed `SHUFFLING_SEED = i`. A **seed** is the starting number of a pseudo-random generator: the same seed always gives the same "random" choices, so every ensemble is **reproducible**, while different seeds give different structures.
+
+The seed feeds every random ingredient of the model:
+
+| Random ingredient | Switched on by | Effect |
+|---|---|---|
+| Random-walk initial structure | `INITIAL_STRUCTURE_TYPE` = `rw`, `confined_rw`, `self_avoiding_rw`, ... | A different starting conformation for each run |
+| Initial velocities of the beads | `SIM_RUN_MD` with `SIM_SET_INITIAL_VELOCITIES` | A different dynamical trajectory for each run |
+| Loops randomly removed | `DOWNSAMPLING_PROB` < 1 | Each run keeps a different random subset of loops, mimicking that not every loop is present in every cell |
+| Compartment flips | `COMPARTMENT_FLIP_PROB` > 0 | Some beads switch A ↔ B at random |
+| Compartment noise | `COMPARTMENT_NOISE_STD` > 0 | Compartment boundaries shift slightly |
+| Hi-C noise | `HIC_NOISE_INTENSITY` > 0 | The strength of each Hi-C restraint is redrawn at every saved frame |
+| Chromosome order | `SHUFFLE_CHROMS` | The order of chromosomes in a genome-wide model is permuted |
+
+!!! warning "The runs must be able to differ"
+    With the default settings the initial structure is the deterministic Hilbert curve and there is no noise, so a run that only minimises the energy gives the **same** structure every time and an ensemble would be $n$ identical copies. To get variety, turn on **at least one** ingredient from the table: a random-walk start, molecular dynamics with random initial velocities, or one of the noise options.
+
+### Cost and tips
+
+An ensemble multiplies the computing time by $n$, so it is best for small and medium systems (a gene or a region); for a whole genome, think twice. Start with a small $n$ (5 to 10) to check that the structures indeed differ, then increase it. Because the structures are saved as ordinary files, you can average their contact maps afterwards or measure any distance across the runs.
 
 `SHUFFLE_CHROMS` randomly permutes the order of the chromosomes in a genome-wide model, which probes how much the arrangement of territories depends on the starting order.
-
-## Molecular dynamics
-
-### Why minimisation, and why dynamics?
-
-**Minimisation** answers the question: *what is the most comfortable shape for this chain?* Starting from the initial structure, OpenMM moves every bead a little in the direction that lowers the energy, again and again, until no small move helps (it uses an L-BFGS optimiser, a standard downhill method). The result is one low-energy structure, which is often all you need for a figure or for a large system.
-
-A real chromosome is not frozen in one shape. It is constantly jiggled by thermal motion, and a population of cells contains many different shapes. **Molecular dynamics (MD)** mimics this: instead of walking only downhill, the beads move as if they were really at temperature $T$. The result is a *movie* of plausible shapes around the minimum, which lets you measure how much things fluctuate and gives many structures instead of one.
-
-### How MD works: the integration scheme
-
-MD follows Newton's law, "force equals mass times acceleration". The force on each bead is minus the slope of the energy, $\mathbf{F}_i=-\nabla_i E$. Computers cannot solve this continuously, so they advance time in tiny steps $\Delta t$ (the *time step*, here 1 femtosecond). A step has three moves, known as the **Verlet** scheme (shown here in its *velocity* form; OpenMM uses the equivalent leap-frog arrangement):
-
-$$
-\mathbf{v}\leftarrow\mathbf{v}+\tfrac{\Delta t}{2m}\mathbf{F}(\mathbf{r}),\qquad
-\mathbf{r}\leftarrow\mathbf{r}+\Delta t\,\mathbf{v},\qquad
-\mathbf{v}\leftarrow\mathbf{v}+\tfrac{\Delta t}{2m}\mathbf{F}(\mathbf{r}_\text{new}),
-$$
-
-that is: kick the velocities with the current force, let the beads drift, then kick again with the new force. Here $m$ is the bead mass. Plain Verlet conserves energy and so has no temperature control: the system would keep whatever temperature it started with.
-
-To keep a fixed temperature, the default **Langevin** integrator adds two ingredients to each step: a *friction* that slows the beads down (coefficient $\gamma$, `SIM_FRICTION_COEFF`) and *random kicks* that stir them. Together they act as a thermostat, as if the chromatin sat in a thick fluid at temperature $T$:
-
-$$
-m\,\dot{\mathbf{v}}=-\nabla E-\gamma m\,\mathbf{v}+\sqrt{2\gamma m k_BT}\;\boldsymbol{\xi}(t),
-$$
-
-where $\boldsymbol{\xi}(t)$ is random noise. Friction removes energy, the noise adds it, and the balance gives exactly the temperature $T$. If the friction is large, the motion becomes pure diffusion, which is what the **Brownian** integrator does (it ignores velocities). Chromatin lives in a very viscous nucleus, so this is often a good description.
-
-**Which one should I use?** Keep `langevin` (the default) unless you have a reason. Use `brownian` for slow, over-damped motion, `verlet` only for testing (it has no thermostat), and `amd` to explore more broadly by lowering the energy barriers.
-
-By default MultiMM only **minimises** the energy (`SIM_RUN_MD = False`). The result is the nearest low-energy structure. With `SIM_RUN_MD = True` it continues with dynamics at temperature `SIM_TEMPERATURE` (310 K), which adds thermal fluctuations and allows many frames to be saved.
-
-| Key | Default | Meaning |
-|---|---|---|
-| `SIM_INTEGRATOR_TYPE` | `langevin` | `langevin` (stochastic dynamics with friction, the default), `brownian`, `verlet` (no thermostat), `variable_verlet`, `variable_langevin` (adaptive time step), `amd` (accelerated MD) |
-| `SIM_INTEGRATOR_STEP` | 1 femtosecond | time step |
-| `SIM_FRICTION_COEFF` | 0.5 | friction in 1/ps (Langevin, Brownian) |
-| `SIM_N_STEPS` | 10 000 | number of steps |
-| `SIM_SAMPLING_STEP` | 100 | save a frame every this many steps |
-| `TRJ_FRAMES` | none | if set, exactly this many frames are saved (it overrides `SIM_SAMPLING_STEP`) |
-| `SIM_SET_INITIAL_VELOCITIES` | `True` | draw initial velocities from the temperature |
-| `SIM_AMD_ALPHA`, `SIM_AMD_E` | 100.0, 1000.0 | AMD boost parameters |
-
-Frames are written to `md_frames/`. The length scale of the model is not physical ([Units and scales](scales.md)), so the simulated time should be read as a relative, not an absolute, time.
-
-!!! warning "Known issue: variable integrators"
-    `variable_verlet` and `variable_langevin` read `SIM_ERROR_TOLERANCE` from the wrong object and currently fail with an error. Use `langevin` or `verlet`.
 
 ## Platforms
 

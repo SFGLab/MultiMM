@@ -98,3 +98,36 @@ class TestAdvisoryWarnings:
         with caplog.at_level(logging.WARNING, logger="multimm.run"):
             args_tests(make_config(CF_USE_CENTRAL_FORCE=True))
         assert "Central force" not in caplog.text
+
+
+def test_file_extensions_are_case_insensitive(tmp_path):
+    f = tmp_path / "comps.bigWig"
+    f.write_text("x")
+    cfg = make_config(COMPARTMENT_PATH=str(f))
+    args_tests(cfg)  # .bigWig accepted
+    # the path is found even if its letter case differs from the file on disk
+    cfg = make_config(COMPARTMENT_PATH=str(tmp_path / "COMPS.BIGWIG"))
+    args_tests(cfg)
+    assert cfg.COMPARTMENT_PATH.endswith("comps.bigWig")
+
+
+def test_wrong_extension_and_missing_file_are_told_apart(tmp_path):
+    bad = tmp_path / "comps.txt"
+    bad.write_text("x")
+    with pytest.raises(ValueError, match="unsupported extension"):
+        args_tests(make_config(COMPARTMENT_PATH=str(bad)))
+    with pytest.raises(ValueError, match="not found"):
+        args_tests(make_config(COMPARTMENT_PATH=str(tmp_path / "nope.bed")))
+
+
+def test_module_runs_without_runpy_warning():
+    import subprocess, sys
+    r = subprocess.run([sys.executable, "-W", "error", "-m", "multimm.run", "--help"],
+                       capture_output=True, text=True)
+    assert "RuntimeWarning" not in r.stderr
+
+
+def test_ensemble_needs_a_size():
+    with pytest.raises(ValueError, match="N_ENSEMBLE"):
+        args_tests(make_config(GENERATE_ENSEMBLE=True))
+    args_tests(make_config(GENERATE_ENSEMBLE=True, N_ENSEMBLE=3))

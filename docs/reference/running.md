@@ -35,6 +35,23 @@ The order is therefore: **defaults, then the config file, then the command line*
 6. **Molecular dynamics** (only if `SIM_RUN_MD = True`). Frames are saved along the way.
 7. **Validation and plots.** The structure is compared with the input data, and diagnostic plots are produced (`SAVE_PLOTS`).
 
+## How much it tells you (`-v`)
+
+By default MultiMM stays quiet: it prints the banner and the eight stages of the pipeline (input data, initial structure, forces, energy minimization, MD simulation, analysis, plotting, outputs), each with a progress bar. Add `-v` flags when you want to see more.
+
+| Flag | What you see |
+|---|---|
+| *(none)* | stages and progress bars only; warnings and errors are always shown |
+| `-v` | plus the main messages: what was loaded, which forces were added |
+| `-vv` | plus tables of statistics for the input and output data |
+| `-vvv` | everything, including debug messages and OpenMM's step-by-step energy report |
+
+```bash
+MultiMM -c config.ini -vv
+```
+
+Whatever the console level, the full log is written to `metadata/multimm.log` in your output folder, so nothing is lost. Set `NO_COLOR=1` to turn colours off.
+
 ## Checks before you start
 
 MultiMM refuses to run, with a clear message, in these cases:

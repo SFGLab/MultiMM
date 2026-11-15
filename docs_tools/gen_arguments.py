@@ -1,5 +1,5 @@
 """Generate docs/reference/arguments.md from src/multimm/config.py (AST only)."""
-import ast, sys
+import ast, re, sys
 from pathlib import Path
 
 CFG = Path(sys.argv[1] if len(sys.argv) > 1 else "src/multimm/config.py")
@@ -24,7 +24,7 @@ SECTIONS = [
     ("Loops", "Loop bonds from a `.bedpe` file ([model](../model/loops.md)).",
      "LE_USE_HARMONIC_BOND LE_LOOP_FORCE_TYPE LE_FIXED_DISTANCES LE_HARMONIC_BOND_R0 LE_HARMONIC_BOND_K"),
     ("Compartments and chromosomes", "A/B, subcompartment and chromosome-territory forces ([model](../model/compartments.md)).",
-     "COB_USE_COMPARTMENT_BLOCKS COB_FORCE_TYPE COB_DISTANCE COB_EA COB_EB "
+     "COB_USE_COMPARTMENT_BLOCKS COB_FORCE_TYPE COB_DISTANCE COB_EA COB_EB COB_CUTOFF "
      "SCB_USE_SUBCOMPARTMENT_BLOCKS SCB_FORCE_TYPE SCB_DISTANCE SCB_EA1 SCB_EA2 SCB_EB1 SCB_EB2 "
      "CHB_USE_CHROMOSOMAL_BLOCKS CHB_FORCE_TYPE CHB_KC CHB_DE"),
     ("Hi-C force", "Restraints from a Hi-C map ([model](../model/hic-force.md)).",
@@ -63,6 +63,29 @@ for n in cls.body:
 def esc(s):
     return " ".join(str(s).split()).replace("|", "\\|")
 
+def short(desc, limit=110):
+    """One-line summary: first sentence, long parentheticals and asides dropped, options kept."""
+    d = " ".join(str(desc).split())
+    m = re.search(r"Options?:(.*?)(?:\.\s|\.$|$)", d)
+    opts = ""
+    if m:
+        names = m.group(1)
+        while re.search(r"\([^()]*\)", names):  # drop (nested) parentheses
+            names = re.sub(r"\s*\([^()]*\)", "", names)
+        names = re.sub(r"\s*[—-]+\s.*?(?=,|$)", "", names).strip().rstrip(".")
+        opts = f" Options: {names}."
+        d = d[:m.start()].strip()
+    d = re.sub(r"\s*\([^()]{26,}\)", "", d)               # long parentheticals
+    d = re.split(r"(?<=[.!?])\s+(?=[A-Z])|\s+[—;]\s+|(?<=[a-z-]):\s", d)[0]  # first sentence / aside
+    d = d[:1].upper() + d[1:]
+    if len(d) > limit:
+        d = d[:limit].rsplit(" ", 1)[0].rstrip(",;:") + " …"
+    d = d.rstrip()
+    if d and d[-1] not in ".!?…":
+        d += "."
+    return esc(d + opts)
+
+
 def fmt_default(d):
     if d is None:
         return "—"
@@ -81,7 +104,7 @@ def fmt_type(t):
 
 used = set()
 lines = ["# All arguments", "",
-         "*This page is generated from `src/multimm/config.py` by `docs_tools/gen_arguments.py`, so names, types, defaults and descriptions always match the code.*", "",
+         "*This page is generated from `src/multimm/config.py` by `docs_tools/gen_arguments.py`, so names, types and defaults always match the code. Descriptions are shortened here; `MultiMM --help` and the model pages give the full text.*", "",
          "Types: `quantity` is a number with a unit written as text, for example `0.1 nanometer` or `310 kelvin` ([syntax](../model/scales.md)); `bool` accepts `True/False`, `yes/no`, `1/0`. "
          "\"*none*\" means the argument is empty by default. Arguments marked **unused** are accepted but not read anywhere in the current code.", ""]
 for title, intro, keys in SECTIONS:
@@ -90,7 +113,7 @@ for title, intro, keys in SECTIONS:
         t, d, desc = F[k]
         used.add(k)
         flag = " **(unused)**" if k in UNUSED else ""
-        lines.append(f"| `{k}` | {fmt_type(t)} | {fmt_default(d)} | {esc(desc)}{flag} |")
+        lines.append(f"| `{k}` | {fmt_type(t)} | {fmt_default(d)} | {short(desc)}{flag} |")
     lines.append("")
 missing = set(F) - used
 assert not missing, f"fields without a section: {missing}"

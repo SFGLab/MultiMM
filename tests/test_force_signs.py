@@ -137,7 +137,8 @@ def test_central_force_sign(tmp_path, form, sign):
     if form == "harmonic":
         assert inner == pytest.approx(0, abs=1e-6) and outer > 0  # minimum at R1, costs more outside
     else:
-        assert inner < 0 and inner <= outer <= 1e-9  # a well in the inner region
+        centre = radial_energy(md, "Central force", 0.05 * md.radius1)
+        assert inner < 0 and inner < outer <= 1e-9 and inner < centre  # a well with its minimum at R1
 
 
 @pytest.mark.parametrize("lamina,central", [("gaussian_shell", "gaussian"), ("logistic_shell", "logistic")])
@@ -147,3 +148,26 @@ def test_forces_can_be_combined(tmp_path, lamina, central):
                IBL_USE_B_LAMINA_INTERACTION=True, BLAMINA_FORCE_TYPE=lamina,
                CF_USE_CENTRAL_FORCE=True, CENTRAL_FORCE_TYPE=central, CHB_USE_CHROMOSOMAL_BLOCKS=True)
     assert radial_energy(md, "B-lamina interaction", md.radius2) < 0
+
+
+@pytest.mark.parametrize("form", ["harmonic", "gaussian", "logistic"])
+def test_central_force_minimum_is_at_R1_for_every_form(tmp_path, form):
+    md = build(tmp_path, CHROM=None, CF_USE_CENTRAL_FORCE=True, CENTRAL_FORCE_TYPE=form)
+    rs = np.linspace(0.05, 1.0, 191) * md.radius2
+    e = [radial_energy(md, "Central force", r) for r in rs]
+    assert rs[int(np.argmin(e))] == pytest.approx(md.radius1, rel=0.02)
+    # smooth descent: the energy decreases monotonically toward R1 from both sides
+    k = int(np.argmin(e))
+    assert all(a >= b - 1e-9 for a, b in zip(e[:k], e[1 : k + 1]))
+    assert all(a <= b + 1e-9 for a, b in zip(e[k:], e[k + 1 :]))
+
+
+def test_compartment_cutoff_is_tunable(tmp_path):
+    for k in (5.0, 12.0):
+        md = build(tmp_path, COB_USE_COMPARTMENT_BLOCKS=True, COB_CUTOFF=k)
+        b0 = md.args.POL_HARMONIC_BOND_R0._value
+        assert md.comp_force.getCutoffDistance()._value == pytest.approx(k * b0)
+        i, j = two_beads(md, True)
+        inside = pair_energy(md, "Compartment blocks", i, j, 0.9 * k * b0)
+        outside = pair_energy(md, "Compartment blocks", i, j, 1.1 * k * b0)
+        assert inside < 0 and outside == pytest.approx(0, abs=1e-12)  # nothing beyond the cutoff

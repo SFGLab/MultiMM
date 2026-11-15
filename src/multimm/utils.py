@@ -15,7 +15,7 @@ from matplotlib.colors import to_hex
 from matplotlib.pyplot import figure
 from openmm.unit import Quantity
 from scipy.spatial import distance
-from tqdm import tqdm
+from .logger import vtqdm
 
 logger = logging.getLogger(__name__)
 
@@ -338,7 +338,7 @@ def import_bed(
     comps_array = np.zeros(N_beads, dtype=float)
     n_short = 0  # segments narrower than one bead's resolution
 
-    for i in tqdm(range(len(comps_df))):
+    for i in vtqdm(range(len(comps_df))):
         # strip + uppercase: tolerates stray whitespace/lowercase labels; a
         # leftover "nan" string just falls through to `continue` below
         # instead of crashing .startswith() on a non-string.
@@ -734,7 +734,7 @@ def import_bw(
     if chrom is None:
         genomewide_signal = list()
         valid_frac = list() if binary else None
-        for i in tqdm(range(n_chroms)):
+        for i in vtqdm(range(n_chroms)):
             signal = bw.values(chrs[chrom_idxs[i]], 0, -1, numpy=True)
             if binary:
                 valid_frac.append(compute_averages((~np.isnan(signal)).astype(float), polymer_lengths[i]))
@@ -1181,7 +1181,7 @@ def average_distance_heatmap(cif_paths: list) -> np.ndarray:
     avg_D : ndarray, shape (N, N)
     """
     avg = None
-    for path in tqdm(cif_paths, desc="Averaging distance maps"):
+    for path in vtqdm(cif_paths, desc="Averaging distance maps"):
         coords = get_coordinates_cif(path)
         D = model_distance_heatmap(coords)
         avg = D if avg is None else avg + D

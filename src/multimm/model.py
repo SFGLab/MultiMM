@@ -19,7 +19,7 @@ from .validation import (
     validate_hic_model, validate_hic_ensemble, validate_loops, validate_compartments,
     validate_compartment_aggregation, validate_distance_vs_strength,
 )
-from .logger import log_table, log_section, log_success, rainbow
+from .logger import log_table, log_section, log_success, rainbow, stage, skip_stage, get_verbosity
 from .quality_tests import run_quality_tests
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,12 @@ class MultiMM:
         #         self.Cs, self.chr_ends = get_eigenvector(args.EIGENVECTOR_TSV, args.N_BEADS, chrom, coords)
         #     else:
         #         raise ValueError('Eigenvector should be in tsv format.')
+        # one progress item per input data category
+        _cats = [bool(args.COMPARTMENT_PATH), not _is_empty(args.LOOPS_PATH), not _is_empty(args.HIC_PATH),
+                 bool(args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH is not None)]
+        in_stage = stage("Input data", sum(_cats) or None).start()
         if args.COMPARTMENT_PATH:
+            in_stage.next("Compartments")
             comp_path_lower = args.COMPARTMENT_PATH.lower()
             if comp_path_lower.endswith(".bed"):
                 self.Cs, self.chr_ends, self.chrom_idxs = import_bed(
@@ -141,6 +146,7 @@ class MultiMM:
 
         # Loops (optional)
         if not _is_empty(args.LOOPS_PATH):
+            in_stage.next("Loops")
             if str(args.LOOPS_PATH).lower().endswith(".bedpe"):
                 self.ms, self.ns, self.ds, self.chr_ends, self.chrom_idxs = import_mns_from_bedpe(
                     bedpe_file=args.LOOPS_PATH,
@@ -254,6 +260,7 @@ class MultiMM:
         self.hic_matrix = None
         self.hic_chrom = None
         if not _is_empty(args.HIC_PATH):
+            in_stage.next("Hi-C")
             hic_chrom = chrom if not _is_empty(chrom) else None
             self.hic_chrom = hic_chrom
             hic_start = args.LOC_START if args.LOC_START is not None else None
@@ -293,6 +300,7 @@ class MultiMM:
 
         # Nucleosomes
         if args.NUC_DO_INTERPOLATION and args.ATACSEQ_PATH is not None:
+            in_stage.next("ATAC-seq")
             if args.ATACSEQ_PATH.lower().endswith(".bw") or args.ATACSEQ_PATH.lower().endswith(".bigwig"):
                 self.atacseq = import_bw(
                     args.ATACSEQ_PATH,
@@ -320,6 +328,7 @@ class MultiMM:
                 self.chrom_strength[self.chr_ends[i] : self.chr_ends[i + 1]] = chrom_strength[i]
 
         log_success("Data Loading", logger)
+        in_stage.finish()
 
     def _resolve_hic_block_copolymer(self, coords) -> bool:
         """Decide whether HIC_BLOCK_COPOLYMER is actually active this run.
@@ -932,26 +941,26 @@ class MultiMM:
         # 2. GAUSSIAN CENTER
         # ============================================================
         elif mode == "gaussian":
-            logger.info("Using Gaussian central enrichment")
+            logger.info("Using Gaussian central well")
 
-            sigma = 0.5 * self.radius1
-            self.central_force.addGlobalParameter("sigma_c", sigma)
+            # Gaussian well centred on R1 (minimum at R1)
+            self.central_force.addGlobalParameter("sigma_c", 0.3 * self.radius1)
 
             self.central_force.setEnergyFunction(
-                f"-G*chrom_s*exp(-({r}*{r})/(2*sigma_c*sigma_c))"
+                f"-G*chrom_s*exp(-(({r}-R1)*({r}-R1))/(2*sigma_c*sigma_c))"
             )
 
         # ============================================================
         # 3. LOGISTIC CORE
         # ============================================================
         elif mode == "logistic":
-            logger.info("Using logistic central attraction")
+            logger.info("Using logistic (sech^2) central well")
 
-            lam = 0.2 * self.radius1
-            self.central_force.addGlobalParameter("lambda_c", lam)
+            # sech^2 well centred on R1 (minimum at R1)
+            self.central_force.addGlobalParameter("lambda_c", 0.25 * self.radius1)
 
             self.central_force.setEnergyFunction(
-                f"-G*chrom_s*(1/(1+exp(({r}-R1)/lambda_c)))"
+                f"-G*chrom_s/cosh(({r}-R1)/lambda_c)^2"
             )
 
         else:
@@ -1062,6 +1071,7 @@ class MultiMM:
         self.system.addForce(self.angle_force)
 
     def initialize_simulation(self):
+        init_stage = stage("Initial structure").start()
         if self.args.BUILD_INITIAL_STRUCTURE:
             logger.info("Creating initial structure...")
 
@@ -1111,7 +1121,7 @@ class MultiMM:
                 self.integrator = mm.VerletIntegrator(self.args.SIM_INTEGRATOR_STEP)
 
             case "variable_verlet":
-                self.integrator = mm.VariableVerletIntegrator(self.SIM_ERROR_TOLERANCE)
+                self.integrator = mm.VariableVerletIntegrator(self.args.SIM_ERROR_TOLERANCE)
 
             case "langevin":
                 self.integrator = mm.LangevinIntegrator(
@@ -1124,7 +1134,7 @@ class MultiMM:
                 self.integrator = mm.VariableLangevinIntegrator(
                     self.args.SIM_TEMPERATURE,
                     self.args.SIM_FRICTION_COEFF,
-                    self.SIM_ERROR_TOLERANCE,
+                    self.args.SIM_ERROR_TOLERANCE,
                 )
 
             case "amd":
@@ -1144,6 +1154,7 @@ class MultiMM:
         logger.info(f"Integrator: {self.args.SIM_INTEGRATOR_TYPE}")
 
         logger.info("Simulation initialization complete")
+        init_stage.finish()
 
     def add_hic_force(self):
         """Add Hi-C contact-guided force using the pre-loaded hic_matrix.
@@ -1278,38 +1289,25 @@ class MultiMM:
 
         logger.info("Importing forcefield...")
 
-        if self.args.EV_USE_EXCLUDED_VOLUME:
-            self.add_evforce()
-
-        if self.args.COB_USE_COMPARTMENT_BLOCKS or self._hic_block_copolymer_active:
-            self.add_compartment_blocks()
-
-        if self.args.SCB_USE_SUBCOMPARTMENT_BLOCKS:
-            self.add_subcompartment_blocks()
-
-        if self.args.CHB_USE_CHROMOSOMAL_BLOCKS:
-            self.add_chromosomal_blocks()
-
-        if self.args.SC_USE_SPHERICAL_CONTAINER:
-            self.add_spherical_container()
-
-        if self.args.IBL_USE_B_LAMINA_INTERACTION:
-            self.add_Blamina_interaction()
-
-        if self.args.CF_USE_CENTRAL_FORCE:
-            self.add_central_force()
-
-        if self.args.POL_USE_HARMONIC_BOND:
-            self.add_harmonic_bonds()
-
-        if self.args.LE_USE_HARMONIC_BOND and self.ms is not None:
-            self.add_loops()
-
-        if self.args.HIC_USE_FORCE:
-            self.add_hic_force()
-
-        if self.args.POL_USE_HARMONIC_ANGLE:
-            self.add_stiffness()
+        a = self.args
+        steps = [
+            (a.EV_USE_EXCLUDED_VOLUME, "Excluded volume", self.add_evforce),
+            (a.COB_USE_COMPARTMENT_BLOCKS or self._hic_block_copolymer_active, "Compartments", self.add_compartment_blocks),
+            (a.SCB_USE_SUBCOMPARTMENT_BLOCKS, "Subcompartments", self.add_subcompartment_blocks),
+            (a.CHB_USE_CHROMOSOMAL_BLOCKS, "Chromosomes", self.add_chromosomal_blocks),
+            (a.SC_USE_SPHERICAL_CONTAINER, "Container", self.add_spherical_container),
+            (a.IBL_USE_B_LAMINA_INTERACTION, "Lamina", self.add_Blamina_interaction),
+            (a.CF_USE_CENTRAL_FORCE, "Central force", self.add_central_force),
+            (a.POL_USE_HARMONIC_BOND, "Bonds", self.add_harmonic_bonds),
+            (a.LE_USE_HARMONIC_BOND and self.ms is not None, "Loops", self.add_loops),
+            (a.HIC_USE_FORCE, "Hi-C", self.add_hic_force),
+            (a.POL_USE_HARMONIC_ANGLE, "Angles", self.add_stiffness),
+        ]
+        steps = [(label, fn) for on, label, fn in steps if on]
+        with stage("Forces", len(steps) or None) as st:
+            for label, fn in steps:
+                st.next(label)
+                fn()
 
         active = [
             ("Excluded volume",       "✓" if self.args.EV_USE_EXCLUDED_VOLUME else "–"),
@@ -1421,18 +1419,19 @@ class MultiMM:
             _n_frames, _sampling_step, _n_frames * _sampling_step,
         )
 
-        self.simulation.reporters.append(
-            StateDataReporter(
-                sys.stdout,
-                _sampling_step,
-                step=True,
-                totalEnergy=True,
-                kineticEnergy=True,
-                potentialEnergy=True,
-                temperature=True,
-                separator="\t",
+        if get_verbosity() >= 3:  # raw OpenMM table only in -vvv
+            self.simulation.reporters.append(
+                StateDataReporter(
+                    sys.stdout,
+                    _sampling_step,
+                    step=True,
+                    totalEnergy=True,
+                    kineticEnergy=True,
+                    potentialEnergy=True,
+                    temperature=True,
+                    separator="\t",
+                )
             )
-        )
         self.simulation.reporters.append(
             DCDReporter(
                 self.save_path + "metadata/MultiMM_annealing.dcd",
@@ -1476,6 +1475,7 @@ class MultiMM:
         # _register_force / plots.plot_energy_components)
         self.md_history["energy_components"] = {name: [] for name in self.force_groups}
 
+        md_stage = stage("MD simulation", _n_frames).start()
         for i in range(_n_frames):
 
             self.simulation.step(_sampling_step)
@@ -1572,6 +1572,8 @@ class MultiMM:
                 self.state.getPositions(),
                 open(self.save_path + f"md_frames/frame_{i+1}.cif", "w"),
             )
+            md_stage.tick()
+        md_stage.finish()
         end = time.time()
         elapsed = end - start
         self.state = self.simulation.context.getState(getPositions=True)
@@ -1658,14 +1660,13 @@ class MultiMM:
 
         # r_comp: interaction range for compartment/subcompartment attraction
         # and the Hi-C force's fallback kernel scale. Must be nucleus-scale
-        # (R2/3) rather than a fixed ~1-2 bead diameters (1.5*b0, kept below
-        # as bead_contact_r for reference only) — a fixed microscale doesn't
+        # (R2/3) rather than a fixed ~1-2 bead diameters (a few b0) — a fixed microscale doesn't
         # grow with N like R2 does, so it left these long-range forces with
         # ~no gradient at realistic bead separations and no ability to fold
         # the structure toward the experimental Hi-C map. The Hi-C force
         # further refines this via its own auto-calibrated scale — see
         # add_hic_force().
-        bead_contact_r = 5 * b0        # kept for reference/diagnostics only
+        bead_contact_r = self.args.COB_CUTOFF * b0  # cutoff of the compartment forces (COB_CUTOFF bond lengths)
         r_comp = R2 / 3.0
 
         self.radius2 = R2
@@ -1680,7 +1681,7 @@ class MultiMM:
                 ("R nucleus",            f"{R2:.4f} nm"),
                 ("R nucleolus",          f"{R1:.4f} nm"),
                 ("r_comp (long-range)",  f"{r_comp:.4f} nm"),
-                ("bead-contact scale",   f"{bead_contact_r:.4f} nm  (reference only)"),
+                ("bead-contact scale",   f"{bead_contact_r:.4f} nm  (compartment cutoff)"),
             ],
             title="System geometry",
             log_fn=logger.info,
@@ -1868,9 +1869,10 @@ class MultiMM:
 
         # ── Energy Minimization ───────────────────────────────────────────────
         log_section("Energy Minimization")
-        self.min_energy()
-        if _is_empty(self.args.GENE_ID) and _is_empty(self.args.GENE_NAME) and self.args.LOC_START is None:
-            self.save_chromosomes()
+        with stage("Energy minimization"):
+            self.min_energy()
+            if _is_empty(self.args.GENE_ID) and _is_empty(self.args.GENE_NAME) and self.args.LOC_START is None:
+                self.save_chromosomes()
         log_success("Energy Minimization", logger)
 
         # ── Molecular Dynamics Relaxation ─────────────────────────────────────
@@ -1878,6 +1880,8 @@ class MultiMM:
             log_section("Molecular Dynamics Relaxation")
             self.run_md()
             log_success("Molecular Dynamics Relaxation", logger)
+        else:
+            skip_stage("MD simulation", "SIM_RUN_MD=False")
 
         # ── Validation ────────────────────────────────────────────────────────
         # Deliberately runs BEFORE Visualization/nucleosome interpolation
@@ -1893,6 +1897,7 @@ class MultiMM:
         # Every gate below now explains itself when it skips — a validation
         # silently not running (e.g. HIC_USE_FORCE=True but the Hi-C matrix
         # never loaded) used to be indistinguishable from "nothing to do".
+        analysis_stage = stage("Analysis").start()
         hic_validation_ready = self.args.HIC_USE_FORCE and self.hic_matrix is not None
         if self.args.HIC_USE_FORCE and self.hic_matrix is None:
             logger.warning(
@@ -2034,8 +2039,6 @@ class MultiMM:
                 "near the top of the log if you expected it to)."
             )
 
-        save_args_to_txt(self.args, self.args.OUT_PATH + "/metadata/parameters.txt")
-
         # ── Quality Control ───────────────────────────────────────────────────
         log_section("Quality Control")
         logger.info("Running post-simulation quality tests …")
@@ -2055,29 +2058,29 @@ class MultiMM:
         except Exception as _qt_exc:
             logger.warning("Quality tests raised an exception and were skipped: %s", _qt_exc)
         log_success("Quality Control", logger)
+        analysis_stage.finish()
 
-        # ── Nucleosome interpolation ──────────────────────────────────────────
-        # Writes a separate MultiMM_minimized_with_nucs.cif; does not touch
-        # the files Validation above already read, so its ordering here (and
-        # guarding) is independent of that concern — guarded anyway so a
-        # failure here can't take out the final log_success below.
-        if self.args.NUC_DO_INTERPOLATION and self.args.ATACSEQ_PATH is not None:
-            try:
-                self.nuc_interpolation()
-            except Exception as exc:
-                logger.warning(f"Nucleosome interpolation failed: {exc}")
-
-        # ── Visualization ─────────────────────────────────────────────────────
-        # Runs LAST and guarded: see the note above Validation — a plotting
-        # failure must never prevent Validation/Quality Control from running,
-        # and by this point they already have.
+        # ── Plotting (runs guarded: a plotting failure must not lose results) ──
         if self.args.SAVE_PLOTS:
             log_section("Visualization")
             logger.info("Creating and saving diagnostic plots …")
-            try:
-                self.make_plots()
-                log_success("Visualization", logger)
-            except Exception as exc:
-                logger.error(f"Visualization failed, continuing without it: {exc}", exc_info=True)
+            with stage("Plotting"):
+                try:
+                    self.make_plots()
+                    log_success("Visualization", logger)
+                except Exception as exc:
+                    logger.error(f"Visualization failed, continuing without it: {exc}", exc_info=True)
+        else:
+            skip_stage("Plotting", "SAVE_PLOTS=False")
+
+        # ── Outputs: parameters and optional nucleosome-resolution structure ──
+        with stage("Outputs"):
+            save_args_to_txt(self.args, self.args.OUT_PATH + "/metadata/parameters.txt")
+            if self.args.NUC_DO_INTERPOLATION and self.args.ATACSEQ_PATH is not None:
+                try:
+                    self.nuc_interpolation()
+                except Exception as exc:
+                    logger.warning(f"Nucleosome interpolation failed: {exc}")
+        logger.info("Results saved in %s", self.save_path)
 
         log_success("MultiMM", logger)

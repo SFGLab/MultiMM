@@ -36,6 +36,7 @@ nav:
       - Compartments: model/compartments.md
       - Hi-C force: model/hic-force.md
       - Nuclear envelope and lamina: model/lamina.md
+      - Minimisation and dynamics: model/dynamics.md
       - Advanced options: model/advanced.md
   - Reference:
       - Running MultiMM: reference/running.md
