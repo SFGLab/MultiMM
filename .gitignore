@@ -1,72 +1,54 @@
-# Python
+# ── Python ───────────────────────────────────────────
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.python-version
-*.egg-info
+*.egg-info/
+.eggs/
+build/
+dist/
+.python-version
 
-# Jupyter
+# ── Environments ─────────────────────────────────────
+env/
+venv/
+.venv/
+.env
+
+# ── Tools and caches ─────────────────────────────────
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.coverage
+htmlcov/
 .ipynb_checkpoints/
 
-# Editors
-*.swp
-*.swo
-*~
-*.bak
-*.tmp
+# ── Documentation build ──────────────────────────────
+/site/
+tikz/.build/
 
-# Logs
+# ── Run outputs and scratch ──────────────────────────
+/results/
+/tmp/
+/Claude outputs/
+slurm-*.out
 *.log
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Compiled
 *.out
+
+# ── Compiled, archives ───────────────────────────────
 *.o
 *.so
-
-# Archives
 *.zip
 *.tar.gz
 *.tar.bz2
 *.7z
 
-# Backup files
-*~
-
-# Virtualenvs
-env/
-venv/
-.venv/
-
-# Slurm output (adjust to match pattern)
-slurm-*.out
-
-# IDEs
+# ── Editors and OS ───────────────────────────────────
 .vscode/
 .idea/
-
-# Custom temp folders
-tmp/
-temp/
-*.pyc
-__pycache__/
-
-# Build outputs
-site/
-dist/
-build/
-tikz/.build/
-
-# Tests and coverage
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Run outputs and scratch
-results/
-tmp/
-Claude outputs/
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db
